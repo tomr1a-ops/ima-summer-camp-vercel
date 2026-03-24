@@ -47,8 +47,9 @@ function resolveUserEmail(user) {
 
 /**
  * Ensures public.profiles has a row for this auth user (campers.parent_id FK targets profiles.id).
+ * @param {object} [extras] — optional full_name, phone (used after registration)
  */
-async function upsertParentProfile(user) {
+async function upsertParentProfile(user, extras) {
   if (!user || !user.id) return null;
   const email = resolveUserEmail(user);
   if (!email) {
@@ -59,9 +60,16 @@ async function upsertParentProfile(user) {
     throw err;
   }
   const sb = serviceClient();
+  const row = { id: user.id, email, role: 'parent' };
+  if (extras && typeof extras === 'object') {
+    const fn = extras.full_name != null ? String(extras.full_name).trim() : '';
+    const ph = extras.phone != null ? String(extras.phone).trim() : '';
+    if (fn) row.full_name = fn;
+    if (ph) row.phone = ph;
+  }
   const { data: rows, error } = await sb
     .from('profiles')
-    .upsert({ id: user.id, email, role: 'parent' }, { onConflict: 'id' })
+    .upsert(row, { onConflict: 'id' })
     .select('id,email,full_name,phone,role');
   if (error) throw error;
   if (rows && rows[0]) return rows[0];

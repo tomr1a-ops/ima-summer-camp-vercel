@@ -71,9 +71,20 @@
           const sb = await IMA.getSupabase();
           const email = document.getElementById('email').value.trim();
           const password = document.getElementById('password').value;
-          const { error } = await sb.auth.signInWithPassword({ email, password });
+          const { data: signData, error } = await sb.auth.signInWithPassword({ email, password });
           if (error) throw error;
-          const profile = await IMA.getProfile();
+          let profile = await IMA.getProfile();
+          if (!profile && signData.session && signData.session.access_token) {
+            const pr = await fetch('/api/ensure-profile', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: 'Bearer ' + signData.session.access_token,
+              },
+              body: JSON.stringify({}),
+            });
+            if (pr.ok) profile = await IMA.getProfile();
+          }
           if (!profile) throw new Error('Profile not found. Complete registration or contact IMA.');
           const ret = new URLSearchParams(window.location.search).get('return');
           const safe = ret && ret.startsWith('/') && !ret.startsWith('//') ? ret : null;

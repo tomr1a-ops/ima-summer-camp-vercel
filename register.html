@@ -90,23 +90,29 @@
             return;
           }
 
-          const { error: pe } = await sb.from('profiles').upsert(
-            {
-              id: user.id,
-              email: email,
-              full_name: full_name,
-              phone: phone,
-              role: 'parent',
-            },
-            { onConflict: 'id' }
-          );
-          if (pe) throw pe;
-
-          if (data.session) {
+          // Profiles RLS requires a valid JWT; right after signUp the client upsert often gets 401.
+          // Server uses service role to upsert (same as checkout add-camper).
+          if (data.session && data.session.access_token) {
+            const pr = await fetch('/api/ensure-profile', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: 'Bearer ' + data.session.access_token,
+              },
+              body: JSON.stringify({ fullName: full_name, phone: phone }),
+            });
+            const pj = await pr.json().catch(function () {
+              return {};
+            });
+            if (!pr.ok) throw new Error(pj.error || 'Could not save your profile');
             window.location.replace('/portal.html');
             return;
           }
-          show('Check your email to confirm, then sign in at login.', true);
+
+          show(
+            'Check your email to confirm your account, then sign in. If anything fails after confirming, contact IMA.',
+            true
+          );
         } catch (e) {
           show(e.message || 'Registration failed', false);
         }
