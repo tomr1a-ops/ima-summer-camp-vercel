@@ -509,16 +509,196 @@
   footer a { color: #444; text-decoration: none; }
   footer a:hover { color: var(--cyan); }
 
-  .top-auth {
+  /* Sign in first — full-width rail above header */
+  .signin-rail {
+    position: relative;
+    z-index: 3;
+    background: linear-gradient(180deg, #0a0a12 0%, #08080c 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 20px 18px 22px;
+  }
+  .signin-rail-inner {
     max-width: 960px;
     margin: 0 auto;
-    padding: 12px 18px 0;
-    position: relative;
-    z-index: 2;
+  }
+  .auth-hero-card {
+    background: var(--card);
+    border: 1px solid var(--border2);
+    border-radius: 12px;
+    padding: 22px 20px 20px;
+  }
+  .auth-hero-kicker {
+    font-family: var(--font-cond);
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--cyan);
+    margin-bottom: 8px;
+  }
+  .auth-hero-title {
+    font-family: var(--font-display);
+    font-size: clamp(22px, 4vw, 32px);
+    letter-spacing: 2px;
+    color: #fff;
+    line-height: 1.1;
+    margin-bottom: 10px;
+  }
+  .auth-hero-title-sm {
+    font-family: var(--font-display);
+    font-size: clamp(18px, 3vw, 24px);
+    letter-spacing: 2px;
+    color: #fff;
+    margin-bottom: 14px;
+  }
+  .auth-hero-sub {
+    font-size: 14px;
+    color: #999;
+    line-height: 1.5;
+    max-width: 520px;
+    margin-bottom: 18px;
+  }
+  .auth-hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 22px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #000;
+    font-family: var(--font-cond);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-decoration: none;
+    border: none;
+    cursor: pointer;
+  }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 20px;
+    border-radius: 8px;
+    border: 1px solid var(--border2);
+    background: var(--card2);
+    color: var(--text);
+    font-family: var(--font-cond);
+    font-size: 13px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    text-decoration: none;
+  }
+  .btn-secondary:hover { border-color: var(--cyan); color: var(--cyan); }
+  .auth-guest-fallback {
     font-size: 13px;
     color: var(--muted);
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
   }
-  .top-auth a { color: var(--cyan); }
+  .auth-guest-fallback a { color: var(--cyan); font-weight: 600; }
+  .guest-hint { font-size: 11px; color: #555; display: block; margin-top: 4px; }
+  .camper-pick-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .camper-pick-row label {
+    font-family: var(--font-cond);
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .add-camper-toggle {
+    background: none;
+    border: 1px dashed var(--border2);
+    color: var(--cyan);
+    font-family: var(--font-cond);
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 10px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    width: 100%;
+    margin-bottom: 10px;
+  }
+  .add-camper-toggle:hover { border-color: var(--cyan); }
+  .add-camper-panel {
+    display: none;
+    padding: 14px;
+    background: var(--card2);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    margin-bottom: 12px;
+  }
+  .add-camper-panel.is-open { display: block; }
+  .add-camper-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  @media (max-width: 560px) {
+    .add-camper-grid { grid-template-columns: 1fr; }
+  }
+  .add-camper-panel input {
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border2);
+    background: #0a0a0a;
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 14px;
+    width: 100%;
+  }
+  .auth-inline-links {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 8px;
+  }
+  .auth-inline-links a { color: var(--cyan); }
+  .pricing-tiers-box {
+    margin-top: 10px;
+    padding: 12px 14px;
+    background: rgba(0,229,204,0.06);
+    border: 1px solid rgba(0,229,204,0.2);
+    border-radius: 8px;
+    font-size: 13px;
+    color: #bbb;
+    line-height: 1.55;
+  }
+  .pricing-tiers-box strong { color: var(--cyan); }
+  .child-context {
+    font-family: var(--font-cond);
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: var(--blue);
+    margin-top: 6px;
+    text-transform: uppercase;
+  }
+  .enrollment-gate {
+    padding: 12px 16px;
+    background: rgba(51,68,255,0.08);
+    border: 1px solid rgba(51,68,255,0.25);
+    border-radius: 8px;
+    font-size: 13px;
+    color: #aaa;
+    margin: 0 16px 12px;
+  }
+  .enrollment-gate.ok { display: none; }
+  .weeks-mount-wrap { position: relative; }
+  .weeks-mount-wrap.gated { opacity: 0.45; pointer-events: none; }
   .auth-box {
     background: var(--card);
     border: 1px solid var(--border);
@@ -859,6 +1039,59 @@
 </head>
 <body>
 
+<div class="signin-rail" id="signin-rail">
+  <div class="signin-rail-inner">
+    <div id="state-signed-out" class="auth-hero-card">
+      <p class="auth-hero-kicker">IMA Summer Camp 2026</p>
+      <h1 class="auth-hero-title">Sign in to register your camper</h1>
+      <p class="auth-hero-sub">Parents: use your portal account. Your children on file will show in the dropdown for fast checkout.</p>
+      <div class="auth-hero-actions">
+        <a class="btn-primary" href="/login.html?return=/index.html">Sign in</a>
+        <a class="btn-secondary" href="/register.html?return=/index.html">Create account</a>
+      </div>
+      <p class="auth-guest-fallback">
+        <a href="#" id="link-guest">Continue as guest</a>
+        <span class="guest-hint">Secondary option — you can create a parent account later with the same email.</span>
+      </p>
+    </div>
+
+    <div id="state-guest" class="auth-hero-card" style="display:none">
+      <p class="auth-hero-kicker">Guest checkout</p>
+      <h2 class="auth-hero-title-sm">Camper &amp; contact</h2>
+      <p class="auth-hero-sub" style="margin-bottom:12px">Enter your child and email. Prefer an account? <a href="/login.html?return=/index.html" style="color:var(--cyan)">Sign in</a></p>
+      <div class="guest-grid">
+        <input type="text" id="g-first" placeholder="Child first name" autocomplete="given-name" />
+        <input type="text" id="g-last" placeholder="Child last name" autocomplete="family-name" />
+        <input type="email" id="g-email" placeholder="Your email" autocomplete="email" />
+        <input type="number" id="g-age" placeholder="Age" min="3" max="18" />
+      </div>
+      <p class="auth-inline-links" style="margin-top:14px"><a href="#" id="link-back-signin">← Back to sign in</a></p>
+    </div>
+
+    <div id="state-signed-in" class="auth-hero-card" style="display:none">
+      <p class="auth-hero-kicker">Signed in</p>
+      <h2 class="auth-hero-title-sm">Who is attending camp?</h2>
+      <div class="camper-pick-row">
+        <label for="camper-select">Select camper</label>
+        <select id="camper-select" class="select-camper">
+          <option value="">Choose a camper…</option>
+        </select>
+      </div>
+      <button type="button" class="add-camper-toggle" id="btn-toggle-add-camper" aria-expanded="false">+ Add a new camper</button>
+      <div class="add-camper-panel" id="add-camper-panel">
+        <div class="add-camper-grid">
+          <input type="text" id="new-camper-first" placeholder="First name" autocomplete="given-name" />
+          <input type="text" id="new-camper-last" placeholder="Last name" autocomplete="family-name" />
+          <input type="number" id="new-camper-age" placeholder="Age" min="3" max="18" style="grid-column:1/-1" />
+        </div>
+        <button type="button" class="btn-primary" id="btn-save-camper" style="width:100%">Save camper</button>
+        <p id="add-camper-msg" class="week-dates-label" style="margin-top:10px;color:#f88"></p>
+      </div>
+      <p class="auth-inline-links"><a href="/portal.html">Manage in portal</a> · <a href="#" id="logout-link-top">Log out</a></p>
+    </div>
+  </div>
+</div>
+
 <header>
   <img class="logo-img" src="/logo.png" alt="Impact Martial Athletics" />
   <div class="header-eyebrow">Davie, Florida · Ages 5–15 · Mon–Fri</div>
@@ -868,11 +1101,10 @@
     <span class="dot"></span>
     <span id="price-banner-text">Loading pricing…</span>
   </div>
+  <p class="week-dates-label" id="price-tier-detail" style="margin-top:12px;max-width:640px;margin-left:auto;margin-right:auto;line-height:1.6;color:#888">
+    Early bird through Apr 30, 2026: <strong style="color:var(--cyan)">$375</strong>/wk · <strong style="color:var(--cyan)">$85</strong>/day. Starting May 1, 2026: <strong>$425</strong>/wk · <strong>$95</strong>/day.
+  </p>
 </header>
-
-<div class="top-auth" id="top-auth">
-  <span id="auth-status">Checking session…</span>
-</div>
 
 <main class="page">
 
@@ -883,9 +1115,11 @@
     </div>
     <div class="reg-block">
       <h3>Pricing</h3>
-      <p class="reg-p" id="reg-pricing-copy">
-        Weekly and daily rates switch on May 1, 2026. Max 35 kids per week; full weeks and full days show as unavailable when capacity is reached.
-      </p>
+      <div class="pricing-tiers-box" id="reg-pricing-copy">
+        <strong>Early bird (now – Apr 30, 2026):</strong> $375/week (Mon–Fri) · $85/day.<br />
+        <strong>Regular (May 1, 2026 onward):</strong> $425/week · $95/day.<br />
+        <span style="color:#666;font-size:12px">You are charged the rate in effect when you complete checkout. Max 35 kids per week.</span>
+      </div>
       <div class="reg-kids-row" id="reg-fee-row">
         <span class="lbl">New kids — one-time registration ($65 each, shirt + gloves). This order covers <strong>one</strong> camper.</span>
         <div class="week-kids-ctrl" style="opacity:1" aria-hidden="true">
@@ -902,31 +1136,9 @@
         <span>IMA member (for our records; pricing is the same)</span>
       </label>
     </div>
-    <p class="subhead">Who is attending?</p>
-    <div class="weeks-list" style="padding-top:0">
-      <div id="panel-logged" class="auth-box" style="display:none">
-        <div class="row">
-          <label class="week-dates-label" style="margin:0">Camper</label>
-          <select id="camper-select" class="select-camper">
-            <option value="">Select camper…</option>
-          </select>
-          <a href="/portal.html">Manage in portal</a>
-        </div>
-      </div>
-      <div id="panel-guest" class="auth-box" style="display:none">
-        <div class="week-dates-label" style="margin-bottom:8px">Guest checkout — create a parent account later with the same email.</div>
-        <div class="guest-grid">
-          <input type="text" id="g-first" placeholder="Child first name" autocomplete="given-name" />
-          <input type="text" id="g-last" placeholder="Child last name" autocomplete="family-name" />
-          <input type="email" id="g-email" placeholder="Your email" autocomplete="email" />
-          <input type="number" id="g-age" placeholder="Age" min="3" max="18" />
-        </div>
-      </div>
-      <div id="panel-login-prompt" class="auth-box">
-        <a href="/login.html?return=/index.html">Sign in</a> to pick an existing camper, or
-        <a href="#" id="link-guest">continue as guest</a>.
-      </div>
-    </div>
+    <p class="week-dates-label" style="padding:0 16px 16px;font-size:12px;color:#555">
+      Camper is selected at the top of the page. Guest? Fill in child &amp; email there first.
+    </p>
   </div>
 
   <div class="card">
@@ -938,11 +1150,16 @@
       <button type="button" class="enroll-type-btn on" id="btn-enroll-full" data-type="full">Full week</button>
       <button type="button" class="enroll-type-btn" id="btn-enroll-daily" data-type="daily">Individual days</button>
     </div>
+    <div class="enrollment-gate" id="enrollment-gate">
+      Select your camper above (or complete guest details) before choosing weeks or days.
+    </div>
+    <div class="weeks-mount-wrap" id="weeks-mount-wrap">
     <div class="weeks-list" id="weeks-mount-full" style="display:none;padding-top:0">
       <p class="empty-state" id="weeks-loading-full">Loading camp weeks…</p>
     </div>
     <div class="weeks-list" id="weeks-mount-daily" style="display:none;padding-top:0">
       <p class="empty-state" id="weeks-loading-daily">Loading camp weeks…</p>
+    </div>
     </div>
   </div>
 
@@ -1037,20 +1254,97 @@
     return dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   }
 
+  /** "June 8–12" from ISO dates */
+  function formatWeekRangeForSummary(w) {
+    if (!w || !w.start_date || !w.end_date) return '';
+    const a = String(w.start_date).split('-');
+    const b = String(w.end_date).split('-');
+    const d0 = new Date(Number(a[0]), Number(a[1]) - 1, Number(a[2]));
+    const d1 = new Date(Number(b[0]), Number(b[1]) - 1, Number(b[2]));
+    const m0 = d0.toLocaleDateString('en-US', { month: 'long' });
+    const m1 = d1.toLocaleDateString('en-US', { month: 'long' });
+    const day0 = d0.getDate();
+    const day1 = d1.getDate();
+    if (m0 === m1) return m0 + ' ' + day0 + '–' + day1;
+    return m0 + ' ' + day0 + ' – ' + m1 + ' ' + day1;
+  }
+
+  function getSelectedCamperName() {
+    if (guestMode) {
+      const f = document.getElementById('g-first').value.trim();
+      const l = document.getElementById('g-last').value.trim();
+      return (f + ' ' + l).trim();
+    }
+    const sel = document.getElementById('camper-select');
+    if (!sel || !sel.value) return '';
+    const opt = sel.options[sel.selectedIndex];
+    return opt ? opt.textContent.trim() : '';
+  }
+
+  function camperSelectionReady() {
+    if (guestMode) {
+      return !!(
+        document.getElementById('g-first').value.trim() &&
+        document.getElementById('g-last').value.trim() &&
+        document.getElementById('g-email').value.trim() &&
+        document.getElementById('g-age').value
+      );
+    }
+    return !!(session && document.getElementById('camper-select').value);
+  }
+
+  function updateEnrollmentGate() {
+    const gate = document.getElementById('enrollment-gate');
+    const wrap = document.getElementById('weeks-mount-wrap');
+    if (!gate || !wrap) return;
+    const ready = camperSelectionReady();
+    if (ready) {
+      gate.classList.add('ok');
+      wrap.classList.remove('gated');
+    } else {
+      gate.classList.remove('ok');
+      wrap.classList.add('gated');
+    }
+  }
+
+  function childContextHtml() {
+    if (!camperSelectionReady()) return '';
+    const name = getSelectedCamperName();
+    if (!name) return '';
+    return '<div class="child-context">Camper: ' + escapeHtml(name) + '</div>';
+  }
+
+  function applyPricingFromServer(j) {
+    const dr = j && j.dayRate != null ? Number(j.dayRate) : dayRateClient();
+    const wr = j && j.weekRate != null ? Number(j.weekRate) : weekRateClient();
+    const rf = j && j.registrationFee != null ? Number(j.registrationFee) : regFeeClient();
+    const nr = j && j.needsRegistration === false ? false : true;
+    pricingPreview = { dayRate: dr, weekRate: wr, registrationFee: rf, needsRegistration: nr };
+  }
+
   function updatePriceBanner() {
     const el = document.getElementById('price-banner-text');
     if (!el) return;
-    const dr = testPriceMode ? 1 : pricingPreview.dayRate || dayRateClient();
-    const wr = testPriceMode ? 1 : pricingPreview.weekRate || weekRateClient();
-    const tier = new Date() < EARLY ? 'before May 1, 2026' : 'from May 1, 2026';
+    const dr = Number(testPriceMode ? 1 : pricingPreview.dayRate != null ? pricingPreview.dayRate : dayRateClient());
+    const wr = Number(testPriceMode ? 1 : pricingPreview.weekRate != null ? pricingPreview.weekRate : weekRateClient());
+    const isEarly = new Date() < EARLY;
     el.textContent =
-      'Full week ' +
+      (isEarly ? 'Early bird: ' : 'Current rate: ') +
       fmt(wr) +
-      '/wk · Day ' +
+      '/wk · ' +
       fmt(dr) +
-      ' · ' +
-      tier +
-      ' · Max 35/wk';
+      '/day · Max 35/wk';
+    const detail = document.getElementById('price-tier-detail');
+    if (detail) {
+      detail.innerHTML =
+        'Early bird through Apr 30, 2026: <strong style="color:var(--cyan)">$375</strong>/wk · <strong style="color:var(--cyan)">$85</strong>/day. ' +
+        'Starting May 1, 2026: <strong>$425</strong>/wk · <strong>$95</strong>/day. ' +
+        '<span style="display:block;margin-top:6px;color:#666;font-size:12px">Today you pay: <strong style="color:#fff">' +
+        fmt(wr) +
+        '/wk</strong> and <strong style="color:#fff">' +
+        fmt(dr) +
+        '/day</strong> at checkout.</span>';
+    }
   }
 
   function escapeHtml(s) {
@@ -1081,6 +1375,7 @@
     document.getElementById('weeks-mount-daily').style.display = type === 'daily' ? 'block' : 'none';
     renderFullWeeks();
     renderDailyWeeks();
+    updateEnrollmentGate();
     updateSummary();
   }
 
@@ -1123,31 +1418,35 @@
     const url = '/api/preview-pricing' + (q ? '?' + q : '');
     try {
       const res = await fetch(url, { headers });
-      if (res.ok) pricingPreview = await res.json();
+      if (res.ok) {
+        const j = await res.json();
+        applyPricingFromServer(j);
+      } else {
+        applyPricingFromServer(null);
+      }
     } catch (e) {
-      pricingPreview = {
-        dayRate: dayRateClient(),
-        weekRate: weekRateClient(),
-        registrationFee: regFeeClient(),
-        needsRegistration: true,
-      };
+      applyPricingFromServer(null);
     }
     if (testPriceMode) {
       pricingPreview.dayRate = 1;
       pricingPreview.weekRate = 1;
       pricingPreview.registrationFee = 1;
     }
-    if (pricingPreview.weekRate == null) pricingPreview.weekRate = weekRateClient();
     updatePriceBanner();
     const regRow = document.getElementById('reg-fee-row');
-    const needReg = guestMode || pricingPreview.needsRegistration !== false;
-    if (regRow) regRow.style.display = needReg ? '' : 'none';
+    if (regRow) {
+      if (guestMode) regRow.style.display = '';
+      else if (session && camperId) regRow.style.display = pricingPreview.needsRegistration !== false ? '' : 'none';
+      else regRow.style.display = 'none';
+    }
     renderFullWeeks();
     renderDailyWeeks();
+    updateEnrollmentGate();
     updateSummary();
   }
 
   function updateSummary() {
+    updateEnrollmentGate();
     const empty = document.getElementById('empty-state');
     const lines = document.getElementById('summary-lines');
     const totalRow = document.getElementById('total-row');
@@ -1155,28 +1454,41 @@
     const msg = document.getElementById('msg');
     msg.className = 'msg';
 
-    const dr = testPriceMode ? 1 : pricingPreview.dayRate || dayRateClient();
-    const wr = testPriceMode ? 1 : pricingPreview.weekRate || weekRateClient();
+    const dr = Number(testPriceMode ? 1 : pricingPreview.dayRate != null ? pricingPreview.dayRate : dayRateClient());
+    const wr = Number(testPriceMode ? 1 : pricingPreview.weekRate != null ? pricingPreview.weekRate : weekRateClient());
     const bookings = collectBookings();
-    let campTotal = 0;
-    bookings.forEach(function (b) {
-      if (b.pricingMode === 'full_week') campTotal += wr;
-      else campTotal += (b.dayIds || []).length * dr;
-    });
+    const camperOk = camperSelectionReady();
+    const childName = getSelectedCamperName();
 
-    const needReg = guestMode || pricingPreview.needsRegistration !== false;
-    const reg = needReg ? (testPriceMode ? 1 : pricingPreview.registrationFee || regFeeClient()) : 0;
-
-    const camperOk = guestMode
-      ? !!(document.getElementById('g-first').value && document.getElementById('g-last').value && document.getElementById('g-email').value && document.getElementById('g-age').value)
-      : !!(session && document.getElementById('camper-select').value);
-
-    if (!bookings.length || !camperOk) {
+    if (!camperOk) {
+      empty.textContent = 'Sign in and select a camper at the top, or use guest checkout and fill in your child’s details — then choose weeks or days.';
       empty.style.display = '';
       lines.style.display = 'none';
       totalRow.style.display = 'none';
       btn.disabled = true;
       return;
+    }
+
+    if (!bookings.length) {
+      empty.textContent = 'Choose at least one full week or individual days for ' + childName + '.';
+      empty.style.display = '';
+      lines.style.display = 'none';
+      totalRow.style.display = 'none';
+      btn.disabled = true;
+      return;
+    }
+
+    let campTotal = 0;
+    bookings.forEach(function (b) {
+      if (b.pricingMode === 'full_week') campTotal += wr;
+      else campTotal += Number((b.dayIds || []).length) * dr;
+    });
+
+    let reg = 0;
+    if (guestMode) {
+      reg = Number(testPriceMode ? 1 : pricingPreview.registrationFee != null ? pricingPreview.registrationFee : regFeeClient());
+    } else if (pricingPreview.needsRegistration) {
+      reg = Number(testPriceMode ? 1 : pricingPreview.registrationFee != null ? pricingPreview.registrationFee : regFeeClient());
     }
 
     empty.style.display = 'none';
@@ -1188,18 +1500,20 @@
       const w = weeksPayload.find(function (x) {
         return x.id === b.weekId;
       });
-      const label = w ? w.label : 'Week';
+      const range = w ? formatWeekRangeForSummary(w) : '';
+      const headLine = w ? w.label + (range ? ' (' + range + ')' : '') + ' — ' + childName : 'Camp — ' + childName;
       if (b.pricingMode === 'full_week') {
         html +=
           '<div class="summary-line"><span class="label">' +
-          escapeHtml(label) +
-          '<br><small style="color:#444">Full week Mon–Fri × ' +
+          escapeHtml(headLine) +
+          '<br><small style="color:#444">Full week Mon–Fri · ' +
           fmt(wr) +
           '</small></span><span class="val">' +
           fmt(wr) +
           '</span></div>';
       } else {
         const n = b.dayIds.length;
+        const sub = Number(n) * dr;
         const dayLabels = (w ? w.days : [])
           .filter(function (d) {
             return b.dayIds.indexOf(d.id) !== -1;
@@ -1210,7 +1524,7 @@
           .join(', ');
         html +=
           '<div class="summary-line"><span class="label">' +
-          escapeHtml(label) +
+          escapeHtml(headLine) +
           '<br><small style="color:#444">' +
           n +
           ' day' +
@@ -1220,18 +1534,21 @@
           '<br>' +
           escapeHtml(dayLabels) +
           '</small></span><span class="val">' +
-          fmt(n * dr) +
+          fmt(sub) +
           '</span></div>';
       }
     });
     if (reg > 0) {
       html +=
-        '<div class="summary-line"><span class="label">Registration <small style="color:#333">(one-time, first IMA camp)</small></span><span class="val">' +
+        '<div class="summary-line"><span class="label">Registration — ' +
+        escapeHtml(childName) +
+        ' <small style="color:#333">(one-time, first IMA camp if applicable)</small></span><span class="val">' +
         fmt(reg) +
         '</span></div>';
     }
     lines.innerHTML = html;
-    document.getElementById('total-amount').textContent = fmt(campTotal + reg);
+    const grand = Number(campTotal) + Number(reg);
+    document.getElementById('total-amount').textContent = fmt(grand);
     btn.disabled = false;
   }
 
@@ -1299,7 +1616,8 @@
         escapeHtml(String(w.start_date)) +
         ' – ' +
         escapeHtml(String(w.end_date)) +
-        '</div>';
+        '</div>' +
+        childContextHtml();
       head.appendChild(left);
       if (full) {
         const b = document.createElement('span');
@@ -1379,7 +1697,9 @@
         escapeHtml(String(w.end_date)) +
         ' · ' +
         fmt(dr) +
-        '/day</div></div>';
+        '/day</div>' +
+        childContextHtml() +
+        '</div>';
       if (weekFull) {
         const b = document.createElement('span');
         b.className = 'full-badge';
@@ -1467,6 +1787,7 @@
       document.getElementById('weeks-loading-full').style.display = 'none';
       document.getElementById('weeks-loading-daily').style.display = 'none';
       setEnrollmentType('full');
+      updateEnrollmentGate();
     } catch (e) {
       const err = '<p class="empty-state" style="color:#f88">Could not load weeks. Check API and Supabase env.</p>';
       document.getElementById('weeks-mount-full').innerHTML = err;
@@ -1474,57 +1795,128 @@
     }
   }
 
+  function showAuthPanels() {
+    const out = document.getElementById('state-signed-out');
+    const g = document.getElementById('state-guest');
+    const inEl = document.getElementById('state-signed-in');
+    if (!out || !g || !inEl) return;
+    out.style.display = 'none';
+    g.style.display = 'none';
+    inEl.style.display = 'none';
+    if (guestMode) {
+      g.style.display = 'block';
+    } else if (session) {
+      inEl.style.display = 'block';
+    } else {
+      out.style.display = 'block';
+    }
+  }
+
+  async function reloadCampers(selectId) {
+    if (!session) return;
+    const sb = await IMA.getSupabase();
+    const { data: campers, error } = await sb.from('campers').select('id,first_name,last_name').eq('parent_id', session.user.id);
+    if (error) {
+      console.error(error);
+      return;
+    }
+    const sel = document.getElementById('camper-select');
+    const prev = selectId || sel.value;
+    sel.innerHTML = '<option value="">Choose a camper…</option>';
+    (campers || []).forEach(function (c) {
+      const o = document.createElement('option');
+      o.value = c.id;
+      o.textContent = c.first_name + ' ' + c.last_name;
+      sel.appendChild(o);
+    });
+    sel.onchange = function () {
+      refreshPricingPreview();
+    };
+    if (prev && [...sel.options].some(function (o) { return o.value === prev; })) sel.value = prev;
+    else if ((campers || []).length === 1) sel.value = campers[0].id;
+    refreshPricingPreview();
+  }
+
   async function bootAuth() {
-    const status = document.getElementById('auth-status');
     try {
       await IMA.getSupabase();
       session = (await IMA.getSession()) || null;
     } catch (e) {
-      status.textContent = '';
       guestMode = true;
-      showGuestPanel();
+      session = null;
+      showAuthPanels();
+      wireGuestInputs();
+      refreshPricingPreview();
       return;
     }
+    guestMode = false;
     if (session) {
-      status.innerHTML = 'Signed in · <a href="/portal.html">Portal</a> · <a href="#" id="logout-link">Log out</a>';
-      document.getElementById('panel-login-prompt').style.display = 'none';
-      document.getElementById('panel-logged').style.display = 'block';
-      document.getElementById('panel-guest').style.display = 'none';
-      guestMode = false;
-      const sb = await IMA.getSupabase();
-      const { data: campers } = await sb.from('campers').select('id,first_name,last_name').eq('parent_id', session.user.id);
-      const sel = document.getElementById('camper-select');
-      sel.innerHTML = '<option value="">Select camper…</option>';
-      (campers || []).forEach(function (c) {
-        const o = document.createElement('option');
-        o.value = c.id;
-        o.textContent = c.first_name + ' ' + c.last_name;
-        sel.appendChild(o);
-      });
-      sel.addEventListener('change', refreshPricingPreview);
-      document.getElementById('logout-link').addEventListener('click', function (ev) {
-        ev.preventDefault();
-        IMA.signOut();
-      });
+      await reloadCampers();
     } else {
-      status.innerHTML = '<a href="/login.html?return=/index.html">Sign in</a> · <a href="/register.html">Register</a>';
-      document.getElementById('panel-login-prompt').style.display = 'block';
+      showAuthPanels();
     }
+    document.getElementById('logout-link-top').addEventListener('click', function (ev) {
+      ev.preventDefault();
+      IMA.signOut();
+    });
     document.getElementById('link-guest').addEventListener('click', function (ev) {
       ev.preventDefault();
       guestMode = true;
-      showGuestPanel();
+      showAuthPanels();
+      wireGuestInputs();
       refreshPricingPreview();
     });
+    document.getElementById('link-back-signin').addEventListener('click', function (ev) {
+      ev.preventDefault();
+      guestMode = false;
+      showAuthPanels();
+      refreshPricingPreview();
+    });
+    document.getElementById('btn-toggle-add-camper').addEventListener('click', function () {
+      const p = document.getElementById('add-camper-panel');
+      const open = !p.classList.contains('is-open');
+      p.classList.toggle('is-open', open);
+      document.getElementById('btn-toggle-add-camper').setAttribute('aria-expanded', String(open));
+    });
+    document.getElementById('btn-save-camper').addEventListener('click', async function () {
+      if (!session) return;
+      const msg = document.getElementById('add-camper-msg');
+      msg.textContent = '';
+      const fn = document.getElementById('new-camper-first').value.trim();
+      const ln = document.getElementById('new-camper-last').value.trim();
+      const age = parseInt(document.getElementById('new-camper-age').value, 10);
+      if (!fn || !ln || !Number.isFinite(age) || age < 3 || age > 18) {
+        msg.textContent = 'Enter first name, last name, and age (3–18).';
+        return;
+      }
+      try {
+        const sb = await IMA.getSupabase();
+        const { data, error } = await sb
+          .from('campers')
+          .insert({ parent_id: session.user.id, first_name: fn, last_name: ln, age: age })
+          .select('id')
+          .single();
+        if (error) throw error;
+        document.getElementById('new-camper-first').value = '';
+        document.getElementById('new-camper-last').value = '';
+        document.getElementById('new-camper-age').value = '';
+        document.getElementById('add-camper-panel').classList.remove('is-open');
+        await reloadCampers(data.id);
+        msg.textContent = '';
+      } catch (err) {
+        msg.textContent = err.message || 'Could not add camper.';
+      }
+    });
+    showAuthPanels();
+    if (guestMode) wireGuestInputs();
   }
 
-  function showGuestPanel() {
-    document.getElementById('panel-login-prompt').style.display = 'none';
-    document.getElementById('panel-logged').style.display = 'none';
-    document.getElementById('panel-guest').style.display = 'block';
-    document.getElementById('auth-status').textContent = 'Guest checkout';
+  function wireGuestInputs() {
     ['g-first', 'g-last', 'g-email', 'g-age'].forEach(function (id) {
-      document.getElementById(id).addEventListener('input', function () {
+      const el = document.getElementById(id);
+      if (!el || el.dataset.wired === '1') return;
+      el.dataset.wired = '1';
+      el.addEventListener('input', function () {
         refreshPricingPreview();
       });
     });
@@ -1618,10 +2010,13 @@
   document.getElementById('ima-member').addEventListener('change', updateSummary);
   document.getElementById('checkout-btn').addEventListener('click', startCheckout);
 
-  loadWeeks();
-  bootAuth().then(function () {
-    refreshPricingPreview();
-  });
+  loadWeeks()
+    .then(function () {
+      return bootAuth();
+    })
+    .then(function () {
+      refreshPricingPreview();
+    });
   initTestBar();
 })();
 </script>
