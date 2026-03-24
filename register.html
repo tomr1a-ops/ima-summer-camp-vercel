@@ -89,10 +89,17 @@
               phone: phone,
             }),
           });
-          const j = await res.json().catch(function () {
-            return {};
-          });
-          if (!res.ok) throw new Error(j.error || 'Registration failed');
+          const raw = await res.text();
+          var j = {};
+          try {
+            j = raw ? JSON.parse(raw) : {};
+          } catch (parseErr) {
+            j = {};
+          }
+          if (!res.ok) {
+            var detail = j.error || j.message || raw || 'Registration failed';
+            throw new Error(typeof detail === 'string' ? detail : 'Registration failed');
+          }
 
           const { error: se } = await sb.auth.signInWithPassword({ email: email, password: password });
           if (se) throw se;
