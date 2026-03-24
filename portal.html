@@ -352,15 +352,21 @@
         try {
           const session = await IMA.getSession();
           if (!session) return;
-          const sb = await IMA.getSupabase();
-          const row = {
-            parent_id: session.user.id,
-            first_name: document.getElementById('cfn').value.trim(),
-            last_name: document.getElementById('cln').value.trim(),
-            age: parseInt(document.getElementById('cage').value, 10),
-          };
-          const { error } = await sb.from('campers').insert(row);
-          if (error) throw error;
+          const fn = document.getElementById('cfn').value.trim();
+          const ln = document.getElementById('cln').value.trim();
+          const age = parseInt(document.getElementById('cage').value, 10);
+          const res = await fetch('/api/add-camper', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: 'Bearer ' + session.access_token,
+            },
+            body: JSON.stringify({ firstName: fn, lastName: ln, age: age }),
+          });
+          const j = await res.json().catch(function () {
+            return {};
+          });
+          if (!res.ok) throw new Error(j.error || 'Could not add camper');
           document.getElementById('add-camper').reset();
           showBanner('Camper added.', true);
           await load();
