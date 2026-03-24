@@ -53,11 +53,16 @@
         msg.className = 'msg show ' + (ok ? 'ok' : 'error');
       }
 
+      function safeReturnPath() {
+        var ret = new URLSearchParams(window.location.search).get('return');
+        return ret && ret.startsWith('/') && !ret.startsWith('//') ? ret : '/portal.html';
+      }
+
       async function boot() {
         try {
           await IMA.getSupabase();
           const session = await IMA.getSession();
-          if (session) window.location.replace('/portal.html');
+          if (session) window.location.replace(safeReturnPath());
         } catch (e) {
           show(e.message || String(e), false);
         }
@@ -74,45 +79,25 @@
           const full_name = document.getElementById('full_name').value.trim();
           const phone = document.getElementById('phone').value.trim();
 
-          const { data, error } = await sb.auth.signUp({
-            email,
-            password,
-            options: {
-              data: { full_name: full_name, phone: phone },
-              emailRedirectTo: window.location.origin + '/portal.html',
-            },
+          const res = await fetch('/api/register-parent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: email,
+              password: password,
+              fullName: full_name,
+              phone: phone,
+            }),
           });
-          if (error) throw error;
-          const user = data.user;
-          if (!user) {
-            show('Check your email to confirm your account, then sign in.', true);
-            btn.disabled = false;
-            return;
-          }
+          const j = await res.json().catch(function () {
+            return {};
+          });
+          if (!res.ok) throw new Error(j.error || 'Registration failed');
 
-          // Profiles RLS requires a valid JWT; right after signUp the client upsert often gets 401.
-          // Server uses service role to upsert (same as checkout add-camper).
-          if (data.session && data.session.access_token) {
-            const pr = await fetch('/api/ensure-profile', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: 'Bearer ' + data.session.access_token,
-              },
-              body: JSON.stringify({ fullName: full_name, phone: phone }),
-            });
-            const pj = await pr.json().catch(function () {
-              return {};
-            });
-            if (!pr.ok) throw new Error(pj.error || 'Could not save your profile');
-            window.location.replace('/portal.html');
-            return;
-          }
+          const { error: se } = await sb.auth.signInWithPassword({ email: email, password: password });
+          if (se) throw se;
 
-          show(
-            'Check your email to confirm your account, then sign in. If anything fails after confirming, contact IMA.',
-            true
-          );
+          window.location.replace(safeReturnPath());
         } catch (e) {
           show(e.message || 'Registration failed', false);
         }
