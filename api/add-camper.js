@@ -7,6 +7,18 @@ function json(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 
+function serializeErr(e) {
+  if (e == null) return 'Server error';
+  if (typeof e === 'string') return e;
+  if (e.message) return String(e.message);
+  if (e.error_description) return String(e.error_description);
+  try {
+    return JSON.stringify(e);
+  } catch {
+    return 'Server error';
+  }
+}
+
 async function readJsonBody(req) {
   if (req.body !== undefined && req.body !== null) {
     if (Buffer.isBuffer(req.body)) {
@@ -73,10 +85,18 @@ module.exports = async (req, res) => {
       })
       .select('id,first_name,last_name')
       .single();
-    if (error) return json(res, 500, { error: error.message });
+    if (error) {
+      console.error('[add-camper] insert', error);
+      return json(res, 500, {
+        error: error.message || 'Could not save camper',
+        code: error.code,
+        details: error.details,
+      });
+    }
     return json(res, 200, { camper: data });
   } catch (e) {
+    console.error('[add-camper]', e);
     const code = e.statusCode && Number(e.statusCode) >= 400 ? e.statusCode : 500;
-    return json(res, code, { error: e.message || 'Server error' });
+    return json(res, code, { error: serializeErr(e) });
   }
 };

@@ -366,7 +366,10 @@
           const j = await res.json().catch(function () {
             return {};
           });
-          if (!res.ok) throw new Error(j.error || 'Could not add camper');
+          if (!res.ok) {
+            const detail = [j.error, j.details, j.code].filter(Boolean).join(' — ');
+            throw new Error(detail || 'Could not add camper');
+          }
           document.getElementById('add-camper').reset();
           showBanner('Camper added.', true);
           await load();

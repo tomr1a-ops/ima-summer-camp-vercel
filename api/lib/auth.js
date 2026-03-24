@@ -26,27 +26,52 @@ async function getProfileForUser(userId) {
   return data;
 }
 
+function resolveUserEmail(user) {
+  if (!user) return '';
+  const a = String(user.email || '')
+    .trim()
+    .toLowerCase();
+  if (a) return a;
+  const meta = user.user_metadata || {};
+  const b = String(meta.email || meta.primary_email || meta.email_address || '')
+    .trim()
+    .toLowerCase();
+  if (b) return b;
+  const ids = user.identities || [];
+  for (let i = 0; i < ids.length; i++) {
+    const ie = ids[i] && ids[i].identity_data && ids[i].identity_data.email;
+    if (ie) return String(ie).trim().toLowerCase();
+  }
+  return '';
+}
+
 /**
  * Ensures public.profiles has a row for this auth user (campers.parent_id FK targets profiles.id).
  */
 async function upsertParentProfile(user) {
   if (!user || !user.id) return null;
-  const email = String(user.email || '')
-    .trim()
-    .toLowerCase();
+  const email = resolveUserEmail(user);
   if (!email) {
-    const err = new Error('Account email required to complete parent profile');
+    const err = new Error(
+      'Account email required to complete parent profile. Add an email to your account or sign in with a provider that supplies one.'
+    );
     err.statusCode = 400;
     throw err;
   }
   const sb = serviceClient();
-  const { data, error } = await sb
+  const { data: rows, error } = await sb
     .from('profiles')
     .upsert({ id: user.id, email, role: 'parent' }, { onConflict: 'id' })
-    .select('id,email,full_name,phone,role')
-    .single();
+    .select('id,email,full_name,phone,role');
   if (error) throw error;
-  return data;
+  if (rows && rows[0]) return rows[0];
+  const { data: again, error: e2 } = await sb
+    .from('profiles')
+    .select('id,email,full_name,phone,role')
+    .eq('id', user.id)
+    .maybeSingle();
+  if (e2) throw e2;
+  return again;
 }
 
 async function requireParent(req) {
@@ -85,6 +110,7 @@ module.exports = {
   bearerToken,
   getUserFromRequest,
   getProfileForUser,
+  resolveUserEmail,
   upsertParentProfile,
   requireParent,
   requireAdmin,

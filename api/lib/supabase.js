@@ -1,7 +1,8 @@
 const { createClient } = require('@supabase/supabase-js');
 
 /** Default project URL when env vars are not set (keys must still be in env). */
-const DEFAULT_SUPABASE_URL = 'https://dzsrtmkyluqxgowfpuzh.supabase.co';
+/** Fallback only when no URL env vars are set — must match your Supabase project ref. */
+const DEFAULT_SUPABASE_URL = 'https://dzsrtnkyluqxgowfpuzh.supabase.co';
 
 const URL_ENV_KEYS = [
   'SUPABASE_URL',
