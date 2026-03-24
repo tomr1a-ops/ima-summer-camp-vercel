@@ -1,7 +1,7 @@
 const { randomUUID } = require('crypto');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { serviceClient } = require('./lib/supabase');
-const { getUserFromRequest, getProfileForUser } = require('./lib/auth');
+const { getUserFromRequest, upsertParentProfile } = require('./lib/auth');
 const { dayRate, weekRate, registrationFee } = require('./lib/pricing');
 const { validateBooking } = require('./lib/capacity');
 const { sendResend } = require('./lib/email');
@@ -63,6 +63,7 @@ module.exports = async (req, res) => {
   }
 
   const { bookings, testPricing, guest, imaMember } = body;
+  const guestMode = !!(guest && guest.email && guest.firstName && guest.lastName && guest.age != null);
   const secret = process.env.STRIPE_SECRET_KEY || '';
   const isStripeTestKey = secret.startsWith('sk_test_');
 
@@ -80,10 +81,10 @@ module.exports = async (req, res) => {
   let parentId = null;
   let profile = null;
   let guestEmailForStripe = null;
-  let camperId = body.camperId || null;
+  let guestCamperId = null;
 
-  if (guest && guest.email && guest.firstName && guest.lastName && guest.age != null) {
-    if (user) return json(res, 400, { error: 'Use camperId when signed in, not guest object' });
+  if (guestMode) {
+    if (user) return json(res, 400, { error: 'Use per-week camper selections when signed in, not guest object' });
     const email = String(guest.email).trim().toLowerCase();
     guestEmailForStripe = email;
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -104,18 +105,31 @@ module.exports = async (req, res) => {
       .select('id')
       .single();
     if (insE) return json(res, 500, { error: insE.message });
-    camperId = ins.id;
+    guestCamperId = ins.id;
     parentId = null;
   } else if (user) {
-    profile = await getProfileForUser(user.id);
-    if (!profile) return json(res, 403, { error: 'Profile missing' });
+    try {
+      profile = await upsertParentProfile(user);
+    } catch (pe) {
+      return json(res, pe.statusCode || 500, { error: pe.message });
+    }
     parentId = user.id;
-    if (!camperId) return json(res, 400, { error: 'camperId required when signed in' });
-    const { data: camper, error: ce } = await sb.from('campers').select('id, parent_id').eq('id', camperId).single();
-    if (ce || !camper) return json(res, 400, { error: 'Camper not found' });
-    if (camper.parent_id !== user.id) return json(res, 403, { error: 'Not your camper' });
+    for (const b of bookings) {
+      if (!b.camperId) {
+        return json(res, 400, { error: 'Each week needs a child selected (camperId on each booking).' });
+      }
+    }
+    const seen = new Set();
+    for (const b of bookings) {
+      const cid = b.camperId;
+      if (seen.has(cid)) continue;
+      seen.add(cid);
+      const { data: camper, error: ce } = await sb.from('campers').select('id, parent_id').eq('id', cid).single();
+      if (ce || !camper) return json(res, 400, { error: 'Camper not found' });
+      if (camper.parent_id !== user.id) return json(res, 403, { error: 'Not your camper' });
+    }
   } else {
-    return json(res, 401, { error: 'Sign in and pick a camper, or use guest checkout (child + email).' });
+    return json(res, 401, { error: 'Sign in to register, or use guest checkout (child + email).' });
   }
 
   const dr = dayRate(tp);
@@ -128,11 +142,12 @@ module.exports = async (req, res) => {
     const weekId = b.weekId;
     const dayIds = Array.isArray(b.dayIds) ? b.dayIds : [];
     const pricingMode = b.pricingMode === 'full_week' ? 'full_week' : 'daily';
+    const cid = guestMode ? guestCamperId : b.camperId;
     try {
       await validateBooking(sb, {
         weekId,
         dayIds,
-        camperId,
+        camperId: cid,
         excludeEnrollmentId: null,
         pricingMode,
       });
@@ -142,8 +157,21 @@ module.exports = async (req, res) => {
     bookingModes.push(pricingMode);
   }
 
-  const needsReg = !(await hasRegistrationFeePaid(sb, camperId));
-  const regCents = needsReg ? Math.round(regFee * 100) : 0;
+  const uniqueCampers = guestMode
+    ? [guestCamperId]
+    : [...new Set(bookings.map((b) => b.camperId).filter(Boolean))];
+  const regLineItems = [];
+  let regCentsTotal = 0;
+  for (const cid of uniqueCampers) {
+    const needs = !(await hasRegistrationFeePaid(sb, cid));
+    if (needs) {
+      const cents = Math.round(regFee * 100);
+      regCentsTotal += cents;
+      const { data: cm } = await sb.from('campers').select('first_name,last_name').eq('id', cid).single();
+      const label = cm ? `${cm.first_name} ${cm.last_name}`.trim() : 'Camper';
+      regLineItems.push({ cents, label });
+    }
+  }
 
   const line_items = [];
   for (let i = 0; i < bookings.length; i++) {
@@ -179,24 +207,25 @@ module.exports = async (req, res) => {
     }
   }
 
-  if (regCents > 0) {
+  for (const r of regLineItems) {
     line_items.push({
       price_data: {
         currency: 'usd',
         product_data: {
           name: 'One-Time Registration Fee',
-          description: 'Impact Training Shirt + Protective Punching Gloves',
+          description: `${r.label} — Impact Training Shirt + Protective Punching Gloves`,
         },
-        unit_amount: regCents,
+        unit_amount: r.cents,
       },
       quantity: 1,
     });
   }
 
   for (const b of bookings) {
+    const cid = guestMode ? guestCamperId : b.camperId;
     const { error: ie } = await sb.from('enrollments').insert({
       parent_id: parentId,
-      camper_id: camperId,
+      camper_id: cid,
       week_id: b.weekId,
       day_ids: b.dayIds,
       price_paid: 0,
@@ -219,7 +248,7 @@ module.exports = async (req, res) => {
       metadata: {
         checkout_batch_id: batchId,
         test_pricing: tp ? 'true' : 'false',
-        registration_fee_cents: String(regCents),
+        registration_fee_cents: String(regCentsTotal),
         booking_modes: bookingModes.join(','),
         ima_member: imaMember ? 'true' : 'false',
       },

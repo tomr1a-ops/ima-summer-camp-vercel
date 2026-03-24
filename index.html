@@ -1035,6 +1035,39 @@
     color: var(--muted);
     text-transform: uppercase;
   }
+
+  .parent-camper-list {
+    list-style: none;
+    margin: 12px 0 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .parent-camper-list li {
+    font-family: var(--font-body);
+    font-size: 14px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border2);
+    background: var(--card2);
+    color: var(--text);
+  }
+  .week-camper-row {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .week-camper-lbl {
+    font-family: var(--font-cond);
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
 </style>
 </head>
 <body>
@@ -1044,7 +1077,7 @@
     <div id="state-signed-out" class="auth-hero-card">
       <p class="auth-hero-kicker">IMA Summer Camp 2026</p>
       <h1 class="auth-hero-title">Sign in to register your camper</h1>
-      <p class="auth-hero-sub">Parents: use your portal account. Your children on file will show in the dropdown for fast checkout.</p>
+      <p class="auth-hero-sub">Parents: use your portal account. In the next step you&rsquo;ll pick <strong>which child</strong> is attending <strong>each week</strong>.</p>
       <div class="auth-hero-actions">
         <a class="btn-primary" href="/login.html?return=/index.html">Sign in</a>
         <a class="btn-secondary" href="/register.html?return=/index.html">Create account</a>
@@ -1070,14 +1103,11 @@
 
     <div id="state-signed-in" class="auth-hero-card" style="display:none">
       <p class="auth-hero-kicker">Signed in</p>
-      <h2 class="auth-hero-title-sm">Who is attending camp?</h2>
-      <div class="camper-pick-row">
-        <label for="camper-select">Select camper</label>
-        <select id="camper-select" class="select-camper">
-          <option value="">Choose a camper…</option>
-        </select>
-      </div>
-      <button type="button" class="add-camper-toggle" id="btn-toggle-add-camper" aria-expanded="false">+ Add a new camper</button>
+      <h2 class="auth-hero-title-sm">Your children</h2>
+      <p class="auth-hero-sub" style="margin-bottom:10px">Each camp week has its own &ldquo;which child&rdquo; menu below so you can enroll different kids in different weeks. Manage profiles anytime in the <a href="/portal.html" style="color:var(--cyan)">parent portal</a>.</p>
+      <ul id="parent-camper-list" class="parent-camper-list" aria-label="Children on file"></ul>
+      <p id="parent-camper-empty" class="week-dates-label" style="display:none;margin-top:10px;line-height:1.5">No campers on file yet. Add one here (uses your account securely) or in the <a href="/portal.html" style="color:var(--cyan)">portal</a>.</p>
+      <button type="button" class="add-camper-toggle" id="btn-toggle-add-camper" aria-expanded="false">+ Add a child</button>
       <div class="add-camper-panel" id="add-camper-panel">
         <div class="add-camper-grid">
           <input type="text" id="new-camper-first" placeholder="First name" autocomplete="given-name" />
@@ -1137,7 +1167,7 @@
       </label>
     </div>
     <p class="week-dates-label" style="padding:0 16px 16px;font-size:12px;color:#555">
-      Camper is selected at the top of the page. Guest? Fill in child &amp; email there first.
+      Signed-in parents: choose a child <strong>per week</strong> in step 2. Guests: complete child &amp; email at the top first.
     </p>
   </div>
 
@@ -1151,7 +1181,7 @@
       <button type="button" class="enroll-type-btn" id="btn-enroll-daily" data-type="daily">Individual days</button>
     </div>
     <div class="enrollment-gate" id="enrollment-gate">
-      Select your camper above (or complete guest details) before choosing weeks or days.
+      Sign in or complete guest details above, then choose weeks. For each week, pick which child is attending.
     </div>
     <div class="weeks-mount-wrap" id="weeks-mount-wrap">
     <div class="weeks-list" id="weeks-mount-full" style="display:none;padding-top:0">
@@ -1223,10 +1253,21 @@
   const fullWeekQty = {};
   /** @type {Record<string, number>} individual-days mode: kids 0|1 per week (gates day picks) */
   const dailyKidsByWeek = {};
+  /** @type {Record<string, string>} week id → camper id (signed-in only) */
+  const camperIdByWeek = {};
+  /** @type {{ id: string, first_name: string, last_name: string }[]} */
+  let parentCampers = [];
   let enrollmentType = 'full';
   let session = null;
-  let pricingPreview = { dayRate: 85, weekRate: 375, registrationFee: 65, needsRegistration: true };
+  let pricingPreview = {
+    dayRate: 85,
+    weekRate: 375,
+    registrationFee: 65,
+    needsRegistration: true,
+    perCamperNeedsReg: {},
+  };
   let guestMode = false;
+  const API_ADD_CAMPER = '/api/add-camper';
 
   function dayRateClient() {
     if (testPriceMode) return 1;
@@ -1269,16 +1310,18 @@
     return m0 + ' ' + day0 + ' – ' + m1 + ' ' + day1;
   }
 
-  function getSelectedCamperName() {
-    if (guestMode) {
-      const f = document.getElementById('g-first').value.trim();
-      const l = document.getElementById('g-last').value.trim();
-      return (f + ' ' + l).trim();
-    }
-    const sel = document.getElementById('camper-select');
-    if (!sel || !sel.value) return '';
-    const opt = sel.options[sel.selectedIndex];
-    return opt ? opt.textContent.trim() : '';
+  function getGuestCamperName() {
+    const f = document.getElementById('g-first').value.trim();
+    const l = document.getElementById('g-last').value.trim();
+    return (f + ' ' + l).trim();
+  }
+
+  function getCamperNameById(id) {
+    if (!id) return '';
+    const c = parentCampers.find(function (x) {
+      return x.id === id;
+    });
+    return c ? (c.first_name + ' ' + c.last_name).trim() : '';
   }
 
   function camperSelectionReady() {
@@ -1290,7 +1333,49 @@
         document.getElementById('g-age').value
       );
     }
-    return !!(session && document.getElementById('camper-select').value);
+    return !!session;
+  }
+
+  function weeksMissingCamperAssignment() {
+    if (guestMode || !session) return false;
+    for (let i = 0; i < weeksPayload.length; i++) {
+      const w = weeksPayload[i];
+      const wid = w.id;
+      if (enrollmentType === 'full') {
+        if ((fullWeekQty[wid] || 0) >= 1 && !camperIdByWeek[wid]) return true;
+      } else {
+        const set = selectedByWeek[wid];
+        if (getDailyKids(wid) >= 1 && set && set.size >= 1 && !camperIdByWeek[wid]) return true;
+      }
+    }
+    return false;
+  }
+
+  function collectActiveCamperIds() {
+    const ids = new Set();
+    if (guestMode || !session) return [];
+    weeksPayload.forEach(function (w) {
+      const wid = w.id;
+      if (enrollmentType === 'full') {
+        if ((fullWeekQty[wid] || 0) >= 1 && camperIdByWeek[wid]) ids.add(camperIdByWeek[wid]);
+      } else {
+        const set = selectedByWeek[wid];
+        if (getDailyKids(wid) >= 1 && set && set.size && camperIdByWeek[wid]) ids.add(camperIdByWeek[wid]);
+      }
+    });
+    return Array.from(ids);
+  }
+
+  function weekChildContextHtml(weekId) {
+    if (guestMode && camperSelectionReady()) {
+      const n = getGuestCamperName();
+      return n ? '<div class="child-context">Camper: ' + escapeHtml(n) + '</div>' : '';
+    }
+    if (!session) return '';
+    const cid = camperIdByWeek[weekId];
+    if (!cid) return '';
+    const n = getCamperNameById(cid);
+    return n ? '<div class="child-context">Camper: ' + escapeHtml(n) + '</div>' : '';
   }
 
   function updateEnrollmentGate() {
@@ -1307,19 +1392,14 @@
     }
   }
 
-  function childContextHtml() {
-    if (!camperSelectionReady()) return '';
-    const name = getSelectedCamperName();
-    if (!name) return '';
-    return '<div class="child-context">Camper: ' + escapeHtml(name) + '</div>';
-  }
-
   function applyPricingFromServer(j) {
     const dr = j && j.dayRate != null ? Number(j.dayRate) : dayRateClient();
     const wr = j && j.weekRate != null ? Number(j.weekRate) : weekRateClient();
     const rf = j && j.registrationFee != null ? Number(j.registrationFee) : regFeeClient();
     const nr = j && j.needsRegistration === false ? false : true;
-    pricingPreview = { dayRate: dr, weekRate: wr, registrationFee: rf, needsRegistration: nr };
+    const pcr =
+      j && j.perCamperNeedsReg && typeof j.perCamperNeedsReg === 'object' ? j.perCamperNeedsReg : {};
+    pricingPreview = { dayRate: dr, weekRate: wr, registrationFee: rf, needsRegistration: nr, perCamperNeedsReg: pcr };
   }
 
   function updatePriceBanner() {
@@ -1362,6 +1442,7 @@
     weeksPayload.forEach(function (w) {
       fullWeekQty[w.id] = 0;
       dailyKidsByWeek[w.id] = 1;
+      delete camperIdByWeek[w.id];
     });
   }
 
@@ -1389,11 +1470,15 @@
     if (enrollmentType === 'full') {
       weeksPayload.forEach(function (w) {
         if ((fullWeekQty[w.id] || 0) < 1) return;
+        const cid = guestMode ? undefined : camperIdByWeek[w.id];
+        if (!guestMode && !cid) return;
         const ids = (w.days || []).map(function (d) {
           return d.id;
         });
         if (ids.length === 5) {
-          out.push({ weekId: w.id, dayIds: ids, pricingMode: 'full_week' });
+          const row = { weekId: w.id, dayIds: ids, pricingMode: 'full_week' };
+          if (cid) row.camperId = cid;
+          out.push(row);
         }
       });
     } else {
@@ -1401,19 +1486,23 @@
         if (getDailyKids(wid) < 1) return;
         const set = selectedByWeek[wid];
         if (!set || !set.size) return;
-        out.push({ weekId: wid, dayIds: Array.from(set), pricingMode: 'daily' });
+        const cid = guestMode ? undefined : camperIdByWeek[wid];
+        if (!guestMode && !cid) return;
+        const row = { weekId: wid, dayIds: Array.from(set), pricingMode: 'daily' };
+        if (cid) row.camperId = cid;
+        out.push(row);
       });
     }
     return out;
   }
 
   async function refreshPricingPreview() {
-    const camperId = document.getElementById('camper-select').value;
     const headers = {};
     if (session && session.access_token) headers['Authorization'] = 'Bearer ' + session.access_token;
     const params = new URLSearchParams();
     if (testPriceMode) params.set('test', 'true');
-    if (camperId && session) params.set('camperId', camperId);
+    const activeIds = collectActiveCamperIds();
+    if (activeIds.length && session) params.set('camperIds', activeIds.join(','));
     const q = params.toString();
     const url = '/api/preview-pricing' + (q ? '?' + q : '');
     try {
@@ -1431,13 +1520,24 @@
       pricingPreview.dayRate = 1;
       pricingPreview.weekRate = 1;
       pricingPreview.registrationFee = 1;
+      pricingPreview.perCamperNeedsReg = {};
     }
     updatePriceBanner();
     const regRow = document.getElementById('reg-fee-row');
     if (regRow) {
       if (guestMode) regRow.style.display = '';
-      else if (session && camperId) regRow.style.display = pricingPreview.needsRegistration !== false ? '' : 'none';
-      else regRow.style.display = 'none';
+      else if (session) {
+        const ids = collectActiveCamperIds();
+        if (!ids.length) regRow.style.display = 'none';
+        else {
+          const show = ids.some(function (id) {
+            const m = pricingPreview.perCamperNeedsReg;
+            if (m && m[id] === false) return false;
+            return true;
+          });
+          regRow.style.display = show ? '' : 'none';
+        }
+      } else regRow.style.display = 'none';
     }
     renderFullWeeks();
     renderDailyWeeks();
@@ -1458,10 +1558,20 @@
     const wr = Number(testPriceMode ? 1 : pricingPreview.weekRate != null ? pricingPreview.weekRate : weekRateClient());
     const bookings = collectBookings();
     const camperOk = camperSelectionReady();
-    const childName = getSelectedCamperName();
 
     if (!camperOk) {
-      empty.textContent = 'Sign in and select a camper at the top, or use guest checkout and fill in your child’s details — then choose weeks or days.';
+      empty.textContent =
+        'Sign in (or continue as guest) and complete your details above — then choose weeks or days and pick which child is in each week.';
+      empty.style.display = '';
+      lines.style.display = 'none';
+      totalRow.style.display = 'none';
+      btn.disabled = true;
+      return;
+    }
+
+    if (weeksMissingCamperAssignment()) {
+      empty.textContent =
+        'For each week you selected, choose which child is attending from that week’s dropdown (you can use different children for different weeks).';
       empty.style.display = '';
       lines.style.display = 'none';
       totalRow.style.display = 'none';
@@ -1470,7 +1580,8 @@
     }
 
     if (!bookings.length) {
-      empty.textContent = 'Choose at least one full week or individual days for ' + childName + '.';
+      const hint = guestMode ? getGuestCamperName() || 'your camper' : 'your selections';
+      empty.textContent = 'Choose at least one full week or individual days for ' + hint + '.';
       empty.style.display = '';
       lines.style.display = 'none';
       totalRow.style.display = 'none';
@@ -1484,12 +1595,22 @@
       else campTotal += Number((b.dayIds || []).length) * dr;
     });
 
-    let reg = 0;
-    if (guestMode) {
-      reg = Number(testPriceMode ? 1 : pricingPreview.registrationFee != null ? pricingPreview.registrationFee : regFeeClient());
-    } else if (pricingPreview.needsRegistration) {
-      reg = Number(testPriceMode ? 1 : pricingPreview.registrationFee != null ? pricingPreview.registrationFee : regFeeClient());
+    const rf = Number(testPriceMode ? 1 : pricingPreview.registrationFee != null ? pricingPreview.registrationFee : regFeeClient());
+    function camperNeedsRegLine(cid) {
+      if (guestMode) return true;
+      const m = pricingPreview.perCamperNeedsReg;
+      if (m && m[cid] === false) return false;
+      return true;
     }
+    const regCamperIds = guestMode ? [''] : [...new Set(bookings.map(function (b) { return b.camperId; }).filter(Boolean))];
+    let reg = 0;
+    regCamperIds.forEach(function (cid) {
+      if (guestMode) {
+        reg += rf;
+      } else if (camperNeedsRegLine(cid)) {
+        reg += rf;
+      }
+    });
 
     empty.style.display = 'none';
     lines.style.display = '';
@@ -1501,6 +1622,7 @@
         return x.id === b.weekId;
       });
       const range = w ? formatWeekRangeForSummary(w) : '';
+      const childName = guestMode ? getGuestCamperName() : getCamperNameById(b.camperId);
       const headLine = w ? w.label + (range ? ' (' + range + ')' : '') + ' — ' + childName : 'Camp — ' + childName;
       if (b.pricingMode === 'full_week') {
         html +=
@@ -1539,12 +1661,25 @@
       }
     });
     if (reg > 0) {
-      html +=
-        '<div class="summary-line"><span class="label">Registration — ' +
-        escapeHtml(childName) +
-        ' <small style="color:#333">(one-time, first IMA camp if applicable)</small></span><span class="val">' +
-        fmt(reg) +
-        '</span></div>';
+      if (guestMode) {
+        html +=
+          '<div class="summary-line"><span class="label">Registration — ' +
+          escapeHtml(getGuestCamperName()) +
+          ' <small style="color:#333">(one-time, first IMA camp if applicable)</small></span><span class="val">' +
+          fmt(rf) +
+          '</span></div>';
+      } else {
+        regCamperIds.forEach(function (cid) {
+          if (!camperNeedsRegLine(cid)) return;
+          const nm = getCamperNameById(cid);
+          html +=
+            '<div class="summary-line"><span class="label">Registration — ' +
+            escapeHtml(nm) +
+            ' <small style="color:#333">(one-time, first IMA camp if applicable)</small></span><span class="val">' +
+            fmt(rf) +
+            '</span></div>';
+        });
+      }
     }
     lines.innerHTML = html;
     const grand = Number(campTotal) + Number(reg);
@@ -1552,11 +1687,52 @@
     btn.disabled = false;
   }
 
+  function buildWeekCamperSelect(weekId) {
+    const wrap = document.createElement('div');
+    wrap.className = 'week-camper-row';
+    if (guestMode || !session) return wrap;
+    const lab = document.createElement('label');
+    lab.className = 'week-camper-lbl';
+    lab.setAttribute('for', 'wc-' + weekId);
+    lab.textContent = 'Which child this week?';
+    const sel = document.createElement('select');
+    sel.id = 'wc-' + weekId;
+    sel.className = 'select-camper week-camper-select';
+    sel.dataset.weekId = weekId;
+    const ph = document.createElement('option');
+    ph.value = '';
+    ph.textContent = parentCampers.length ? 'Select child…' : 'Add a child above first';
+    sel.appendChild(ph);
+    parentCampers.forEach(function (c) {
+      const o = document.createElement('option');
+      o.value = c.id;
+      o.textContent = c.first_name + ' ' + c.last_name;
+      sel.appendChild(o);
+    });
+    const cur = camperIdByWeek[weekId];
+    if (cur && [...sel.options].some(function (o) { return o.value === cur; })) sel.value = cur;
+    else sel.value = '';
+    sel.addEventListener('change', function () {
+      if (sel.value) camperIdByWeek[weekId] = sel.value;
+      else delete camperIdByWeek[weekId];
+      renderFullWeeks();
+      renderDailyWeeks();
+      refreshPricingPreview();
+      updateSummary();
+    });
+    wrap.appendChild(lab);
+    wrap.appendChild(sel);
+    return wrap;
+  }
+
   function adjustFullWeek(wid, delta) {
     const w = weeksPayload.find(function (x) {
       return x.id === wid;
     });
     if (!w || w.disabled || w.is_full) return;
+    if (delta > 0 && !guestMode && session) {
+      if (!parentCampers.length || !camperIdByWeek[wid]) return;
+    }
     const cur = fullWeekQty[wid] || 0;
     const next = Math.max(0, Math.min(1, cur + delta));
     fullWeekQty[wid] = next;
@@ -1566,6 +1742,9 @@
 
   function adjustDailyKids(wid, delta) {
     const cur = getDailyKids(wid);
+    if (delta > 0 && !guestMode && session) {
+      if (!parentCampers.length || !camperIdByWeek[wid]) return;
+    }
     const next = Math.max(0, Math.min(1, cur + delta));
     dailyKidsByWeek[wid] = next;
     if (next < 1) delete selectedByWeek[wid];
@@ -1617,7 +1796,7 @@
         ' – ' +
         escapeHtml(String(w.end_date)) +
         '</div>' +
-        childContextHtml();
+        weekChildContextHtml(w.id);
       head.appendChild(left);
       if (full) {
         const b = document.createElement('span');
@@ -1626,6 +1805,7 @@
         head.appendChild(b);
       }
       card.appendChild(head);
+      if (!guestMode && session) card.appendChild(buildWeekCamperSelect(w.id));
       const price = document.createElement('div');
       price.className = 'week-card-price';
       price.textContent = fmt(wr) + '/week · Mon–Fri';
@@ -1650,7 +1830,8 @@
       plus.type = 'button';
       plus.className = 'mini-btn';
       plus.textContent = '+';
-      plus.disabled = full || qty > 0;
+      const needCamperFw = !guestMode && session && (!camperIdByWeek[w.id] || !parentCampers.length);
+      plus.disabled = full || qty > 0 || needCamperFw;
       plus.addEventListener('click', function () {
         adjustFullWeek(w.id, 1);
       });
@@ -1698,7 +1879,7 @@
         ' · ' +
         fmt(dr) +
         '/day</div>' +
-        childContextHtml() +
+        weekChildContextHtml(w.id) +
         '</div>';
       if (weekFull) {
         const b = document.createElement('span');
@@ -1707,6 +1888,7 @@
         head.appendChild(b);
       }
       block.appendChild(head);
+      if (!guestMode && session) block.appendChild(buildWeekCamperSelect(w.id));
 
       const dk = document.createElement('div');
       dk.className = 'daily-week-kids';
@@ -1732,7 +1914,8 @@
       plus.type = 'button';
       plus.className = 'mini-btn';
       plus.textContent = '+';
-      plus.disabled = weekFull || kids > 0;
+      const needCamperDw = !guestMode && session && (!camperIdByWeek[w.id] || !parentCampers.length);
+      plus.disabled = weekFull || kids > 0 || needCamperDw;
       plus.addEventListener('click', function () {
         adjustDailyKids(w.id, 1);
       });
@@ -1754,7 +1937,8 @@
         btn.textContent = formatDayLabel(d);
         const cap = maxCap(w);
         const enrolled = d.current_enrollment || 0;
-        btn.disabled = weekFull || d.at_capacity || kids < 1;
+        const needCamperDay = !guestMode && session && (!camperIdByWeek[w.id] || !parentCampers.length);
+        btn.disabled = weekFull || d.at_capacity || kids < 1 || needCamperDay;
         if (btn.disabled && !weekFull && kids >= 1) btn.title = 'This day is full';
         btn.addEventListener('click', function () {
           if (btn.disabled) return;
@@ -1812,29 +1996,38 @@
     }
   }
 
-  async function reloadCampers(selectId) {
-    if (!session) return;
+  function renderParentCamperList() {
+    const ul = document.getElementById('parent-camper-list');
+    const empty = document.getElementById('parent-camper-empty');
+    if (!ul) return;
+    ul.innerHTML = '';
+    parentCampers.forEach(function (c) {
+      const li = document.createElement('li');
+      li.textContent = c.first_name + ' ' + c.last_name;
+      ul.appendChild(li);
+    });
+    if (empty) empty.style.display = parentCampers.length ? 'none' : 'block';
+  }
+
+  async function loadParentCampers() {
+    if (!session) {
+      parentCampers = [];
+      renderParentCamperList();
+      return;
+    }
     const sb = await IMA.getSupabase();
     const { data: campers, error } = await sb.from('campers').select('id,first_name,last_name').eq('parent_id', session.user.id);
     if (error) {
       console.error(error);
-      return;
+      parentCampers = [];
+    } else {
+      parentCampers = campers || [];
     }
-    const sel = document.getElementById('camper-select');
-    const prev = selectId || sel.value;
-    sel.innerHTML = '<option value="">Choose a camper…</option>';
-    (campers || []).forEach(function (c) {
-      const o = document.createElement('option');
-      o.value = c.id;
-      o.textContent = c.first_name + ' ' + c.last_name;
-      sel.appendChild(o);
+    Object.keys(camperIdByWeek).forEach(function (wid) {
+      const cid = camperIdByWeek[wid];
+      if (!parentCampers.some(function (c) { return c.id === cid; })) delete camperIdByWeek[wid];
     });
-    sel.onchange = function () {
-      refreshPricingPreview();
-    };
-    if (prev && [...sel.options].some(function (o) { return o.value === prev; })) sel.value = prev;
-    else if ((campers || []).length === 1) sel.value = campers[0].id;
-    refreshPricingPreview();
+    renderParentCamperList();
   }
 
   async function bootAuth() {
@@ -1851,7 +2044,7 @@
     }
     guestMode = false;
     if (session) {
-      await reloadCampers();
+      await loadParentCampers();
     } else {
       showAuthPanels();
     }
@@ -1862,6 +2055,7 @@
     document.getElementById('link-guest').addEventListener('click', function (ev) {
       ev.preventDefault();
       guestMode = true;
+      clearEnrollmentSelections();
       showAuthPanels();
       wireGuestInputs();
       refreshPricingPreview();
@@ -1890,18 +2084,27 @@
         return;
       }
       try {
-        const sb = await IMA.getSupabase();
-        const { data, error } = await sb
-          .from('campers')
-          .insert({ parent_id: session.user.id, first_name: fn, last_name: ln, age: age })
-          .select('id')
-          .single();
-        if (error) throw error;
+        const res = await fetch(API_ADD_CAMPER, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + session.access_token,
+          },
+          body: JSON.stringify({ firstName: fn, lastName: ln, age: age }),
+        });
+        const data = await res.json().catch(function () {
+          return {};
+        });
+        if (!res.ok) throw new Error(data.error || 'Could not add camper');
         document.getElementById('new-camper-first').value = '';
         document.getElementById('new-camper-last').value = '';
         document.getElementById('new-camper-age').value = '';
         document.getElementById('add-camper-panel').classList.remove('is-open');
-        await reloadCampers(data.id);
+        await loadParentCampers();
+        renderFullWeeks();
+        renderDailyWeeks();
+        refreshPricingPreview();
+        updateSummary();
         msg.textContent = '';
       } catch (err) {
         msg.textContent = err.message || 'Could not add camper.';
@@ -1948,8 +2151,6 @@
         lastName: document.getElementById('g-last').value.trim(),
         age: document.getElementById('g-age').value,
       };
-    } else {
-      body.camperId = document.getElementById('camper-select').value;
     }
 
     btn.classList.add('loading');

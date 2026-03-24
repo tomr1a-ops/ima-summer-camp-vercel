@@ -2,6 +2,15 @@ const { serviceClient } = require('./lib/supabase');
 const { getUserFromRequest, getProfileForUser } = require('./lib/auth');
 const { dayRate, weekRate, registrationFee } = require('./lib/pricing');
 
+function uniqueCamperIdsFromQuery(url) {
+  const raw = url.searchParams.get('camperIds') || url.searchParams.get('camperId') || '';
+  const parts = raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return [...new Set(parts)];
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   if (req.method !== 'GET') {
@@ -12,35 +21,51 @@ module.exports = async (req, res) => {
   try {
     const url = new URL(req.url || '', 'http://local');
     const testPricing = url.searchParams.get('test') === 'true';
-    const camperId = url.searchParams.get('camperId');
+    const camperIds = uniqueCamperIdsFromQuery(url);
     const { user } = await getUserFromRequest(req);
 
-    let needsReg = true;
-    if (user && camperId) {
-      const profile = await getProfileForUser(user.id);
-      if (!profile) {
-        res.statusCode = 403;
-        return res.end(JSON.stringify({ error: 'No profile' }));
+    const perCamperNeedsReg = {};
+    let profile = null;
+
+    if (user && camperIds.length) {
+      try {
+        profile = await getProfileForUser(user.id);
+      } catch (pe) {
+        console.warn('[preview-pricing] profile load:', pe.message);
+        profile = null;
       }
-      const sb = serviceClient();
-      const { data: camper } = await sb.from('campers').select('parent_id').eq('id', camperId).single();
-      if (!camper || camper.parent_id !== user.id) {
-        res.statusCode = 403;
-        return res.end(JSON.stringify({ error: 'Invalid camper' }));
+
+      if (profile) {
+        const sb = serviceClient();
+        for (const camperId of camperIds) {
+          const { data: camper, error: ce } = await sb.from('campers').select('parent_id').eq('id', camperId).single();
+          if (ce || !camper || camper.parent_id !== user.id) {
+            res.statusCode = 403;
+            return res.end(JSON.stringify({ error: 'Invalid camper selection' }));
+          }
+          try {
+            const { count, error } = await sb
+              .from('enrollments')
+              .select('*', { count: 'exact', head: true })
+              .eq('camper_id', camperId)
+              .eq('status', 'confirmed')
+              .eq('registration_fee_paid', true);
+            if (error) {
+              console.warn('[preview-pricing] enrollment count:', error.message);
+              perCamperNeedsReg[camperId] = true;
+            } else {
+              perCamperNeedsReg[camperId] = (count || 0) === 0;
+            }
+          } catch (cntErr) {
+            console.warn('[preview-pricing] count error:', cntErr.message);
+            perCamperNeedsReg[camperId] = true;
+          }
+        }
       }
-      const { count, error } = await sb
-        .from('enrollments')
-        .select('*', { count: 'exact', head: true })
-        .eq('camper_id', camperId)
-        .eq('status', 'confirmed')
-        .eq('registration_fee_paid', true);
-      if (error) throw error;
-      needsReg = (count || 0) === 0;
-    } else if (!user) {
-      needsReg = true;
-    } else {
-      needsReg = true;
     }
+
+    const needsRegistration =
+      !user || !camperIds.length ? true : Object.values(perCamperNeedsReg).some(Boolean);
 
     res.statusCode = 200;
     return res.end(
@@ -48,10 +73,12 @@ module.exports = async (req, res) => {
         dayRate: dayRate(testPricing),
         weekRate: weekRate(testPricing),
         registrationFee: registrationFee(testPricing),
-        needsRegistration: needsReg,
+        needsRegistration,
+        perCamperNeedsReg,
       })
     );
   } catch (e) {
+    console.error('[preview-pricing]', e);
     res.statusCode = 500;
     return res.end(JSON.stringify({ error: e.message }));
   }
