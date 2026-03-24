@@ -648,6 +648,213 @@
     border-color: var(--cyan);
     color: var(--cyan);
   }
+
+  .reg-block {
+    padding: 0 16px 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+  }
+  .reg-block h3 {
+    font-family: var(--font-cond);
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .reg-p {
+    font-size: 13px;
+    color: #aaa;
+    line-height: 1.55;
+    margin-bottom: 12px;
+  }
+  .reg-kids-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+    padding: 12px 14px;
+    background: var(--card2);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+  }
+  .reg-kids-row .lbl {
+    font-size: 13px;
+    color: var(--text);
+    max-width: 220px;
+    line-height: 1.4;
+  }
+  .ima-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: #bbb;
+    cursor: pointer;
+    user-select: none;
+    margin-top: 4px;
+  }
+  .ima-toggle input { width: 18px; height: 18px; accent-color: var(--cyan); }
+
+  .subhead {
+    font-family: var(--font-cond);
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--cyan);
+    margin: 8px 0 10px;
+    padding: 0 16px;
+  }
+
+  .enroll-type-bar {
+    padding: 14px 16px 8px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .enroll-type-btn {
+    flex: 1;
+    min-width: 140px;
+    padding: 14px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border2);
+    background: var(--card2);
+    color: var(--muted);
+    font-family: var(--font-cond);
+    font-size: 14px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .enroll-type-btn:hover {
+    border-color: var(--cyan);
+    color: var(--text);
+  }
+  .enroll-type-btn.on {
+    border-color: var(--cyan);
+    background: rgba(0,229,204,0.1);
+    color: var(--cyan);
+    box-shadow: 0 0 0 1px var(--cyan);
+  }
+
+  .week-cards-grid {
+    padding: 12px 16px 18px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  @media (min-width: 640px) {
+    .week-cards-grid { grid-template-columns: 1fr 1fr; }
+  }
+
+  .week-card {
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    background: var(--card2);
+    padding: 14px 14px 12px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .week-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, var(--cyan-gl), var(--blue-gl));
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .week-card.has-kids {
+    border-color: var(--cyan);
+    box-shadow: 0 0 0 1px rgba(0,229,204,0.35);
+  }
+  .week-card.has-kids::before { opacity: 1; }
+
+  .week-card.full-card {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+  .week-card.full-card .week-card-title { color: #555; }
+
+  .week-card-head {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .week-card-title {
+    font-family: var(--font-display);
+    font-size: 18px;
+    color: var(--cyan);
+    line-height: 1.1;
+  }
+  .week-card-dates {
+    font-family: var(--font-cond);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+    margin-top: 4px;
+  }
+  .week-card-price {
+    font-family: var(--font-cond);
+    font-size: 13px;
+    color: #888;
+    margin-top: 6px;
+    position: relative;
+    z-index: 1;
+  }
+  .week-card.has-kids .week-card-price { color: var(--text); }
+
+  .week-card .week-kids-ctrl {
+    position: relative;
+    z-index: 1;
+    margin-top: 12px;
+    justify-content: center;
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  .day-chip-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+  .day-chip-meta {
+    font-family: var(--font-cond);
+    font-size: 10px;
+    letter-spacing: 0.5px;
+    color: #555;
+    text-align: center;
+  }
+  .day-chip.on + .day-chip-meta,
+  .day-chip-wrap:has(.day-chip.on) .day-chip-meta { color: #666; }
+
+  .daily-week-kids {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    position: relative;
+    z-index: 1;
+  }
+  .daily-week-kids .lbl {
+    font-family: var(--font-cond);
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
 </style>
 </head>
 <body>
@@ -659,7 +866,7 @@
   <div class="header-tagline">Strong Mind. Strong Body. Strong Future.</div>
   <div class="early-bird-banner">
     <span class="dot"></span>
-    <span id="price-banner-text">$85/day · $75/day early bird before May 1 · Max 35 kids/week</span>
+    <span id="price-banner-text">Loading pricing…</span>
   </div>
 </header>
 
@@ -672,9 +879,31 @@
   <div class="card">
     <div class="card-header">
       <div class="step-num">1</div>
-      <div class="card-title">Who is attending?</div>
+      <div class="card-title">Registration &amp; camper</div>
     </div>
-    <div class="weeks-list">
+    <div class="reg-block">
+      <h3>Pricing</h3>
+      <p class="reg-p" id="reg-pricing-copy">
+        Weekly and daily rates switch on May 1, 2026. Max 35 kids per week; full weeks and full days show as unavailable when capacity is reached.
+      </p>
+      <div class="reg-kids-row" id="reg-fee-row">
+        <span class="lbl">New kids — one-time registration ($65 each, shirt + gloves). This order covers <strong>one</strong> camper.</span>
+        <div class="week-kids-ctrl" style="opacity:1" aria-hidden="true">
+          <button type="button" class="mini-btn" disabled>−</button>
+          <input type="text" class="mini-val" value="1" readonly style="cursor:default" title="One camper per checkout" />
+          <button type="button" class="mini-btn" disabled>+</button>
+        </div>
+      </div>
+      <p class="week-dates-label" id="reg-fee-note" style="margin:-4px 0 8px;font-size:11px;line-height:1.5">
+        More than one child? Complete checkout for each camper separately so we can match enrollment and registration fees.
+      </p>
+      <label class="ima-toggle">
+        <input type="checkbox" id="ima-member" />
+        <span>IMA member (for our records; pricing is the same)</span>
+      </label>
+    </div>
+    <p class="subhead">Who is attending?</p>
+    <div class="weeks-list" style="padding-top:0">
       <div id="panel-logged" class="auth-box" style="display:none">
         <div class="row">
           <label class="week-dates-label" style="margin:0">Camper</label>
@@ -703,10 +932,17 @@
   <div class="card">
     <div class="card-header">
       <div class="step-num">2</div>
-      <div class="card-title">Pick days (Mon–Fri)</div>
+      <div class="card-title">Choose enrollment</div>
     </div>
-    <div class="weeks-list" id="weeks-mount">
-      <p class="empty-state" id="weeks-loading">Loading camp weeks…</p>
+    <div class="enroll-type-bar">
+      <button type="button" class="enroll-type-btn on" id="btn-enroll-full" data-type="full">Full week</button>
+      <button type="button" class="enroll-type-btn" id="btn-enroll-daily" data-type="daily">Individual days</button>
+    </div>
+    <div class="weeks-list" id="weeks-mount-full" style="display:none;padding-top:0">
+      <p class="empty-state" id="weeks-loading-full">Loading camp weeks…</p>
+    </div>
+    <div class="weeks-list" id="weeks-mount-daily" style="display:none;padding-top:0">
+      <p class="empty-state" id="weeks-loading-daily">Loading camp weeks…</p>
     </div>
   </div>
 
@@ -716,7 +952,7 @@
     </div>
     <div class="summary-body">
       <div id="empty-state" class="empty-state">
-        Choose camper / guest info, then select at least one camp day.
+        Add camper details, then choose full weeks or individual days.
       </div>
       <div id="summary-lines" style="display:none"></div>
       <div id="total-row" class="summary-total-row" style="display:none">
@@ -737,8 +973,8 @@
     <div class="includes-list">
       <div class="includes-item"><span class="inc-icon">👕</span> Impact Training Shirt</div>
       <div class="includes-item"><span class="inc-icon">🥊</span> Protective Punching Gloves</div>
-      <div class="includes-item"><span class="inc-icon">⚡</span> Pay only for days you select</div>
-      <div class="includes-item"><span class="inc-icon">🛡️</span> One-time $65 registration (if first camp signup for this child)</div>
+      <div class="includes-item"><span class="inc-icon">⚡</span> Full week (Mon–Fri) or pick individual days</div>
+      <div class="includes-item"><span class="inc-icon">🛡️</span> One-time $65 registration per child (first IMA camp only)</div>
     </div>
   </div>
 
@@ -766,13 +1002,22 @@
   let weeksPayload = [];
   /** @type {Record<string, Set<string>>} */
   const selectedByWeek = {};
+  /** @type {Record<string, number>} full-week kids 0|1 per week */
+  const fullWeekQty = {};
+  /** @type {Record<string, number>} individual-days mode: kids 0|1 per week (gates day picks) */
+  const dailyKidsByWeek = {};
+  let enrollmentType = 'full';
   let session = null;
-  let pricingPreview = { dayRate: 85, registrationFee: 65, needsRegistration: true };
+  let pricingPreview = { dayRate: 85, weekRate: 375, registrationFee: 65, needsRegistration: true };
   let guestMode = false;
 
   function dayRateClient() {
     if (testPriceMode) return 1;
-    return new Date() < EARLY ? 75 : 85;
+    return new Date() < EARLY ? 85 : 95;
+  }
+  function weekRateClient() {
+    if (testPriceMode) return 1;
+    return new Date() < EARLY ? 375 : 425;
   }
   function regFeeClient() {
     return testPriceMode ? 1 : 65;
@@ -780,6 +1025,91 @@
 
   function fmt(n) {
     return '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+  }
+
+  function maxCap(w) {
+    return w.max_capacity || 35;
+  }
+
+  function formatDayLabel(d) {
+    const p = String(d.date).split('-');
+    const dt = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    return dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+
+  function updatePriceBanner() {
+    const el = document.getElementById('price-banner-text');
+    if (!el) return;
+    const dr = testPriceMode ? 1 : pricingPreview.dayRate || dayRateClient();
+    const wr = testPriceMode ? 1 : pricingPreview.weekRate || weekRateClient();
+    const tier = new Date() < EARLY ? 'before May 1, 2026' : 'from May 1, 2026';
+    el.textContent =
+      'Full week ' +
+      fmt(wr) +
+      '/wk · Day ' +
+      fmt(dr) +
+      ' · ' +
+      tier +
+      ' · Max 35/wk';
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function clearEnrollmentSelections() {
+    Object.keys(selectedByWeek).forEach(function (k) {
+      delete selectedByWeek[k];
+    });
+    weeksPayload.forEach(function (w) {
+      fullWeekQty[w.id] = 0;
+      dailyKidsByWeek[w.id] = 1;
+    });
+  }
+
+  function setEnrollmentType(type) {
+    if (type !== 'full' && type !== 'daily') return;
+    if (enrollmentType !== type) clearEnrollmentSelections();
+    enrollmentType = type;
+    document.getElementById('btn-enroll-full').classList.toggle('on', type === 'full');
+    document.getElementById('btn-enroll-daily').classList.toggle('on', type === 'daily');
+    document.getElementById('weeks-mount-full').style.display = type === 'full' ? 'block' : 'none';
+    document.getElementById('weeks-mount-daily').style.display = type === 'daily' ? 'block' : 'none';
+    renderFullWeeks();
+    renderDailyWeeks();
+    updateSummary();
+  }
+
+  function getDailyKids(wid) {
+    const v = dailyKidsByWeek[wid];
+    return v == null ? 1 : v;
+  }
+
+  function collectBookings() {
+    const out = [];
+    if (enrollmentType === 'full') {
+      weeksPayload.forEach(function (w) {
+        if ((fullWeekQty[w.id] || 0) < 1) return;
+        const ids = (w.days || []).map(function (d) {
+          return d.id;
+        });
+        if (ids.length === 5) {
+          out.push({ weekId: w.id, dayIds: ids, pricingMode: 'full_week' });
+        }
+      });
+    } else {
+      Object.keys(selectedByWeek).forEach(function (wid) {
+        if (getDailyKids(wid) < 1) return;
+        const set = selectedByWeek[wid];
+        if (!set || !set.size) return;
+        out.push({ weekId: wid, dayIds: Array.from(set), pricingMode: 'daily' });
+      });
+    }
+    return out;
   }
 
   async function refreshPricingPreview() {
@@ -797,23 +1127,24 @@
     } catch (e) {
       pricingPreview = {
         dayRate: dayRateClient(),
+        weekRate: weekRateClient(),
         registrationFee: regFeeClient(),
         needsRegistration: true,
       };
     }
     if (testPriceMode) {
       pricingPreview.dayRate = 1;
+      pricingPreview.weekRate = 1;
       pricingPreview.registrationFee = 1;
     }
+    if (pricingPreview.weekRate == null) pricingPreview.weekRate = weekRateClient();
+    updatePriceBanner();
+    const regRow = document.getElementById('reg-fee-row');
+    const needReg = guestMode || pricingPreview.needsRegistration !== false;
+    if (regRow) regRow.style.display = needReg ? '' : 'none';
+    renderFullWeeks();
+    renderDailyWeeks();
     updateSummary();
-  }
-
-  function totalSelectedDays() {
-    let n = 0;
-    Object.values(selectedByWeek).forEach(function (set) {
-      n += set.size;
-    });
-    return n;
   }
 
   function updateSummary() {
@@ -824,9 +1155,15 @@
     const msg = document.getElementById('msg');
     msg.className = 'msg';
 
-    const nDays = totalSelectedDays();
-    const rate = testPriceMode ? 1 : pricingPreview.dayRate || dayRateClient();
-    const campTotal = nDays * rate;
+    const dr = testPriceMode ? 1 : pricingPreview.dayRate || dayRateClient();
+    const wr = testPriceMode ? 1 : pricingPreview.weekRate || weekRateClient();
+    const bookings = collectBookings();
+    let campTotal = 0;
+    bookings.forEach(function (b) {
+      if (b.pricingMode === 'full_week') campTotal += wr;
+      else campTotal += (b.dayIds || []).length * dr;
+    });
+
     const needReg = guestMode || pricingPreview.needsRegistration !== false;
     const reg = needReg ? (testPriceMode ? 1 : pricingPreview.registrationFee || regFeeClient()) : 0;
 
@@ -834,7 +1171,7 @@
       ? !!(document.getElementById('g-first').value && document.getElementById('g-last').value && document.getElementById('g-email').value && document.getElementById('g-age').value)
       : !!(session && document.getElementById('camper-select').value);
 
-    if (nDays === 0 || !camperOk) {
+    if (!bookings.length || !camperOk) {
       empty.style.display = '';
       lines.style.display = 'none';
       totalRow.style.display = 'none';
@@ -847,35 +1184,49 @@
     totalRow.style.display = '';
 
     let html = '';
-    (weeksPayload || []).forEach(function (w) {
-      const set = selectedByWeek[w.id];
-      if (!set || !set.size) return;
-      const labels = w.days
-        .filter(function (d) {
-          return set.has(d.id);
-        })
-        .map(function (d) {
-          return d.day_name.trim() + ' ' + d.date;
-        })
-        .join(', ');
-      html +=
-        '<div class="summary-line"><span class="label">' +
-        escapeHtml(w.label) +
-        '<br><small style="color:#444">' +
-        set.size +
-        ' day' +
-        (set.size === 1 ? '' : 's') +
-        ' × ' +
-        fmt(rate) +
-        '<br>' +
-        escapeHtml(labels) +
-        '</small></span><span class="val">' +
-        fmt(set.size * rate) +
-        '</span></div>';
+    bookings.forEach(function (b) {
+      const w = weeksPayload.find(function (x) {
+        return x.id === b.weekId;
+      });
+      const label = w ? w.label : 'Week';
+      if (b.pricingMode === 'full_week') {
+        html +=
+          '<div class="summary-line"><span class="label">' +
+          escapeHtml(label) +
+          '<br><small style="color:#444">Full week Mon–Fri × ' +
+          fmt(wr) +
+          '</small></span><span class="val">' +
+          fmt(wr) +
+          '</span></div>';
+      } else {
+        const n = b.dayIds.length;
+        const dayLabels = (w ? w.days : [])
+          .filter(function (d) {
+            return b.dayIds.indexOf(d.id) !== -1;
+          })
+          .map(function (d) {
+            return formatDayLabel(d);
+          })
+          .join(', ');
+        html +=
+          '<div class="summary-line"><span class="label">' +
+          escapeHtml(label) +
+          '<br><small style="color:#444">' +
+          n +
+          ' day' +
+          (n === 1 ? '' : 's') +
+          ' × ' +
+          fmt(dr) +
+          '<br>' +
+          escapeHtml(dayLabels) +
+          '</small></span><span class="val">' +
+          fmt(n * dr) +
+          '</span></div>';
+      }
     });
     if (reg > 0) {
       html +=
-        '<div class="summary-line"><span class="label">Registration <small style="color:#333">(one-time if applicable)</small></span><span class="val">' +
+        '<div class="summary-line"><span class="label">Registration <small style="color:#333">(one-time, first IMA camp)</small></span><span class="val">' +
         fmt(reg) +
         '</span></div>';
     }
@@ -884,15 +1235,29 @@
     btn.disabled = false;
   }
 
-  function escapeHtml(s) {
-    return String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+  function adjustFullWeek(wid, delta) {
+    const w = weeksPayload.find(function (x) {
+      return x.id === wid;
+    });
+    if (!w || w.disabled || w.is_full) return;
+    const cur = fullWeekQty[wid] || 0;
+    const next = Math.max(0, Math.min(1, cur + delta));
+    fullWeekQty[wid] = next;
+    renderFullWeeks();
+    updateSummary();
+  }
+
+  function adjustDailyKids(wid, delta) {
+    const cur = getDailyKids(wid);
+    const next = Math.max(0, Math.min(1, cur + delta));
+    dailyKidsByWeek[wid] = next;
+    if (next < 1) delete selectedByWeek[wid];
+    renderDailyWeeks();
+    updateSummary();
   }
 
   function toggleDay(weekId, dayId, btnEl) {
+    if (getDailyKids(weekId) < 1) return;
     if (!selectedByWeek[weekId]) selectedByWeek[weekId] = new Set();
     const set = selectedByWeek[weekId];
     if (set.has(dayId)) {
@@ -906,17 +1271,103 @@
     updateSummary();
   }
 
-  function renderWeeks() {
-    const mount = document.getElementById('weeks-mount');
+  function renderFullWeeks() {
+    const mount = document.getElementById('weeks-mount-full');
+    const loadEl = document.getElementById('weeks-loading-full');
+    if (!mount) return;
+    if (loadEl) loadEl.style.display = 'none';
     if (!weeksPayload.length) {
       mount.innerHTML = '<p class="empty-state">No weeks available.</p>';
       return;
     }
     mount.innerHTML = '';
+    const grid = document.createElement('div');
+    grid.className = 'week-cards-grid';
+    const wr = testPriceMode ? 1 : pricingPreview.weekRate || weekRateClient();
     weeksPayload.forEach(function (w) {
       const full = w.disabled || w.is_full;
+      const qty = fullWeekQty[w.id] || 0;
+      const card = document.createElement('div');
+      card.className = 'week-card' + (full ? ' full-card' : '') + (qty > 0 ? ' has-kids' : '');
+      const head = document.createElement('div');
+      head.className = 'week-card-head';
+      const left = document.createElement('div');
+      left.innerHTML =
+        '<div class="week-card-title">' +
+        escapeHtml(w.label) +
+        '</div><div class="week-card-dates">' +
+        escapeHtml(String(w.start_date)) +
+        ' – ' +
+        escapeHtml(String(w.end_date)) +
+        '</div>';
+      head.appendChild(left);
+      if (full) {
+        const b = document.createElement('span');
+        b.className = 'full-badge';
+        b.textContent = 'FULL';
+        head.appendChild(b);
+      }
+      card.appendChild(head);
+      const price = document.createElement('div');
+      price.className = 'week-card-price';
+      price.textContent = fmt(wr) + '/week · Mon–Fri';
+      card.appendChild(price);
+      const ctrl = document.createElement('div');
+      ctrl.className = 'week-kids-ctrl';
+      const minus = document.createElement('button');
+      minus.type = 'button';
+      minus.className = 'mini-btn';
+      minus.textContent = '−';
+      minus.disabled = full || qty < 1;
+      minus.addEventListener('click', function () {
+        adjustFullWeek(w.id, -1);
+      });
+      const val = document.createElement('input');
+      val.type = 'text';
+      val.className = 'mini-val';
+      val.readOnly = true;
+      val.value = String(qty);
+      val.title = 'Child attending full week (this camper)';
+      const plus = document.createElement('button');
+      plus.type = 'button';
+      plus.className = 'mini-btn';
+      plus.textContent = '+';
+      plus.disabled = full || qty > 0;
+      plus.addEventListener('click', function () {
+        adjustFullWeek(w.id, 1);
+      });
+      ctrl.appendChild(minus);
+      ctrl.appendChild(val);
+      ctrl.appendChild(plus);
+      const tag = document.createElement('div');
+      tag.className = 'kids-tag';
+      tag.textContent = qty > 0 ? 'Attending full week' : 'Not attending';
+      const wrap = document.createElement('div');
+      wrap.className = 'week-kids-wrap';
+      wrap.appendChild(ctrl);
+      wrap.appendChild(tag);
+      card.appendChild(wrap);
+      grid.appendChild(card);
+    });
+    mount.appendChild(grid);
+  }
+
+  function renderDailyWeeks() {
+    const mount = document.getElementById('weeks-mount-daily');
+    const loadEl = document.getElementById('weeks-loading-daily');
+    if (!mount) return;
+    if (loadEl) loadEl.style.display = 'none';
+    if (!weeksPayload.length) {
+      mount.innerHTML = '<p class="empty-state">No weeks available.</p>';
+      return;
+    }
+    mount.innerHTML = '';
+    const dr = testPriceMode ? 1 : pricingPreview.dayRate || dayRateClient();
+    weeksPayload.forEach(function (w) {
+      const weekFull = w.disabled || w.is_full;
+      const kids = getDailyKids(w.id);
       const block = document.createElement('div');
-      block.className = 'week-block' + (full ? ' full' : '');
+      block.className = 'week-block' + (weekFull ? ' full' : '');
       const head = document.createElement('div');
       head.className = 'week-block-head';
       head.innerHTML =
@@ -926,30 +1377,77 @@
         escapeHtml(String(w.start_date)) +
         ' – ' +
         escapeHtml(String(w.end_date)) +
-        '</div></div>';
-      if (full) {
+        ' · ' +
+        fmt(dr) +
+        '/day</div></div>';
+      if (weekFull) {
         const b = document.createElement('span');
         b.className = 'full-badge';
         b.textContent = 'FULL';
         head.appendChild(b);
       }
       block.appendChild(head);
+
+      const dk = document.createElement('div');
+      dk.className = 'daily-week-kids';
+      const lbl = document.createElement('span');
+      lbl.className = 'lbl';
+      lbl.textContent = 'Kids this week';
+      const ctrl = document.createElement('div');
+      ctrl.className = 'week-kids-ctrl';
+      const minus = document.createElement('button');
+      minus.type = 'button';
+      minus.className = 'mini-btn';
+      minus.textContent = '−';
+      minus.disabled = weekFull || kids < 1;
+      minus.addEventListener('click', function () {
+        adjustDailyKids(w.id, -1);
+      });
+      const val = document.createElement('input');
+      val.type = 'text';
+      val.className = 'mini-val';
+      val.readOnly = true;
+      val.value = String(kids);
+      const plus = document.createElement('button');
+      plus.type = 'button';
+      plus.className = 'mini-btn';
+      plus.textContent = '+';
+      plus.disabled = weekFull || kids > 0;
+      plus.addEventListener('click', function () {
+        adjustDailyKids(w.id, 1);
+      });
+      ctrl.appendChild(minus);
+      ctrl.appendChild(val);
+      ctrl.appendChild(plus);
+      dk.appendChild(lbl);
+      dk.appendChild(ctrl);
+      block.appendChild(dk);
+
       const chips = document.createElement('div');
       chips.className = 'day-chips';
       (w.days || []).forEach(function (d) {
+        const col = document.createElement('div');
+        col.className = 'day-chip-wrap';
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'day-chip';
-        btn.textContent = d.day_name.trim().slice(0, 3) + ' ' + d.date.slice(5);
-        btn.disabled = full || d.at_capacity;
-        if (btn.disabled && !full) btn.title = 'This day is at capacity';
+        btn.textContent = formatDayLabel(d);
+        const cap = maxCap(w);
+        const enrolled = d.current_enrollment || 0;
+        btn.disabled = weekFull || d.at_capacity || kids < 1;
+        if (btn.disabled && !weekFull && kids >= 1) btn.title = 'This day is full';
         btn.addEventListener('click', function () {
           if (btn.disabled) return;
           toggleDay(w.id, d.id, btn);
         });
         const sel = selectedByWeek[w.id];
         if (sel && sel.has(d.id)) btn.classList.add('on');
-        chips.appendChild(btn);
+        const meta = document.createElement('div');
+        meta.className = 'day-chip-meta';
+        meta.textContent = enrolled + '/' + cap;
+        col.appendChild(btn);
+        col.appendChild(meta);
+        chips.appendChild(col);
       });
       block.appendChild(chips);
       mount.appendChild(block);
@@ -962,11 +1460,17 @@
       if (!res.ok) throw new Error('Weeks failed');
       const data = await res.json();
       weeksPayload = data.weeks || [];
-      document.getElementById('weeks-loading').style.display = 'none';
-      renderWeeks();
+      weeksPayload.forEach(function (w) {
+        if (fullWeekQty[w.id] == null) fullWeekQty[w.id] = 0;
+        if (dailyKidsByWeek[w.id] == null) dailyKidsByWeek[w.id] = 1;
+      });
+      document.getElementById('weeks-loading-full').style.display = 'none';
+      document.getElementById('weeks-loading-daily').style.display = 'none';
+      setEnrollmentType('full');
     } catch (e) {
-      document.getElementById('weeks-mount').innerHTML =
-        '<p class="empty-state" style="color:#f88">Could not load weeks. Check API and Supabase env.</p>';
+      const err = '<p class="empty-state" style="color:#f88">Could not load weeks. Check API and Supabase env.</p>';
+      document.getElementById('weeks-mount-full').innerHTML = err;
+      document.getElementById('weeks-mount-daily').innerHTML = err;
     }
   }
 
@@ -1034,17 +1538,17 @@
       msg.textContent = 'Configure Stripe publishable key.';
       return;
     }
-    const bookings = [];
-    Object.keys(selectedByWeek).forEach(function (wid) {
-      const ids = Array.from(selectedByWeek[wid]);
-      if (ids.length) bookings.push({ weekId: wid, dayIds: ids });
-    });
+    const bookings = collectBookings();
     if (!bookings.length) return;
 
     const headers = { 'Content-Type': 'application/json' };
     if (session && session.access_token) headers['Authorization'] = 'Bearer ' + session.access_token;
 
-    const body = { bookings: bookings, testPricing: testPriceMode };
+    const body = {
+      bookings: bookings,
+      testPricing: testPriceMode,
+      imaMember: !!document.getElementById('ima-member').checked,
+    };
     if (guestMode) {
       body.guest = {
         email: document.getElementById('g-email').value.trim(),
@@ -1105,6 +1609,13 @@
     });
   }
 
+  document.getElementById('btn-enroll-full').addEventListener('click', function () {
+    setEnrollmentType('full');
+  });
+  document.getElementById('btn-enroll-daily').addEventListener('click', function () {
+    setEnrollmentType('daily');
+  });
+  document.getElementById('ima-member').addEventListener('change', updateSummary);
   document.getElementById('checkout-btn').addEventListener('click', startCheckout);
 
   loadWeeks();

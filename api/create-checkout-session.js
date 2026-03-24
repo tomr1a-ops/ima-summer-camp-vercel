@@ -2,7 +2,7 @@ const { randomUUID } = require('crypto');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { serviceClient } = require('./lib/supabase');
 const { getUserFromRequest, getProfileForUser } = require('./lib/auth');
-const { dayRate, registrationFee } = require('./lib/pricing');
+const { dayRate, weekRate, registrationFee } = require('./lib/pricing');
 const { validateBooking } = require('./lib/capacity');
 const { sendResend } = require('./lib/email');
 
@@ -62,7 +62,7 @@ module.exports = async (req, res) => {
     return json(res, 400, { error: 'Invalid JSON' });
   }
 
-  const { bookings, testPricing, guest } = body;
+  const { bookings, testPricing, guest, imaMember } = body;
   const secret = process.env.STRIPE_SECRET_KEY || '';
   const isStripeTestKey = secret.startsWith('sk_test_');
 
@@ -118,43 +118,65 @@ module.exports = async (req, res) => {
     return json(res, 401, { error: 'Sign in and pick a camper, or use guest checkout (child + email).' });
   }
 
-  const rate = dayRate(tp);
+  const dr = dayRate(tp);
+  const wr = weekRate(tp);
   const regFee = registrationFee(tp);
   const batchId = randomUUID();
+  const bookingModes = [];
 
   for (const b of bookings) {
     const weekId = b.weekId;
     const dayIds = Array.isArray(b.dayIds) ? b.dayIds : [];
+    const pricingMode = b.pricingMode === 'full_week' ? 'full_week' : 'daily';
     try {
       await validateBooking(sb, {
         weekId,
         dayIds,
         camperId,
         excludeEnrollmentId: null,
+        pricingMode,
       });
     } catch (e) {
       return json(res, e.statusCode || 400, { error: e.message });
     }
+    bookingModes.push(pricingMode);
   }
 
   const needsReg = !(await hasRegistrationFeePaid(sb, camperId));
   const regCents = needsReg ? Math.round(regFee * 100) : 0;
 
   const line_items = [];
-  for (const b of bookings) {
+  for (let i = 0; i < bookings.length; i++) {
+    const b = bookings[i];
+    const mode = bookingModes[i];
     const n = (b.dayIds || []).length;
     const { data: week } = await sb.from('weeks').select('label').eq('id', b.weekId).single();
-    line_items.push({
-      price_data: {
-        currency: 'usd',
-        product_data: {
-          name: `IMA Summer Camp — ${week ? week.label : 'Week'}`,
-          description: `${n} day${n === 1 ? '' : 's'} × $${rate}`,
+    const wlabel = week ? week.label : 'Week';
+    if (mode === 'full_week') {
+      line_items.push({
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: `IMA Summer Camp — ${wlabel} (full week)`,
+            description: `Mon–Fri · $${wr}/week`,
+          },
+          unit_amount: Math.round(wr * 100),
         },
-        unit_amount: Math.round(n * rate * 100),
-      },
-      quantity: 1,
-    });
+        quantity: 1,
+      });
+    } else {
+      line_items.push({
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: `IMA Summer Camp — ${wlabel}`,
+            description: `${n} day${n === 1 ? '' : 's'} × $${dr}`,
+          },
+          unit_amount: Math.round(n * dr * 100),
+        },
+        quantity: 1,
+      });
+    }
   }
 
   if (regCents > 0) {
@@ -198,6 +220,8 @@ module.exports = async (req, res) => {
         checkout_batch_id: batchId,
         test_pricing: tp ? 'true' : 'false',
         registration_fee_cents: String(regCents),
+        booking_modes: bookingModes.join(','),
+        ima_member: imaMember ? 'true' : 'false',
       },
     };
     if (emailForStripe) sessionParams.customer_email = emailForStripe;

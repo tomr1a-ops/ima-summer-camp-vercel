@@ -1,6 +1,6 @@
 const { serviceClient } = require('./lib/supabase');
 const { getUserFromRequest, getProfileForUser } = require('./lib/auth');
-const { dayRate, registrationFee } = require('./lib/pricing');
+const { dayRate, weekRate, registrationFee } = require('./lib/pricing');
 
 module.exports = async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
@@ -46,6 +46,7 @@ module.exports = async (req, res) => {
     return res.end(
       JSON.stringify({
         dayRate: dayRate(testPricing),
+        weekRate: weekRate(testPricing),
         registrationFee: registrationFee(testPricing),
         needsRegistration: needsReg,
       })

@@ -1,4 +1,4 @@
-const { serviceClient } = require('./lib/supabase');
+const { anonClient } = require('./lib/supabase');
 
 module.exports = async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
@@ -13,7 +13,7 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const sb = serviceClient();
+    const sb = anonClient();
     const { data: weeks, error: we } = await sb
       .from('weeks')
       .select('id,week_number,label,start_date,end_date,max_capacity,is_active,is_full')

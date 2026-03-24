@@ -1,5 +1,5 @@
 const { serviceClient } = require('./supabase');
-const { dayRate, registrationFee } = require('./pricing');
+const { dayRate, weekRate, registrationFee } = require('./pricing');
 
 /**
  * Idempotent: confirms pending enrollments for session.metadata.checkout_batch_id
@@ -31,8 +31,11 @@ async function confirmStripeSession(stripe, session) {
   }
 
   const testPricing = session.metadata.test_pricing === 'true';
-  const rate = dayRate(testPricing);
+  const dr = dayRate(testPricing);
+  const wr = weekRate(testPricing);
   const regDollars = registrationFee(testPricing);
+  const modesStr = (session.metadata && session.metadata.booking_modes) || '';
+  const bookingModes = modesStr ? modesStr.split(',').map((s) => s.trim()) : [];
   const paidReg = session.metadata.registration_fee_cents
     ? Number(session.metadata.registration_fee_cents) > 0
     : false;
@@ -49,7 +52,8 @@ async function confirmStripeSession(stripe, session) {
     }
 
     const nDays = (row.day_ids || []).length;
-    const camp = nDays * rate;
+    const mode = bookingModes[i] || 'daily';
+    const camp = mode === 'full_week' ? wr : nDays * dr;
     const reg = i === 0 && paidReg ? regDollars : 0;
     const pricePaid = camp + reg;
 

@@ -27,10 +27,18 @@ async function camperHasEnrollmentInWeek(sb, weekId, camperId, excludeEnrollment
   return (data || []).length > 0;
 }
 
+async function loadOrderedDaysForWeek(sb, weekId) {
+  const { data: rows, error } = await sb.from('days').select('*').eq('week_id', weekId).order('date', { ascending: true });
+  if (error) throw error;
+  return rows || [];
+}
+
 /**
  * Full validation for a proposed week + days + camper (new checkout or replacement set).
+ * @param {object} opts
+ * @param {'full_week'|'daily'} [opts.pricingMode='daily'] — full_week requires all Mon–Fri days for the week.
  */
-async function validateBooking(sb, { weekId, dayIds, camperId, excludeEnrollmentId }) {
+async function validateBooking(sb, { weekId, dayIds, camperId, excludeEnrollmentId, pricingMode = 'daily' }) {
   const ids = Array.isArray(dayIds) ? dayIds : [];
   if (!weekId || !ids.length) {
     const err = new Error('Week and at least one day required');
@@ -53,6 +61,22 @@ async function validateBooking(sb, { weekId, dayIds, camperId, excludeEnrollment
     const err = new Error('Week is full: ' + week.label);
     err.statusCode = 400;
     throw err;
+  }
+
+  if (pricingMode === 'full_week') {
+    const allDays = await loadOrderedDaysForWeek(sb, weekId);
+    if (allDays.length !== 5) {
+      const err = new Error('Full week requires exactly five camp days');
+      err.statusCode = 400;
+      throw err;
+    }
+    const expectedIds = allDays.map((d) => d.id).sort().join(',');
+    const gotIds = [...ids].sort().join(',');
+    if (expectedIds !== gotIds) {
+      const err = new Error('Full week must include all Mon–Fri days for this week');
+      err.statusCode = 400;
+      throw err;
+    }
   }
 
   const { data: dayRows, error: de } = await sb.from('days').select('*').in('id', ids);
