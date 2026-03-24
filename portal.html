@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Parent Portal — IMA Summer Camp</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/ima-theme.css" />
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="/portal.html">
+      <img src="/logo.png" alt="" />
+      <span>Parent Portal</span>
+    </a>
+    <div class="app-actions">
+      <button type="button" class="btn-ghost" id="btn-book">Book days</button>
+      <button type="button" class="btn-ghost" id="btn-out">Log out</button>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <div id="banner" class="msg" style="margin-bottom:18px"></div>
+
+    <div class="grid-cards">
+      <div class="stat-card">
+        <h3>Campers</h3>
+        <div class="num" id="stat-campers">0</div>
+      </div>
+      <div class="stat-card">
+        <h3>Active enrollments</h3>
+        <div class="num" id="stat-enr">0</div>
+      </div>
+      <div class="stat-card">
+        <h3>Total paid (all time)</h3>
+        <div class="num" id="stat-paid">$0</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">Your campers</div>
+      <div class="panel-body">
+        <form id="add-camper" style="display:grid;grid-template-columns:1fr 1fr 80px auto;gap:10px;align-items:end;margin-bottom:16px;flex-wrap:wrap">
+          <div>
+            <label class="label" for="cfn">First name</label>
+            <input class="input" style="margin-bottom:0" id="cfn" required />
+          </div>
+          <div>
+            <label class="label" for="cln">Last name</label>
+            <input class="input" style="margin-bottom:0" id="cln" required />
+          </div>
+          <div>
+            <label class="label" for="cage">Age</label>
+            <input class="input" style="margin-bottom:0" id="cage" type="number" min="3" max="18" required />
+          </div>
+          <button type="submit" class="btn-primary" style="width:auto;padding:12px 16px">Add</button>
+        </form>
+        <div id="campers-list" class="empty-hint">Loading…</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">Booked days</div>
+      <div class="panel-body">
+        <div id="calendar" class="empty-hint">Loading…</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">Enrollments</div>
+      <div class="panel-body">
+        <p class="empty-hint" style="margin-bottom:12px">New bookings: <strong>Book days</strong>. Confirmed registrations can be edited below (capacity limits apply).</p>
+        <div id="enrollments" class="empty-hint">Loading…</div>
+      </div>
+    </div>
+
+    <div class="panel" id="edit-panel" style="display:none">
+      <div class="panel-head">Change days</div>
+      <div class="panel-body">
+        <label class="label" for="enrollment-edit">Confirmed enrollment</label>
+        <select id="enrollment-edit" class="input" style="margin-bottom:12px;width:100%;max-width:420px"></select>
+        <div id="edit-days-wrap" class="empty-hint" style="margin-bottom:8px"></div>
+        <button type="button" class="btn-primary" id="btn-save-days" style="width:auto;padding:12px 20px">Save day changes</button>
+      </div>
+    </div>
+  </main>
+
+  <script src="/js/ima-core.js"></script>
+  <script>
+    (function () {
+      const banner = document.getElementById('banner');
+      const campersList = document.getElementById('campers-list');
+      const enrollmentsEl = document.getElementById('enrollments');
+      const calendarEl = document.getElementById('calendar');
+      const portalState = { session: null, weeks: [], enrollments: [], campers: [] };
+
+      document.getElementById('btn-book').onclick = function () { window.location.href = '/index.html'; };
+      document.getElementById('btn-out').onclick = function () { IMA.signOut(); };
+
+      function showBanner(text, ok) {
+        if (!text) {
+          banner.className = 'msg';
+          banner.textContent = '';
+          return;
+        }
+        banner.textContent = text;
+        banner.className = 'msg show ' + (ok ? 'ok' : 'error');
+      }
+
+      async function load() {
+        const session = await IMA.requireAuth('/login.html');
+        if (!session) return;
+
+        const sb = await IMA.getSupabase();
+        const profile = await IMA.getProfile();
+        if (profile && profile.role === 'admin') {
+          window.location.replace('/admin.html');
+          return;
+        }
+
+        const uid = session.user.id;
+
+        const { data: campers, error: ce } = await sb.from('campers').select('*').eq('parent_id', uid).order('created_at');
+        if (ce) throw ce;
+
+        const { data: enr, error: ee } = await sb
+          .from('enrollments')
+          .select('*')
+          .eq('parent_id', uid)
+          .order('created_at', { ascending: false });
+        if (ee) throw ee;
+
+        portalState.session = session;
+        portalState.enrollments = enr || [];
+        portalState.campers = campers || [];
+        try {
+          const wr = await fetch('/api/weeks');
+          if (wr.ok) {
+            const wj = await wr.json();
+            portalState.weeks = wj.weeks || [];
+          }
+        } catch (err) { /* ignore */ }
+        setupEditDaysUI();
+
+        document.getElementById('stat-campers').textContent = String((campers || []).length);
+        const active = (enr || []).filter(function (e) { return e.status !== 'cancelled'; });
+        document.getElementById('stat-enr').textContent = String(active.length);
+        const paid = (enr || []).reduce(function (s, e) { return s + (Number(e.price_paid) || 0); }, 0);
+        document.getElementById('stat-paid').textContent = IMA.formatMoney(paid);
+
+        if (!campers || campers.length === 0) {
+          campersList.innerHTML = '<span class="empty-hint">Add your children above so you can attach enrollments at checkout.</span>';
+        } else {
+          campersList.innerHTML = '<ul class="attendance-list">' + campers.map(function (c) {
+            return '<li><span>' + escapeHtml(c.first_name) + ' ' + escapeHtml(c.last_name) + '</span><span style="color:var(--muted)">age ' + escapeHtml(String(c.age)) + '</span></li>';
+          }).join('') + '</ul>';
+        }
+
+        if (!enr || enr.length === 0) {
+          enrollmentsEl.innerHTML = '<span class="empty-hint">No enrollments yet. Use Book days to register.</span>';
+          calendarEl.innerHTML = '<span class="empty-hint">No sessions booked yet.</span>';
+          return;
+        }
+
+        const dayIdSet = {};
+        enr.forEach(function (e) {
+          (e.day_ids || []).forEach(function (id) { dayIdSet[id] = true; });
+        });
+        const dayIds = Object.keys(dayIdSet);
+        let daysRows = [];
+        if (dayIds.length) {
+          const { data: drows, error: de } = await sb
+            .from('days')
+            .select('id,date,day_name,week_id, weeks(label, week_number)')
+            .in('id', dayIds);
+          if (de) {
+            const { data: d2, error: d2e } = await sb.from('days').select('id,date,day_name,week_id').in('id', dayIds);
+            if (d2e) throw d2e;
+            daysRows = d2 || [];
+            const wids = [...new Set(daysRows.map(function (d) { return d.week_id; }))];
+            const { data: wks } = await sb.from('weeks').select('id,label,week_number').in('id', wids);
+            const wm = {};
+            (wks || []).forEach(function (w) { wm[w.id] = w; });
+            daysRows.forEach(function (d) {
+              d.weeks = wm[d.week_id] || null;
+            });
+          } else {
+            daysRows = drows || [];
+          }
+        }
+        const dayMap = {};
+        daysRows.forEach(function (d) { dayMap[d.id] = d; });
+
+        calendarEl.innerHTML = buildCalendarHtml(enr, dayMap);
+        enrollmentsEl.innerHTML = buildEnrollmentsHtml(enr, dayMap);
+      }
+
+      function escapeHtml(s) {
+        return String(s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      function buildCalendarHtml(enr, dayMap) {
+        const items = [];
+        enr.forEach(function (e) {
+          if (e.status === 'cancelled') return;
+          (e.day_ids || []).forEach(function (did) {
+            const d = dayMap[did];
+            if (!d) return;
+            const w = d.weeks || {};
+            items.push({
+              date: d.date,
+              day_name: d.day_name,
+              week: w.label || ('Week ' + (w.week_number || '')),
+              status: e.status,
+            });
+          });
+        });
+        items.sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+        if (!items.length) return '<span class="empty-hint">No day-level bookings found.</span>';
+        return '<ul class="attendance-list">' + items.map(function (it) {
+          return '<li><span><strong>' + escapeHtml(it.week) + '</strong> · ' + escapeHtml(it.day_name) + ' ' + escapeHtml(it.date) + '</span><span class="pill ' + (it.status === 'confirmed' ? 'open' : '') + '">' + escapeHtml(it.status) + '</span></li>';
+        }).join('') + '</ul>';
+      }
+
+      function buildEnrollmentsHtml(enr, dayMap) {
+        return '<ul class="attendance-list">' + enr.map(function (e) {
+          const days = (e.day_ids || []).map(function (id) {
+            const d = dayMap[id];
+            return d ? (d.day_name + ' ' + d.date) : id.slice(0, 8);
+          }).join(', ');
+          return '<li style="flex-direction:column;align-items:flex-start;gap:6px">' +
+            '<div style="display:flex;width:100%;justify-content:space-between;gap:10px">' +
+            '<span>' + IMA.formatMoney(e.price_paid) + ' · <span class="pill ' + (e.status === 'confirmed' ? 'open' : '') + '">' + escapeHtml(e.status) + '</span></span>' +
+            '<span style="color:var(--muted);font-size:12px">' + IMA.formatDate(e.created_at) + '</span>' +
+            '</div>' +
+            '<span style="color:#aaa;font-size:13px">Days: ' + escapeHtml(days || '—') + '</span>' +
+            '</li>';
+        }).join('') + '</ul>';
+      }
+
+      function camperName(cid) {
+        const c = portalState.campers.find(function (x) { return x.id === cid; });
+        return c ? c.first_name + ' ' + c.last_name : 'Camper';
+      }
+
+      function weekLabel(wid) {
+        const w = portalState.weeks.find(function (x) { return x.id === wid; });
+        return w ? w.label : 'Week';
+      }
+
+      function setupEditDaysUI() {
+        const panel = document.getElementById('edit-panel');
+        const sel = document.getElementById('enrollment-edit');
+        const confirmed = portalState.enrollments.filter(function (e) { return e.status === 'confirmed'; });
+        if (!confirmed.length) {
+          panel.style.display = 'none';
+          return;
+        }
+        panel.style.display = 'block';
+        sel.innerHTML = confirmed
+          .map(function (e) {
+            return (
+              '<option value="' +
+              escapeHtml(e.id) +
+              '">' +
+              escapeHtml(camperName(e.camper_id) + ' — ' + weekLabel(e.week_id)) +
+              '</option>'
+            );
+          })
+          .join('');
+        sel.onchange = renderEditDays;
+        document.getElementById('btn-save-days').onclick = saveEditDays;
+        renderEditDays();
+      }
+
+      function renderEditDays() {
+        const sel = document.getElementById('enrollment-edit');
+        const wrap = document.getElementById('edit-days-wrap');
+        const e = portalState.enrollments.find(function (x) { return x.id === sel.value; });
+        if (!e) {
+          wrap.innerHTML = '';
+          return;
+        }
+        const week = portalState.weeks.find(function (w) { return w.id === e.week_id; });
+        if (!week || !week.days) {
+          wrap.innerHTML = '<span class="empty-hint">Could not load week calendar. Try again later.</span>';
+          return;
+        }
+        const set = new Set(e.day_ids || []);
+        wrap.innerHTML = week.days
+          .map(function (d) {
+            var on = set.has(d.id);
+            var dis = d.at_capacity && !on;
+            return (
+              '<label style="display:flex;align-items:center;gap:10px;margin:10px 0;font-size:14px;cursor:' +
+              (dis ? 'not-allowed' : 'pointer') +
+              ';opacity:' +
+              (dis ? '0.45' : '1') +
+              '"><input type="checkbox" value="' +
+              escapeHtml(d.id) +
+              '" ' +
+              (on ? 'checked ' : '') +
+              (dis ? 'disabled ' : '') +
+              '/> ' +
+              escapeHtml(d.day_name.trim() + ' ' + d.date) +
+              (dis ? ' (full)' : '') +
+              '</label>'
+            );
+          })
+          .join('');
+      }
+
+      async function saveEditDays() {
+        var sel = document.getElementById('enrollment-edit');
+        var id = sel.value;
+        var checked = Array.prototype.slice
+          .call(document.querySelectorAll('#edit-days-wrap input[type=checkbox]:checked'))
+          .map(function (i) {
+            return i.value;
+          });
+        if (!checked.length) {
+          showBanner('Select at least one day.', false);
+          return;
+        }
+        try {
+          var res = await fetch('/api/enrollments', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: 'Bearer ' + portalState.session.access_token,
+            },
+            body: JSON.stringify({ id: id, day_ids: checked }),
+          });
+          var j = await res.json().catch(function () {
+            return {};
+          });
+          if (!res.ok) throw new Error(j.error || 'Update failed');
+          showBanner('Days updated.', true);
+          await load();
+        } catch (err) {
+          showBanner(err.message || String(err), false);
+        }
+      }
+
+      document.getElementById('add-camper').addEventListener('submit', async function (ev) {
+        ev.preventDefault();
+        showBanner('', false);
+        try {
+          const session = await IMA.getSession();
+          if (!session) return;
+          const sb = await IMA.getSupabase();
+          const row = {
+            parent_id: session.user.id,
+            first_name: document.getElementById('cfn').value.trim(),
+            last_name: document.getElementById('cln').value.trim(),
+            age: parseInt(document.getElementById('cage').value, 10),
+          };
+          const { error } = await sb.from('campers').insert(row);
+          if (error) throw error;
+          document.getElementById('add-camper').reset();
+          showBanner('Camper added.', true);
+          await load();
+        } catch (e) {
+          showBanner(e.message || String(e), false);
+        }
+      });
+
+      load().catch(function (e) {
+        showBanner(e.message || String(e), false);
+        campersList.textContent = '';
+        enrollmentsEl.textContent = '';
+        calendarEl.textContent = '';
+      });
+    })();
+  </script>
+</body>
+</html>

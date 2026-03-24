@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign In — IMA Summer Camp</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/ima-theme.css" />
+</head>
+<body>
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-card-head">
+        <img class="auth-logo" src="/logo.png" alt="Impact Martial Athletics" />
+        <div class="auth-title">Welcome Back</div>
+        <div class="auth-sub">Parent portal &amp; admin access</div>
+      </div>
+      <div class="auth-body">
+        <div id="msg" class="msg"></div>
+        <form id="form">
+          <label class="label" for="email">Email</label>
+          <input class="input" id="email" name="email" type="email" autocomplete="username" required />
+
+          <label class="label" for="password">Password</label>
+          <input class="input" id="password" name="password" type="password" autocomplete="current-password" required />
+
+          <button class="btn-primary" type="submit" id="btn">Sign In</button>
+        </form>
+        <div class="link-row">
+          New parent? <a href="/register.html">Create an account</a>
+        </div>
+        <div class="link-row" style="margin-top:10px">
+          <a href="/index.html">← Summer camp checkout</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="/js/ima-core.js"></script>
+  <script>
+    (function () {
+      const msg = document.getElementById('msg');
+      const btn = document.getElementById('btn');
+      const form = document.getElementById('form');
+
+      function show(text, ok) {
+        msg.textContent = text;
+        msg.className = 'msg show ' + (ok ? 'ok' : 'error');
+      }
+
+      async function boot() {
+        try {
+          await IMA.getSupabase();
+          const session = await IMA.getSession();
+          if (session) {
+            const profile = await IMA.getProfile();
+            const ret = new URLSearchParams(window.location.search).get('return');
+            const safe = ret && ret.startsWith('/') && !ret.startsWith('//') ? ret : null;
+            if (profile && profile.role === 'admin') window.location.replace('/admin.html');
+            else window.location.replace(safe || '/portal.html');
+          }
+        } catch (e) {
+          show(e.message || String(e), false);
+        }
+      }
+
+      form.addEventListener('submit', async function (ev) {
+        ev.preventDefault();
+        msg.className = 'msg';
+        btn.disabled = true;
+        try {
+          const sb = await IMA.getSupabase();
+          const email = document.getElementById('email').value.trim();
+          const password = document.getElementById('password').value;
+          const { error } = await sb.auth.signInWithPassword({ email, password });
+          if (error) throw error;
+          const profile = await IMA.getProfile();
+          if (!profile) throw new Error('Profile not found. Complete registration or contact IMA.');
+          const ret = new URLSearchParams(window.location.search).get('return');
+          const safe = ret && ret.startsWith('/') && !ret.startsWith('//') ? ret : null;
+          if (profile.role === 'admin') window.location.replace('/admin.html');
+          else window.location.replace(safe || '/portal.html');
+        } catch (e) {
+          show(e.message || 'Sign in failed', false);
+          btn.disabled = false;
+        }
+      });
+
+      boot();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>You're Registered! — IMA Summer Camp</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;600&display=swap" rel="stylesheet"/>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#050505;color:#f0f0f0;font-family:'Barlow',sans-serif;min-height:100vh;display:grid;place-items:center;text-align:center;padding:24px}
+  .icon{font-size:64px;margin-bottom:24px;filter:drop-shadow(0 0 20px rgba(0,229,204,0.6))}
+  h1{font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,8vw,60px);letter-spacing:4px;color:#00e5cc;margin-bottom:12px}
+  p{color:#888;font-size:15px;line-height:1.7;max-width:440px;margin:0 auto}
+  .back{display:inline-block;margin-top:32px;padding:13px 28px;background:linear-gradient(135deg,#00e5cc,#3344ff);color:#000;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:2px;border-radius:6px;text-decoration:none}
+  .sub{margin-top:20px;font-size:13px;color:#555}
+  #sync{font-size:12px;color:#666;margin-top:16px}
+</style>
+</head>
+<body>
+  <div>
+    <div class="icon">🥊</div>
+    <h1>You're In!</h1>
+    <p>Your payment went through. Check your email for a receipt. We can't wait to train with your kid this summer at Impact Martial Athletics!</p>
+    <p class="sub">Checked out as a guest? <a href="/register.html" style="color:#00e5cc">Create a parent account</a> with the same email to manage bookings in the portal.</p>
+    <a href="/index.html" class="back">Back to checkout</a>
+    <p id="sync"></p>
+  </div>
+  <script>
+    (function () {
+      var p = new URLSearchParams(window.location.search);
+      var sid = p.get('session_id');
+      if (!sid) return;
+      var el = document.getElementById('sync');
+      el.textContent = 'Confirming registration…';
+      fetch('/api/confirm-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: sid }),
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (j && j.ok) el.textContent = j.already ? '' : 'Registration saved.';
+          else el.textContent = '';
+        })
+        .catch(function () { el.textContent = ''; });
+    })();
+  </script>
+</body>
+</html>

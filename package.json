@@ -1,0 +1,11 @@
+{
+  "name": "ima-summer-camp",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {},
+  "dependencies": {
+    "@supabase/supabase-js": "^2.48.1",
+    "raw-body": "^2.5.2",
+    "stripe": "^14.0.0"
+  }
+}

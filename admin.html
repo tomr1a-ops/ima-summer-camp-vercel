@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin — IMA Summer Camp</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/ima-theme.css" />
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="/admin.html">
+      <img src="/logo.png" alt="" />
+      <span>Admin</span>
+    </a>
+    <div class="app-actions">
+      <button type="button" class="btn-ghost" id="btn-portal">Parent portal</button>
+      <button type="button" class="btn-ghost" id="btn-out">Log out</button>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <div id="banner" class="msg" style="margin-bottom:18px"></div>
+
+    <div class="grid-cards">
+      <div class="stat-card">
+        <h3>Enrolled campers (confirmed)</h3>
+        <div class="num" id="st-kids">0</div>
+      </div>
+      <div class="stat-card">
+        <h3>Revenue (confirmed)</h3>
+        <div class="num" id="st-rev">$0</div>
+      </div>
+      <div class="stat-card">
+        <h3>Total enrollments</h3>
+        <div class="num" id="st-enr">0</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">Week capacity</div>
+      <div class="panel-body" id="week-bars"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">Week management</div>
+      <div class="panel-body" id="week-manage"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">Attendance</div>
+      <div class="panel-body">
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin-bottom:14px">
+          <div>
+            <label class="label" for="att-week">Week</label>
+            <select class="input input-inline" id="att-week" style="min-width:220px"></select>
+          </div>
+          <div>
+            <label class="label" for="att-day">Day</label>
+            <select class="input input-inline" id="att-day" style="min-width:220px"></select>
+          </div>
+          <button type="button" class="btn-primary" style="width:auto;padding:10px 16px;margin-top:18px" id="att-refresh">Refresh</button>
+        </div>
+        <div id="att-summary" class="empty-hint" style="margin-bottom:10px"></div>
+        <ul class="attendance-list" id="att-list"></ul>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <span>Registrations</span>
+        <span style="display:flex;gap:10px;flex-wrap:wrap">
+          <select class="input input-inline" id="flt-week" style="min-width:160px;margin:0">
+            <option value="">All weeks</option>
+          </select>
+          <button type="button" class="btn-ghost" id="btn-csv">Export CSV</button>
+        </span>
+      </div>
+      <div class="panel-body table-wrap">
+        <table class="data" id="tbl">
+          <thead>
+            <tr>
+              <th>Parent / guest</th>
+              <th>Camper</th>
+              <th>Week</th>
+              <th>Status</th>
+              <th>Paid</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script src="/js/ima-core.js"></script>
+  <script>
+    (function () {
+      const banner = document.getElementById('banner');
+
+      document.getElementById('btn-out').onclick = function () { IMA.signOut(); };
+      document.getElementById('btn-portal').onclick = function () { window.location.href = '/portal.html'; };
+
+      function showBanner(text, ok) {
+        if (!text) {
+          banner.className = 'msg';
+          banner.textContent = '';
+          return;
+        }
+        banner.textContent = text;
+        banner.className = 'msg show ' + (ok ? 'ok' : 'error');
+      }
+
+      function escapeHtml(s) {
+        return String(s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      async function requireAdmin() {
+        const session = await IMA.requireAuth('/login.html');
+        if (!session) return null;
+        const profile = await IMA.getProfile();
+        if (!profile) {
+          showBanner('No profile found.', false);
+          return null;
+        }
+        if (profile.role !== 'admin') {
+          showBanner('Admin access only. Ask IMA to set your profile role to admin in Supabase.', false);
+          window.location.replace('/portal.html');
+          return null;
+        }
+        return { session: session, profile: profile };
+      }
+
+      async function loadWeeks(sb) {
+        const { data, error } = await sb.from('weeks').select('*').order('week_number');
+        if (error) throw error;
+        return data || [];
+      }
+
+      async function loadEnrollments(sb) {
+        const { data, error } = await sb
+          .from('enrollments')
+          .select('id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at, campers(first_name,last_name), weeks(label,week_number)')
+          .order('created_at', { ascending: false });
+        if (error) {
+          const { data: d2, error: e2 } = await sb.from('enrollments').select('*').order('created_at', { ascending: false });
+          if (e2) throw e2;
+          return d2 || [];
+        }
+        return data || [];
+      }
+
+      async function hydrateParents(sb, rows) {
+        const ids = [...new Set(rows.map(function (r) { return r.parent_id; }).filter(Boolean))];
+        if (!ids.length) return {};
+        const { data, error } = await sb.from('profiles').select('id,full_name,email').in('id', ids);
+        if (error) throw error;
+        const m = {};
+        (data || []).forEach(function (p) { m[p.id] = p; });
+        return m;
+      }
+
+      async function hydrateCampersWeeks(sb, rows) {
+        const needC = {};
+        const needW = {};
+        rows.forEach(function (r) {
+          if (!r.campers) needC[r.camper_id] = true;
+          if (!r.weeks) needW[r.week_id] = true;
+        });
+        const cmap = {};
+        const wmap = {};
+        const cids = Object.keys(needC);
+        const wids = Object.keys(needW);
+        if (cids.length) {
+          const { data } = await sb.from('campers').select('id,first_name,last_name').in('id', cids);
+          (data || []).forEach(function (c) { cmap[c.id] = c; });
+        }
+        if (wids.length) {
+          const { data } = await sb.from('weeks').select('id,label,week_number').in('id', wids);
+          (data || []).forEach(function (w) { wmap[w.id] = w; });
+        }
+        rows.forEach(function (r) {
+          if (!r.campers && cmap[r.camper_id]) r.campers = cmap[r.camper_id];
+          if (!r.weeks && wmap[r.week_id]) r.weeks = wmap[r.week_id];
+        });
+      }
+
+      function overviewStats(enr) {
+        const confirmed = enr.filter(function (e) { return e.status === 'confirmed'; });
+        const campers = {};
+        confirmed.forEach(function (e) { campers[e.camper_id] = true; });
+        const rev = confirmed.reduce(function (s, e) { return s + (Number(e.price_paid) || 0); }, 0);
+        document.getElementById('st-kids').textContent = String(Object.keys(campers).length);
+        document.getElementById('st-rev').textContent = IMA.formatMoney(rev);
+        document.getElementById('st-enr').textContent = String(enr.length);
+      }
+
+      function renderWeekBars(weeks, enr) {
+        const confirmed = enr.filter(function (e) { return e.status === 'confirmed'; });
+        const byWeek = {};
+        weeks.forEach(function (w) { byWeek[w.id] = {}; });
+        confirmed.forEach(function (e) {
+          if (!byWeek[e.week_id]) byWeek[e.week_id] = {};
+          byWeek[e.week_id][e.camper_id] = true;
+        });
+        const el = document.getElementById('week-bars');
+        el.innerHTML = weeks.map(function (w) {
+          const set = byWeek[w.id] || {};
+          const n = Object.keys(set).length;
+          const max = w.max_capacity || 35;
+          const pct = Math.min(100, Math.round((n / max) * 100));
+          const full = w.is_full || n >= max;
+          return '<div class="week-row-admin">' +
+            '<div class="meta"><span>' + escapeHtml(w.label) + '</span><span>' + n + '/' + max + (full ? ' · FULL' : '') + '</span></div>' +
+            '<div class="progress-bar"><i style="width:' + pct + '%"></i></div>' +
+            '</div>';
+        }).join('');
+      }
+
+      function renderWeekManage(sb, weeks) {
+        const el = document.getElementById('week-manage');
+        el.innerHTML = weeks.map(function (w) {
+          return '<div class="week-row-admin" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">' +
+            '<span>' + escapeHtml(w.label) + '</span>' +
+            '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)">' +
+            '<input type="checkbox" data-week-active="' + w.id + '" ' + (w.is_active ? 'checked' : '') + '/> Active' +
+            '</label>' +
+            '</div>';
+        }).join('');
+        el.querySelectorAll('input[data-week-active]').forEach(function (cb) {
+          cb.addEventListener('change', async function () {
+            const id = cb.getAttribute('data-week-active');
+            try {
+              const { error } = await sb.from('weeks').update({ is_active: cb.checked }).eq('id', id);
+              if (error) throw error;
+              showBanner('Week updated.', true);
+            } catch (e) {
+              showBanner(e.message || String(e), false);
+              cb.checked = !cb.checked;
+            }
+          });
+        });
+      }
+
+      var state = { weeks: [], daysByWeek: {}, enr: [], parents: {} };
+
+      function fillWeekSelects() {
+        const aw = document.getElementById('att-week');
+        const fw = document.getElementById('flt-week');
+        aw.innerHTML = '<option value="">Select week…</option>' + state.weeks.map(function (w) {
+          return '<option value="' + w.id + '">' + escapeHtml(w.label) + '</option>';
+        }).join('');
+        fw.innerHTML = '<option value="">All weeks</option>' + state.weeks.map(function (w) {
+          return '<option value="' + w.id + '">' + escapeHtml(w.label) + '</option>';
+        }).join('');
+      }
+
+      async function loadDaysForWeek(sb, weekId) {
+        if (state.daysByWeek[weekId]) return state.daysByWeek[weekId];
+        const { data, error } = await sb.from('days').select('*').eq('week_id', weekId).order('date');
+        if (error) throw error;
+        state.daysByWeek[weekId] = data || [];
+        return state.daysByWeek[weekId];
+      }
+
+      async function renderAttendance(sb) {
+        const weekId = document.getElementById('att-week').value;
+        const dayId = document.getElementById('att-day').value;
+        const daySel = document.getElementById('att-day');
+        const list = document.getElementById('att-list');
+        const sum = document.getElementById('att-summary');
+
+        if (!weekId) {
+          daySel.innerHTML = '<option value="">Select week first…</option>';
+          list.innerHTML = '';
+          sum.textContent = '';
+          return;
+        }
+        const days = await loadDaysForWeek(sb, weekId);
+        daySel.innerHTML = '<option value="">Select day…</option>' + days.map(function (d) {
+          return '<option value="' + d.id + '">' + escapeHtml(d.day_name + ' ' + d.date) + '</option>';
+        }).join('');
+        if (dayId && days.some(function (d) { return d.id === dayId; })) daySel.value = dayId;
+
+        const effectiveDay = daySel.value;
+        if (!effectiveDay) {
+          list.innerHTML = '';
+          sum.textContent = 'Select a day to list enrolled campers.';
+          return;
+        }
+
+        const { data: enrOnDay, error } = await sb
+          .from('enrollments')
+          .select('id,camper_id,day_ids, campers(first_name,last_name)')
+          .eq('status', 'confirmed')
+          .contains('day_ids', [effectiveDay]);
+        if (error) throw error;
+        const rows = enrOnDay || [];
+
+        const { data: att, error: ae } = await sb.from('attendance').select('*').eq('day_id', effectiveDay);
+        if (ae) throw ae;
+        const attMap = {};
+        (att || []).forEach(function (a) { attMap[a.camper_id] = a; });
+
+        sum.textContent = rows.length ? (rows.length + ' enrolled for this day') : 'No enrollments for this day.';
+
+        list.innerHTML = rows.map(function (r) {
+          const c = r.campers || {};
+          const name = escapeHtml((c.first_name || '') + ' ' + (c.last_name || ''));
+          const a = attMap[r.camper_id];
+          const checked = a && a.present ? ' checked' : '';
+          return '<li data-eid="' + escapeHtml(r.id) + '" data-cid="' + escapeHtml(r.camper_id) + '">' +
+            '<span>' + name + '</span>' +
+            '<label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)">' +
+            'Present <input type="checkbox" class="att-chk"' + checked + ' />' +
+            '</label></li>';
+        }).join('');
+
+        list.querySelectorAll('li').forEach(function (li) {
+          const chk = li.querySelector('.att-chk');
+          chk.addEventListener('change', async function () {
+            const eid = li.getAttribute('data-eid');
+            const cid = li.getAttribute('data-cid');
+            try {
+              const { error: ue } = await sb.from('attendance').upsert({
+                enrollment_id: eid,
+                camper_id: cid,
+                day_id: effectiveDay,
+                present: chk.checked,
+                marked_at: new Date().toISOString(),
+              }, { onConflict: 'camper_id,day_id' });
+              if (ue) throw ue;
+            } catch (e) {
+              showBanner(e.message || String(e), false);
+            }
+          });
+        });
+      }
+
+      function parentGuestLabel(e, parents) {
+        if (!e.parent_id && e.guest_email) {
+          return 'Guest · ' + escapeHtml(e.guest_email);
+        }
+        if (!e.parent_id) {
+          return '<span style="color:#888">No parent (pending)</span>';
+        }
+        const p = parents[e.parent_id] || {};
+        return escapeHtml(p.full_name || p.email || e.parent_id);
+      }
+
+      function renderTable(enr, parents) {
+        const flt = document.getElementById('flt-week').value;
+        const body = document.querySelector('#tbl tbody');
+        const rows = enr.filter(function (e) { return !flt || e.week_id === flt; });
+        body.innerHTML = rows.map(function (e) {
+          const c = e.campers || {};
+          const w = e.weeks || {};
+          const pname = parentGuestLabel(e, parents);
+          const cname = escapeHtml((c.first_name || '') + ' ' + (c.last_name || ''));
+          return '<tr><td>' + pname + '</td><td>' + cname + '</td><td>' + escapeHtml(w.label || '') + '</td><td>' + escapeHtml(e.status) + '</td><td>' + escapeHtml(IMA.formatMoney(e.price_paid)) + '</td><td>' + escapeHtml(IMA.formatDate(e.created_at)) + '</td></tr>';
+        }).join('');
+      }
+
+      function exportCsv(enr, parents) {
+        const flt = document.getElementById('flt-week').value;
+        const rows = enr.filter(function (e) { return !flt || e.week_id === flt; });
+        const lines = [['parent_name', 'parent_email', 'guest_email', 'camper', 'week', 'status', 'price_paid', 'created_at'].join(',')];
+        rows.forEach(function (e) {
+          const p = parents[e.parent_id] || {};
+          const c = e.campers || {};
+          const w = e.weeks || {};
+          lines.push([
+            csv(p.full_name || ''),
+            csv(p.email || ''),
+            csv(e.guest_email || ''),
+            csv((c.first_name || '') + ' ' + (c.last_name || '')),
+            csv(w.label || ''),
+            csv(e.status),
+            csv(String(e.price_paid)),
+            csv(e.created_at),
+          ].join(','));
+        });
+        const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'ima-registrations.csv';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }
+
+      function csv(s) {
+        const t = String(s);
+        if (/[",\n]/.test(t)) return '"' + t.replace(/"/g, '""') + '"';
+        return t;
+      }
+
+      async function boot() {
+        const ctx = await requireAdmin();
+        if (!ctx) return;
+        const sb = await IMA.getSupabase();
+
+        state.weeks = await loadWeeks(sb);
+        state.enr = await loadEnrollments(sb);
+        await hydrateCampersWeeks(sb, state.enr);
+        state.parents = await hydrateParents(sb, state.enr);
+
+        overviewStats(state.enr);
+        renderWeekBars(state.weeks, state.enr);
+        renderWeekManage(sb, state.weeks);
+        fillWeekSelects();
+        renderTable(state.enr, state.parents);
+
+        document.getElementById('flt-week').addEventListener('change', function () {
+          renderTable(state.enr, state.parents);
+        });
+        document.getElementById('btn-csv').addEventListener('click', function () {
+          exportCsv(state.enr, state.parents);
+        });
+
+        document.getElementById('att-week').addEventListener('change', async function () {
+          document.getElementById('att-day').innerHTML = '<option value="">Loading…</option>';
+          await renderAttendance(sb);
+        });
+        document.getElementById('att-day').addEventListener('change', function () { renderAttendance(sb); });
+        document.getElementById('att-refresh').addEventListener('click', function () { renderAttendance(sb); });
+      }
+
+      boot().catch(function (e) {
+        showBanner(e.message || String(e), false);
+      });
+    })();
+  </script>
+</body>
+</html>

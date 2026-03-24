@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>IMA Summer Camp 2026 — Register Now</title>
+<script src="https://js.stripe.com/v3/"></script>
+<script src="/js/ima-core.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --cyan:    #00e5cc;
+    --cyan-dk: #00b8a4;
+    --cyan-gl: rgba(0,229,204,0.12);
+    --blue:    #3344ff;
+    --blue-gl: rgba(51,68,255,0.18);
+    --black:   #050505;
+    --card:    #111111;
+    --card2:   #0d0d0d;
+    --border:  #1e1e1e;
+    --border2: #2a2a2a;
+    --text:    #f0f0f0;
+    --muted:   #666;
+    --font-display: 'Bebas Neue', sans-serif;
+    --font-body:    'Barlow', sans-serif;
+    --font-cond:    'Barlow Condensed', sans-serif;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--black);
+    color: var(--text);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,204,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,204,0.025) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* HEADER */
+  header {
+    position: relative; z-index: 1;
+    background: linear-gradient(180deg, #000 0%, #060612 60%, var(--black) 100%);
+    border-bottom: 1px solid #1a1a2e;
+    padding: 32px 24px 28px;
+    text-align: center;
+    overflow: hidden;
+  }
+
+  header::before {
+    content: '';
+    position: absolute;
+    top: -60px; left: 50%; transform: translateX(-50%);
+    width: 500px; height: 200px;
+    background: radial-gradient(ellipse, rgba(51,68,255,0.2) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 400px; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+  }
+
+  .logo-img {
+    width: 110px; height: 110px;
+    object-fit: contain;
+    filter: drop-shadow(0 0 20px rgba(0,229,204,0.5));
+    margin-bottom: 12px;
+  }
+
+  .header-eyebrow {
+    font-family: var(--font-cond);
+    font-size: 12px;
+    letter-spacing: 4px;
+    color: var(--cyan);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    opacity: 0.8;
+  }
+
+  .header-logo {
+    font-family: var(--font-display);
+    font-size: clamp(13px, 3vw, 18px);
+    letter-spacing: 6px;
+    color: #fff;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .header-tagline {
+    font-family: var(--font-cond);
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .early-bird-banner {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: linear-gradient(135deg, rgba(0,229,204,0.08), rgba(0,229,204,0.04));
+    border: 1px solid rgba(0,229,204,0.35);
+    border-radius: 4px;
+    padding: 7px 16px;
+    margin-top: 18px;
+    font-family: var(--font-cond);
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--cyan);
+    text-transform: uppercase;
+  }
+
+  .dot {
+    width: 6px; height: 6px;
+    background: var(--cyan);
+    border-radius: 50%;
+    animation: pulse 1.4s ease-in-out infinite;
+    box-shadow: 0 0 6px var(--cyan);
+  }
+
+  @keyframes pulse {
+    0%,100% { opacity:1; transform:scale(1); }
+    50%      { opacity:0.3; transform:scale(0.6); }
+  }
+
+  /* LAYOUT */
+  .page {
+    position: relative; z-index: 1;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 36px 18px 80px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  @media (min-width: 760px) {
+    .page { grid-template-columns: 1fr 340px; }
+    .order-summary { grid-row: 1 / 3; grid-column: 2; }
+  }
+
+  /* CARDS */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    animation: fadeUp 0.45s ease both;
+  }
+
+  .card:nth-child(2) { animation-delay: 0.08s; }
+  .order-summary     { animation-delay: 0.04s; }
+
+  @keyframes fadeUp {
+    from { opacity:0; transform:translateY(14px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+
+  .card-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: linear-gradient(90deg, rgba(0,229,204,0.04) 0%, transparent 100%);
+  }
+
+  .step-num {
+    width: 24px; height: 24px;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    border-radius: 50%;
+    font-family: var(--font-cond);
+    font-size: 13px;
+    font-weight: 700;
+    color: #000;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+  }
+
+  .card-title {
+    font-family: var(--font-cond);
+    font-size: 16px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+
+  /* WEEKS TABLE */
+  .weeks-list {
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .week-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    background: var(--card2);
+    transition: all 0.15s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .week-row::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, var(--cyan-gl), var(--blue-gl));
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+  }
+
+  .week-row.active {
+    border-color: var(--cyan);
+    box-shadow: 0 0 0 1px var(--cyan);
+  }
+
+  .week-row.active::before { opacity: 1; }
+
+  /* Checkbox toggle */
+  .week-toggle {
+    width: 22px; height: 22px;
+    border: 1.5px solid var(--border2);
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+    font-size: 11px;
+    color: transparent;
+    background: transparent;
+    position: relative;
+    z-index: 1;
+  }
+
+  .week-row.active .week-toggle {
+    background: var(--cyan);
+    border-color: var(--cyan);
+    color: #000;
+  }
+
+  /* Week info */
+  .week-info { position: relative; z-index: 1; }
+
+  .week-name {
+    font-family: var(--font-display);
+    font-size: 20px;
+    color: var(--cyan);
+    line-height: 1;
+    text-shadow: 0 0 16px rgba(0,229,204,0.35);
+  }
+
+  .week-row:not(.active) .week-name { color: #555; text-shadow: none; }
+
+  .week-dates-label {
+    font-family: var(--font-cond);
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 2px;
+    letter-spacing: 0.5px;
+  }
+
+  .week-price-label {
+    font-family: var(--font-cond);
+    font-size: 12px;
+    color: #444;
+    margin-top: 1px;
+  }
+
+  .week-row.active .week-price-label { color: #888; }
+
+  /* Kids counter per row */
+  .week-kids-ctrl {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    position: relative;
+    z-index: 1;
+    opacity: 0.25;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+
+  .week-row.active .week-kids-ctrl {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  .mini-btn {
+    width: 32px; height: 32px;
+    background: #181818;
+    border: 1px solid var(--border2);
+    color: var(--text);
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: grid;
+    place-items: center;
+    font-family: var(--font-body);
+    line-height: 1;
+    user-select: none;
+  }
+
+  .mini-btn:first-child { border-radius: 5px 0 0 5px; }
+  .mini-btn:last-child  { border-radius: 0 5px 5px 0; }
+
+  .mini-btn:hover:not(:disabled) {
+    background: var(--cyan);
+    border-color: var(--cyan);
+    color: #000;
+  }
+
+  .mini-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  .mini-val {
+    width: 36px; height: 32px;
+    background: #090909;
+    border: 1px solid var(--border2);
+    border-left: none; border-right: none;
+    color: var(--text);
+    font-family: var(--font-display);
+    font-size: 18px;
+    text-align: center;
+    outline: none;
+    -moz-appearance: textfield;
+  }
+  .mini-val::-webkit-inner-spin-button,
+  .mini-val::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+  .kids-tag {
+    font-family: var(--font-cond);
+    font-size: 10px;
+    color: var(--muted);
+    text-align: center;
+    margin-top: 3px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .week-kids-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  /* ORDER SUMMARY */
+  .order-summary {
+    position: sticky;
+    top: 20px;
+    align-self: start;
+  }
+
+  .summary-body { padding: 18px; }
+
+  .summary-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+
+  .summary-line:last-of-type { border-bottom: none; }
+  .summary-line .label { color: var(--muted); flex: 1; line-height: 1.4; }
+  .summary-line .val   { color: var(--text); font-weight: 600; white-space: nowrap; }
+
+  .summary-total-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(0,229,204,0.4);
+  }
+
+  .total-label {
+    font-family: var(--font-display);
+    font-size: 18px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .total-amount {
+    font-family: var(--font-display);
+    font-size: 38px;
+    color: var(--cyan);
+    line-height: 1;
+    text-shadow: 0 0 30px rgba(0,229,204,0.4);
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 22px 14px;
+    color: var(--muted);
+    font-size: 12px;
+    font-family: var(--font-cond);
+    letter-spacing: 1px;
+    line-height: 1.8;
+  }
+
+  /* CHECKOUT BTN */
+  #checkout-btn {
+    width: 100%;
+    margin-top: 18px;
+    padding: 16px;
+    background: linear-gradient(135deg, var(--cyan) 0%, var(--blue) 100%);
+    color: #000;
+    border: none;
+    border-radius: 7px;
+    font-family: var(--font-display);
+    font-size: 19px;
+    letter-spacing: 2.5px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  #checkout-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0,229,204,0.35), 0 4px 12px rgba(51,68,255,0.25);
+  }
+
+  #checkout-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+
+  .btn-loading { display: none; }
+  #checkout-btn.loading .btn-text    { display: none; }
+  #checkout-btn.loading .btn-loading { display: inline; }
+
+  .secure-note {
+    text-align: center;
+    margin-top: 10px;
+    font-size: 11px;
+    color: #444;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+
+  /* INCLUDES */
+  .includes-list {
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .includes-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: #bbb;
+  }
+
+  .inc-icon {
+    width: 22px; height: 22px;
+    background: rgba(0,229,204,0.1);
+    border: 1px solid rgba(0,229,204,0.2);
+    border-radius: 4px;
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+
+  .msg { display:none; padding:11px 14px; border-radius:6px; font-size:12px; margin-top:12px; line-height:1.5; }
+  .msg.error   { background:rgba(255,60,80,0.08); border:1px solid rgba(255,60,80,0.3); color:#ff8888; display:block; }
+  .msg.warning { background:rgba(0,229,204,0.06); border:1px solid rgba(0,229,204,0.3); color:var(--cyan); display:block; }
+
+  footer {
+    position: relative; z-index: 1;
+    text-align: center;
+    padding: 22px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: #333;
+  }
+  footer a { color: #444; text-decoration: none; }
+  footer a:hover { color: var(--cyan); }
+
+  .top-auth {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 12px 18px 0;
+    position: relative;
+    z-index: 2;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .top-auth a { color: var(--cyan); }
+  .auth-box {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+  }
+  .auth-box .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .select-camper {
+    flex: 1;
+    min-width: 200px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border2);
+    background: var(--card2);
+    color: var(--text);
+    font-family: var(--font-body);
+  }
+  .guest-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  @media (max-width: 560px) {
+    .guest-grid { grid-template-columns: 1fr; }
+  }
+  .guest-grid input {
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border2);
+    background: var(--card2);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 14px;
+  }
+  .week-block {
+    padding: 14px 16px;
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    background: var(--card2);
+    margin-bottom: 10px;
+  }
+  .week-block.full {
+    opacity: 0.45;
+    pointer-events: none;
+  }
+  .week-block-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .week-block-head .wn {
+    font-family: var(--font-display);
+    font-size: 20px;
+    color: var(--cyan);
+  }
+  .week-block.full .wn { color: #555; }
+  .full-badge {
+    font-family: var(--font-cond);
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: #ff8888;
+    border: 1px solid rgba(255,100,100,0.4);
+    padding: 4px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+  }
+  .day-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .day-chip {
+    font-family: var(--font-cond);
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border2);
+    background: #0a0a0a;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .day-chip:hover:not(:disabled) { border-color: var(--cyan); color: var(--text); }
+  .day-chip.on {
+    border-color: var(--cyan);
+    background: rgba(0,229,204,0.12);
+    color: var(--cyan);
+  }
+  .day-chip:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  /* Stripe test pricing — only shown when ?test=true */
+  .test-price-bar {
+    display: none;
+    position: fixed;
+    bottom: 14px;
+    right: 14px;
+    z-index: 100;
+  }
+  .test-price-bar.is-visible { display: block; }
+  .test-price-btn {
+    font-family: var(--font-cond);
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 200, 80, 0.5);
+    background: rgba(40, 32, 0, 0.92);
+    color: #ffc850;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .test-price-btn:hover {
+    background: rgba(55, 45, 10, 0.95);
+    border-color: #ffc850;
+  }
+  .test-price-btn[aria-pressed="true"] {
+    background: rgba(0, 80, 60, 0.95);
+    border-color: var(--cyan);
+    color: var(--cyan);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <img class="logo-img" src="/logo.png" alt="Impact Martial Athletics" />
+  <div class="header-eyebrow">Davie, Florida · Ages 5–15 · Mon–Fri</div>
+  <div class="header-logo">2026 Summer Camp Registration</div>
+  <div class="header-tagline">Strong Mind. Strong Body. Strong Future.</div>
+  <div class="early-bird-banner">
+    <span class="dot"></span>
+    <span id="price-banner-text">$85/day · $75/day early bird before May 1 · Max 35 kids/week</span>
+  </div>
+</header>
+
+<div class="top-auth" id="top-auth">
+  <span id="auth-status">Checking session…</span>
+</div>
+
+<main class="page">
+
+  <div class="card">
+    <div class="card-header">
+      <div class="step-num">1</div>
+      <div class="card-title">Who is attending?</div>
+    </div>
+    <div class="weeks-list">
+      <div id="panel-logged" class="auth-box" style="display:none">
+        <div class="row">
+          <label class="week-dates-label" style="margin:0">Camper</label>
+          <select id="camper-select" class="select-camper">
+            <option value="">Select camper…</option>
+          </select>
+          <a href="/portal.html">Manage in portal</a>
+        </div>
+      </div>
+      <div id="panel-guest" class="auth-box" style="display:none">
+        <div class="week-dates-label" style="margin-bottom:8px">Guest checkout — create a parent account later with the same email.</div>
+        <div class="guest-grid">
+          <input type="text" id="g-first" placeholder="Child first name" autocomplete="given-name" />
+          <input type="text" id="g-last" placeholder="Child last name" autocomplete="family-name" />
+          <input type="email" id="g-email" placeholder="Your email" autocomplete="email" />
+          <input type="number" id="g-age" placeholder="Age" min="3" max="18" />
+        </div>
+      </div>
+      <div id="panel-login-prompt" class="auth-box">
+        <a href="/login.html?return=/index.html">Sign in</a> to pick an existing camper, or
+        <a href="#" id="link-guest">continue as guest</a>.
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="step-num">2</div>
+      <div class="card-title">Pick days (Mon–Fri)</div>
+    </div>
+    <div class="weeks-list" id="weeks-mount">
+      <p class="empty-state" id="weeks-loading">Loading camp weeks…</p>
+    </div>
+  </div>
+
+  <div class="card order-summary">
+    <div class="card-header">
+      <div class="card-title" style="letter-spacing:1.5px">Order Summary</div>
+    </div>
+    <div class="summary-body">
+      <div id="empty-state" class="empty-state">
+        Choose camper / guest info, then select at least one camp day.
+      </div>
+      <div id="summary-lines" style="display:none"></div>
+      <div id="total-row" class="summary-total-row" style="display:none">
+        <div class="total-label">Total</div>
+        <div class="total-amount" id="total-amount">$0</div>
+      </div>
+      <div id="msg" class="msg"></div>
+      <button type="button" id="checkout-btn" disabled>
+        <span class="btn-text">Secure Checkout →</span>
+        <span class="btn-loading">Processing…</span>
+      </button>
+      <div class="secure-note">🔒 Powered by Stripe · Card data stays safe</div>
+    </div>
+
+    <div class="card-header" style="border-top:1px solid var(--border)">
+      <div class="card-title" style="font-size:13px;letter-spacing:1.5px">What's Included</div>
+    </div>
+    <div class="includes-list">
+      <div class="includes-item"><span class="inc-icon">👕</span> Impact Training Shirt</div>
+      <div class="includes-item"><span class="inc-icon">🥊</span> Protective Punching Gloves</div>
+      <div class="includes-item"><span class="inc-icon">⚡</span> Pay only for days you select</div>
+      <div class="includes-item"><span class="inc-icon">🛡️</span> One-time $65 registration (if first camp signup for this child)</div>
+    </div>
+  </div>
+
+</main>
+
+<div id="test-price-bar" class="test-price-bar" role="region" aria-label="Stripe test pricing" hidden>
+  <button type="button" id="test-price-toggle" class="test-price-btn" aria-pressed="false">Test $1: off</button>
+</div>
+
+<footer>
+  © 2026 Impact Martial Athletics · 4401 S Flamingo Rd, Davie FL 33330
+  &nbsp;·&nbsp; <a href="mailto:info@impactmartialathletics.com">Contact Us</a>
+  &nbsp;·&nbsp; <a href="/login.html">Parent login</a>
+  &nbsp;·&nbsp; <a href="/register.html">Register</a>
+</footer>
+
+<script>
+(function () {
+  const STRIPE_PK = 'pk_live_51RTV7gJWx3IGJhgTvjwdzh9n9luSbxB3Dp3nZCvQCPmx7mWCpoJFrROegF5WH1Ig4fHSuhZ04nVz0b345IV6wCWI00NxR9jpED';
+  const API_CHECKOUT = '/api/create-checkout-session';
+  const EARLY = new Date('2026-05-01T00:00:00.000Z');
+
+  const urlTest = new URLSearchParams(window.location.search).get('test') === 'true';
+  let testPriceMode = false;
+  let weeksPayload = [];
+  /** @type {Record<string, Set<string>>} */
+  const selectedByWeek = {};
+  let session = null;
+  let pricingPreview = { dayRate: 85, registrationFee: 65, needsRegistration: true };
+  let guestMode = false;
+
+  function dayRateClient() {
+    if (testPriceMode) return 1;
+    return new Date() < EARLY ? 75 : 85;
+  }
+  function regFeeClient() {
+    return testPriceMode ? 1 : 65;
+  }
+
+  function fmt(n) {
+    return '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+  }
+
+  async function refreshPricingPreview() {
+    const camperId = document.getElementById('camper-select').value;
+    const headers = {};
+    if (session && session.access_token) headers['Authorization'] = 'Bearer ' + session.access_token;
+    const params = new URLSearchParams();
+    if (testPriceMode) params.set('test', 'true');
+    if (camperId && session) params.set('camperId', camperId);
+    const q = params.toString();
+    const url = '/api/preview-pricing' + (q ? '?' + q : '');
+    try {
+      const res = await fetch(url, { headers });
+      if (res.ok) pricingPreview = await res.json();
+    } catch (e) {
+      pricingPreview = {
+        dayRate: dayRateClient(),
+        registrationFee: regFeeClient(),
+        needsRegistration: true,
+      };
+    }
+    if (testPriceMode) {
+      pricingPreview.dayRate = 1;
+      pricingPreview.registrationFee = 1;
+    }
+    updateSummary();
+  }
+
+  function totalSelectedDays() {
+    let n = 0;
+    Object.values(selectedByWeek).forEach(function (set) {
+      n += set.size;
+    });
+    return n;
+  }
+
+  function updateSummary() {
+    const empty = document.getElementById('empty-state');
+    const lines = document.getElementById('summary-lines');
+    const totalRow = document.getElementById('total-row');
+    const btn = document.getElementById('checkout-btn');
+    const msg = document.getElementById('msg');
+    msg.className = 'msg';
+
+    const nDays = totalSelectedDays();
+    const rate = testPriceMode ? 1 : pricingPreview.dayRate || dayRateClient();
+    const campTotal = nDays * rate;
+    const needReg = guestMode || pricingPreview.needsRegistration !== false;
+    const reg = needReg ? (testPriceMode ? 1 : pricingPreview.registrationFee || regFeeClient()) : 0;
+
+    const camperOk = guestMode
+      ? !!(document.getElementById('g-first').value && document.getElementById('g-last').value && document.getElementById('g-email').value && document.getElementById('g-age').value)
+      : !!(session && document.getElementById('camper-select').value);
+
+    if (nDays === 0 || !camperOk) {
+      empty.style.display = '';
+      lines.style.display = 'none';
+      totalRow.style.display = 'none';
+      btn.disabled = true;
+      return;
+    }
+
+    empty.style.display = 'none';
+    lines.style.display = '';
+    totalRow.style.display = '';
+
+    let html = '';
+    (weeksPayload || []).forEach(function (w) {
+      const set = selectedByWeek[w.id];
+      if (!set || !set.size) return;
+      const labels = w.days
+        .filter(function (d) {
+          return set.has(d.id);
+        })
+        .map(function (d) {
+          return d.day_name.trim() + ' ' + d.date;
+        })
+        .join(', ');
+      html +=
+        '<div class="summary-line"><span class="label">' +
+        escapeHtml(w.label) +
+        '<br><small style="color:#444">' +
+        set.size +
+        ' day' +
+        (set.size === 1 ? '' : 's') +
+        ' × ' +
+        fmt(rate) +
+        '<br>' +
+        escapeHtml(labels) +
+        '</small></span><span class="val">' +
+        fmt(set.size * rate) +
+        '</span></div>';
+    });
+    if (reg > 0) {
+      html +=
+        '<div class="summary-line"><span class="label">Registration <small style="color:#333">(one-time if applicable)</small></span><span class="val">' +
+        fmt(reg) +
+        '</span></div>';
+    }
+    lines.innerHTML = html;
+    document.getElementById('total-amount').textContent = fmt(campTotal + reg);
+    btn.disabled = false;
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function toggleDay(weekId, dayId, btnEl) {
+    if (!selectedByWeek[weekId]) selectedByWeek[weekId] = new Set();
+    const set = selectedByWeek[weekId];
+    if (set.has(dayId)) {
+      set.delete(dayId);
+      btnEl.classList.remove('on');
+    } else {
+      set.add(dayId);
+      btnEl.classList.add('on');
+    }
+    if (set.size === 0) delete selectedByWeek[weekId];
+    updateSummary();
+  }
+
+  function renderWeeks() {
+    const mount = document.getElementById('weeks-mount');
+    if (!weeksPayload.length) {
+      mount.innerHTML = '<p class="empty-state">No weeks available.</p>';
+      return;
+    }
+    mount.innerHTML = '';
+    weeksPayload.forEach(function (w) {
+      const full = w.disabled || w.is_full;
+      const block = document.createElement('div');
+      block.className = 'week-block' + (full ? ' full' : '');
+      const head = document.createElement('div');
+      head.className = 'week-block-head';
+      head.innerHTML =
+        '<div><div class="wn">' +
+        escapeHtml(w.label) +
+        '</div><div class="week-dates-label">' +
+        escapeHtml(String(w.start_date)) +
+        ' – ' +
+        escapeHtml(String(w.end_date)) +
+        '</div></div>';
+      if (full) {
+        const b = document.createElement('span');
+        b.className = 'full-badge';
+        b.textContent = 'FULL';
+        head.appendChild(b);
+      }
+      block.appendChild(head);
+      const chips = document.createElement('div');
+      chips.className = 'day-chips';
+      (w.days || []).forEach(function (d) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'day-chip';
+        btn.textContent = d.day_name.trim().slice(0, 3) + ' ' + d.date.slice(5);
+        btn.disabled = full || d.at_capacity;
+        if (btn.disabled && !full) btn.title = 'This day is at capacity';
+        btn.addEventListener('click', function () {
+          if (btn.disabled) return;
+          toggleDay(w.id, d.id, btn);
+        });
+        const sel = selectedByWeek[w.id];
+        if (sel && sel.has(d.id)) btn.classList.add('on');
+        chips.appendChild(btn);
+      });
+      block.appendChild(chips);
+      mount.appendChild(block);
+    });
+  }
+
+  async function loadWeeks() {
+    try {
+      const res = await fetch('/api/weeks');
+      if (!res.ok) throw new Error('Weeks failed');
+      const data = await res.json();
+      weeksPayload = data.weeks || [];
+      document.getElementById('weeks-loading').style.display = 'none';
+      renderWeeks();
+    } catch (e) {
+      document.getElementById('weeks-mount').innerHTML =
+        '<p class="empty-state" style="color:#f88">Could not load weeks. Check API and Supabase env.</p>';
+    }
+  }
+
+  async function bootAuth() {
+    const status = document.getElementById('auth-status');
+    try {
+      await IMA.getSupabase();
+      session = (await IMA.getSession()) || null;
+    } catch (e) {
+      status.textContent = '';
+      guestMode = true;
+      showGuestPanel();
+      return;
+    }
+    if (session) {
+      status.innerHTML = 'Signed in · <a href="/portal.html">Portal</a> · <a href="#" id="logout-link">Log out</a>';
+      document.getElementById('panel-login-prompt').style.display = 'none';
+      document.getElementById('panel-logged').style.display = 'block';
+      document.getElementById('panel-guest').style.display = 'none';
+      guestMode = false;
+      const sb = await IMA.getSupabase();
+      const { data: campers } = await sb.from('campers').select('id,first_name,last_name').eq('parent_id', session.user.id);
+      const sel = document.getElementById('camper-select');
+      sel.innerHTML = '<option value="">Select camper…</option>';
+      (campers || []).forEach(function (c) {
+        const o = document.createElement('option');
+        o.value = c.id;
+        o.textContent = c.first_name + ' ' + c.last_name;
+        sel.appendChild(o);
+      });
+      sel.addEventListener('change', refreshPricingPreview);
+      document.getElementById('logout-link').addEventListener('click', function (ev) {
+        ev.preventDefault();
+        IMA.signOut();
+      });
+    } else {
+      status.innerHTML = '<a href="/login.html?return=/index.html">Sign in</a> · <a href="/register.html">Register</a>';
+      document.getElementById('panel-login-prompt').style.display = 'block';
+    }
+    document.getElementById('link-guest').addEventListener('click', function (ev) {
+      ev.preventDefault();
+      guestMode = true;
+      showGuestPanel();
+      refreshPricingPreview();
+    });
+  }
+
+  function showGuestPanel() {
+    document.getElementById('panel-login-prompt').style.display = 'none';
+    document.getElementById('panel-logged').style.display = 'none';
+    document.getElementById('panel-guest').style.display = 'block';
+    document.getElementById('auth-status').textContent = 'Guest checkout';
+    ['g-first', 'g-last', 'g-email', 'g-age'].forEach(function (id) {
+      document.getElementById(id).addEventListener('input', function () {
+        refreshPricingPreview();
+      });
+    });
+  }
+
+  async function startCheckout() {
+    const btn = document.getElementById('checkout-btn');
+    const msg = document.getElementById('msg');
+    if (STRIPE_PK.indexOf('REPLACE') !== -1) {
+      msg.className = 'msg warning';
+      msg.textContent = 'Configure Stripe publishable key.';
+      return;
+    }
+    const bookings = [];
+    Object.keys(selectedByWeek).forEach(function (wid) {
+      const ids = Array.from(selectedByWeek[wid]);
+      if (ids.length) bookings.push({ weekId: wid, dayIds: ids });
+    });
+    if (!bookings.length) return;
+
+    const headers = { 'Content-Type': 'application/json' };
+    if (session && session.access_token) headers['Authorization'] = 'Bearer ' + session.access_token;
+
+    const body = { bookings: bookings, testPricing: testPriceMode };
+    if (guestMode) {
+      body.guest = {
+        email: document.getElementById('g-email').value.trim(),
+        firstName: document.getElementById('g-first').value.trim(),
+        lastName: document.getElementById('g-last').value.trim(),
+        age: document.getElementById('g-age').value,
+      };
+    } else {
+      body.camperId = document.getElementById('camper-select').value;
+    }
+
+    btn.classList.add('loading');
+    btn.disabled = true;
+    msg.className = 'msg';
+
+    let stripe;
+    try {
+      stripe = window.Stripe(STRIPE_PK);
+    } catch (e) {
+      msg.className = 'msg error';
+      msg.textContent = e.message;
+      btn.classList.remove('loading');
+      btn.disabled = false;
+      return;
+    }
+
+    try {
+      const res = await fetch(API_CHECKOUT, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(function () {
+        return {};
+      });
+      if (!res.ok) throw new Error(data.error || 'Server error ' + res.status);
+      const out = await stripe.redirectToCheckout({ sessionId: data.sessionId });
+      if (out.error) throw new Error(out.error.message);
+    } catch (err) {
+      msg.className = 'msg error';
+      msg.textContent = err.message || String(err);
+      btn.classList.remove('loading');
+      btn.disabled = false;
+    }
+  }
+
+  function initTestBar() {
+    const bar = document.getElementById('test-price-bar');
+    const btn = document.getElementById('test-price-toggle');
+    if (!urlTest || !bar || !btn) return;
+    bar.hidden = false;
+    bar.classList.add('is-visible');
+    btn.addEventListener('click', function () {
+      testPriceMode = !testPriceMode;
+      btn.setAttribute('aria-pressed', String(testPriceMode));
+      btn.textContent = testPriceMode ? 'Test $1: on' : 'Test $1: off';
+      refreshPricingPreview();
+    });
+  }
+
+  document.getElementById('checkout-btn').addEventListener('click', startCheckout);
+
+  loadWeeks();
+  bootAuth().then(function () {
+    refreshPricingPreview();
+  });
+  initTestBar();
+})();
+</script>
+</body>
+</html>

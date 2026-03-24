@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Create Account — IMA Summer Camp</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/ima-theme.css" />
+</head>
+<body>
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-card-head">
+        <img class="auth-logo" src="/logo.png" alt="Impact Martial Athletics" />
+        <div class="auth-title">Parent Account</div>
+        <div class="auth-sub">Register to manage camp bookings</div>
+      </div>
+      <div class="auth-body">
+        <div id="msg" class="msg"></div>
+        <form id="form">
+          <label class="label" for="full_name">Full name</label>
+          <input class="input" id="full_name" name="full_name" type="text" autocomplete="name" required />
+
+          <label class="label" for="phone">Phone</label>
+          <input class="input" id="phone" name="phone" type="tel" autocomplete="tel" required />
+
+          <label class="label" for="email">Email</label>
+          <input class="input" id="email" name="email" type="email" autocomplete="email" required />
+
+          <label class="label" for="password">Password</label>
+          <input class="input" id="password" name="password" type="password" autocomplete="new-password" minlength="8" required />
+
+          <button class="btn-primary" type="submit" id="btn">Create account</button>
+        </form>
+        <div class="link-row">
+          Already have an account? <a href="/login.html">Sign in</a>
+        </div>
+        <div class="link-row" style="margin-top:10px">
+          <a href="/index.html">← Summer camp checkout</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="/js/ima-core.js"></script>
+  <script>
+    (function () {
+      const msg = document.getElementById('msg');
+      const btn = document.getElementById('btn');
+      const form = document.getElementById('form');
+
+      function show(text, ok) {
+        msg.textContent = text;
+        msg.className = 'msg show ' + (ok ? 'ok' : 'error');
+      }
+
+      async function boot() {
+        try {
+          await IMA.getSupabase();
+          const session = await IMA.getSession();
+          if (session) window.location.replace('/portal.html');
+        } catch (e) {
+          show(e.message || String(e), false);
+        }
+      }
+
+      form.addEventListener('submit', async function (ev) {
+        ev.preventDefault();
+        msg.className = 'msg';
+        btn.disabled = true;
+        try {
+          const sb = await IMA.getSupabase();
+          const email = document.getElementById('email').value.trim();
+          const password = document.getElementById('password').value;
+          const full_name = document.getElementById('full_name').value.trim();
+          const phone = document.getElementById('phone').value.trim();
+
+          const { data, error } = await sb.auth.signUp({
+            email,
+            password,
+            options: {
+              data: { full_name: full_name, phone: phone },
+              emailRedirectTo: window.location.origin + '/portal.html',
+            },
+          });
+          if (error) throw error;
+          const user = data.user;
+          if (!user) {
+            show('Check your email to confirm your account, then sign in.', true);
+            btn.disabled = false;
+            return;
+          }
+
+          const { error: pe } = await sb.from('profiles').upsert(
+            {
+              id: user.id,
+              email: email,
+              full_name: full_name,
+              phone: phone,
+              role: 'parent',
+            },
+            { onConflict: 'id' }
+          );
+          if (pe) throw pe;
+
+          if (data.session) {
+            window.location.replace('/portal.html');
+            return;
+          }
+          show('Check your email to confirm, then sign in at login.', true);
+        } catch (e) {
+          show(e.message || 'Registration failed', false);
+        }
+        btn.disabled = false;
+      });
+
+      boot();
+    })();
+  </script>
+</body>
+</html>

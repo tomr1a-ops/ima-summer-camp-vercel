@@ -1,0 +1,15 @@
+---
+description: Always deploy vercel-v2 to Vercel production after code changes
+alwaysApply: true
+---
+
+# Vercel v2 (IMA camp) — always deploy
+
+**Rule: Always deploy.** After any change under this repo (`index.html`, `success.html`, `api/`, `package.json`, `vercel.json`), you **must** run a **production** deploy before the task is done. Treat deploy as part of the same turn as the edit.
+
+```bash
+cd /Users/tomrichardson/Downloads/vercel-v2 && npx vercel --prod --yes
+```
+
+- Use the **Vercel CLI** for a forced production deploy; do not rely only on git-push auto deploys or tell the user to deploy later.
+- If the command fails (auth, network), retry or fix, then deploy again. Only skip if the user **explicitly** says not to deploy.
