@@ -151,8 +151,8 @@
   }
 
   @media (min-width: 760px) {
-    .page { grid-template-columns: 1fr 340px; }
-    .order-summary { grid-row: 1 / 3; grid-column: 2; }
+    .reg-main .page { grid-template-columns: 1fr 340px; }
+    .reg-main .order-summary { grid-row: 1 / 3; grid-column: 2; }
   }
 
   /* CARDS */
@@ -509,13 +509,59 @@
   footer a { color: #444; text-decoration: none; }
   footer a:hover { color: var(--cyan); }
 
-  /* Sign in first — full-width rail above header */
+  /* Registration tabs (under header) */
+  .reg-main {
+    position: relative;
+    z-index: 2;
+  }
+  .reg-tabs {
+    display: flex;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 18px;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #06060a 0%, var(--black) 100%);
+  }
+  .reg-tab {
+    flex: 1;
+    max-width: 320px;
+    padding: 16px 14px;
+    margin-bottom: -1px;
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: var(--muted);
+    font-family: var(--font-cond);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .reg-tab:hover { color: var(--text); }
+  .reg-tab[aria-selected="true"] {
+    color: var(--cyan);
+    border-bottom-color: var(--cyan);
+  }
+  .reg-tab-panel {
+    animation: fadeUp 0.35s ease both;
+  }
+  .reg-tab-panel[hidden] {
+    display: none !important;
+  }
+  @media (max-width: 480px) {
+    .reg-tab { font-size: 10px; letter-spacing: 1px; padding: 14px 8px; }
+  }
+
+  /* Account tab — hero + children */
   .signin-rail {
     position: relative;
-    z-index: 3;
+    z-index: 1;
     background: linear-gradient(180deg, #0a0a12 0%, #08080c 100%);
     border-bottom: 1px solid var(--border);
-    padding: 20px 18px 22px;
+    padding: 20px 18px 28px;
   }
   .signin-rail-inner {
     max-width: 960px;
@@ -1072,56 +1118,6 @@
 </head>
 <body>
 
-<div class="signin-rail" id="signin-rail">
-  <div class="signin-rail-inner">
-    <div id="state-signed-out" class="auth-hero-card">
-      <p class="auth-hero-kicker">IMA Summer Camp 2026</p>
-      <h1 class="auth-hero-title">Sign in to register your camper</h1>
-      <p class="auth-hero-sub">Parents: use your portal account. In the next step you&rsquo;ll pick <strong>which child</strong> is attending <strong>each week</strong>.</p>
-      <div class="auth-hero-actions">
-        <a class="btn-primary" href="/login.html?return=/index.html">Sign in</a>
-        <a class="btn-secondary" href="/register.html?return=/index.html">Create account</a>
-      </div>
-      <p class="auth-guest-fallback">
-        <a href="#" id="link-guest">Continue as guest</a>
-        <span class="guest-hint">Secondary option — you can create a parent account later with the same email.</span>
-      </p>
-    </div>
-
-    <div id="state-guest" class="auth-hero-card" style="display:none">
-      <p class="auth-hero-kicker">Guest checkout</p>
-      <h2 class="auth-hero-title-sm">Camper &amp; contact</h2>
-      <p class="auth-hero-sub" style="margin-bottom:12px">Enter your child and email. Prefer an account? <a href="/login.html?return=/index.html" style="color:var(--cyan)">Sign in</a></p>
-      <div class="guest-grid">
-        <input type="text" id="g-first" placeholder="Child first name" autocomplete="given-name" />
-        <input type="text" id="g-last" placeholder="Child last name" autocomplete="family-name" />
-        <input type="email" id="g-email" placeholder="Your email" autocomplete="email" />
-        <input type="number" id="g-age" placeholder="Age" min="3" max="18" />
-      </div>
-      <p class="auth-inline-links" style="margin-top:14px"><a href="#" id="link-back-signin">← Back to sign in</a></p>
-    </div>
-
-    <div id="state-signed-in" class="auth-hero-card" style="display:none">
-      <p class="auth-hero-kicker">Signed in</p>
-      <h2 class="auth-hero-title-sm">Your children</h2>
-      <p class="auth-hero-sub" style="margin-bottom:10px">Each camp week has its own &ldquo;which child&rdquo; menu below so you can enroll different kids in different weeks. Manage profiles anytime in the <a href="/portal.html" style="color:var(--cyan)">parent portal</a>.</p>
-      <ul id="parent-camper-list" class="parent-camper-list" aria-label="Children on file"></ul>
-      <p id="parent-camper-empty" class="week-dates-label" style="display:none;margin-top:10px;line-height:1.5">No campers on file yet. Add one here (uses your account securely) or in the <a href="/portal.html" style="color:var(--cyan)">portal</a>.</p>
-      <button type="button" class="add-camper-toggle" id="btn-toggle-add-camper" aria-expanded="false">+ Add a child</button>
-      <div class="add-camper-panel" id="add-camper-panel">
-        <div class="add-camper-grid">
-          <input type="text" id="new-camper-first" placeholder="First name" autocomplete="given-name" />
-          <input type="text" id="new-camper-last" placeholder="Last name" autocomplete="family-name" />
-          <input type="number" id="new-camper-age" placeholder="Age" min="3" max="18" style="grid-column:1/-1" />
-        </div>
-        <button type="button" class="btn-primary" id="btn-save-camper" style="width:100%">Save camper</button>
-        <p id="add-camper-msg" class="week-dates-label" style="margin-top:10px;color:#f88"></p>
-      </div>
-      <p class="auth-inline-links"><a href="/portal.html">Manage in portal</a> · <a href="#" id="logout-link-top">Log out</a></p>
-    </div>
-  </div>
-</div>
-
 <header>
   <img class="logo-img" src="/logo.png" alt="Impact Martial Athletics" />
   <div class="header-eyebrow">Davie, Florida · Ages 5–15 · Mon–Fri</div>
@@ -1136,12 +1132,71 @@
   </p>
 </header>
 
-<main class="page">
+<main class="reg-main" id="reg-main">
+  <nav class="reg-tabs" role="tablist" aria-label="Summer camp registration">
+    <button type="button" class="reg-tab" role="tab" id="tab-account" aria-selected="true" aria-controls="panel-account">Account &amp; children</button>
+    <button type="button" class="reg-tab" role="tab" id="tab-schedule" aria-selected="false" aria-controls="panel-schedule">Schedule camp</button>
+  </nav>
+
+  <div id="panel-account" class="reg-tab-panel" role="tabpanel" aria-labelledby="tab-account">
+    <div class="signin-rail" id="signin-rail">
+      <div class="signin-rail-inner">
+        <div id="state-signed-out" class="auth-hero-card">
+          <p class="auth-hero-kicker">IMA Summer Camp 2026</p>
+          <h1 class="auth-hero-title">Sign in to register your camper</h1>
+          <p class="auth-hero-sub">Start here: sign in and add your children. Then open the <strong>Schedule camp</strong> tab to pick weeks or days and choose which child attends each week.</p>
+          <div class="auth-hero-actions">
+            <a class="btn-primary" href="/login.html?return=/index.html">Sign in</a>
+            <a class="btn-secondary" href="/register.html?return=/index.html">Create account</a>
+          </div>
+          <p class="auth-guest-fallback">
+            <a href="#" id="link-guest">Continue as guest</a>
+            <span class="guest-hint">Secondary option — you can create a parent account later with the same email.</span>
+          </p>
+        </div>
+
+        <div id="state-guest" class="auth-hero-card" style="display:none">
+          <p class="auth-hero-kicker">Guest checkout</p>
+          <h2 class="auth-hero-title-sm">Camper &amp; contact</h2>
+          <p class="auth-hero-sub" style="margin-bottom:12px">Enter your child and email, then use <strong>Schedule camp</strong> to pick weeks. Prefer an account? <a href="/login.html?return=/index.html" style="color:var(--cyan)">Sign in</a></p>
+          <div class="guest-grid">
+            <input type="text" id="g-first" placeholder="Child first name" autocomplete="given-name" />
+            <input type="text" id="g-last" placeholder="Child last name" autocomplete="family-name" />
+            <input type="email" id="g-email" placeholder="Your email" autocomplete="email" />
+            <input type="number" id="g-age" placeholder="Age" min="3" max="18" />
+          </div>
+          <p class="auth-inline-links" style="margin-top:14px"><a href="#" id="link-back-signin">← Back to sign in</a></p>
+        </div>
+
+        <div id="state-signed-in" class="auth-hero-card" style="display:none">
+          <p class="auth-hero-kicker">Signed in</p>
+          <h2 class="auth-hero-title-sm">Your children</h2>
+          <p class="auth-hero-sub" style="margin-bottom:10px">Add everyone who might attend. On the <strong>Schedule camp</strong> tab, use the dropdown on each week to pick which child is attending that week. You can also manage profiles in the <a href="/portal.html" style="color:var(--cyan)">parent portal</a>.</p>
+          <ul id="parent-camper-list" class="parent-camper-list" aria-label="Children on file"></ul>
+          <p id="parent-camper-empty" class="week-dates-label" style="display:none;margin-top:10px;line-height:1.5">No campers on file yet. Add one here (uses your account securely) or in the <a href="/portal.html" style="color:var(--cyan)">portal</a>.</p>
+          <button type="button" class="add-camper-toggle" id="btn-toggle-add-camper" aria-expanded="false">+ Add a child</button>
+          <div class="add-camper-panel" id="add-camper-panel">
+            <div class="add-camper-grid">
+              <input type="text" id="new-camper-first" placeholder="First name" autocomplete="given-name" />
+              <input type="text" id="new-camper-last" placeholder="Last name" autocomplete="family-name" />
+              <input type="number" id="new-camper-age" placeholder="Age" min="3" max="18" style="grid-column:1/-1" />
+            </div>
+            <button type="button" class="btn-primary" id="btn-save-camper" style="width:100%">Save camper</button>
+            <p id="add-camper-msg" class="week-dates-label" style="margin-top:10px;color:#f88"></p>
+          </div>
+          <p class="auth-inline-links"><a href="/portal.html">Manage in portal</a> · <a href="#" id="logout-link-top">Log out</a></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-schedule" class="reg-tab-panel" role="tabpanel" aria-labelledby="tab-schedule" hidden>
+  <div class="page">
 
   <div class="card">
     <div class="card-header">
       <div class="step-num">1</div>
-      <div class="card-title">Registration &amp; camper</div>
+      <div class="card-title">Pricing &amp; options</div>
     </div>
     <div class="reg-block">
       <h3>Pricing</h3>
@@ -1151,7 +1206,7 @@
         <span style="color:#666;font-size:12px">You are charged the rate in effect when you complete checkout. Max 35 kids per week.</span>
       </div>
       <div class="reg-kids-row" id="reg-fee-row">
-        <span class="lbl">New kids — one-time registration ($65 each, shirt + gloves). This order covers <strong>one</strong> camper.</span>
+        <span class="lbl">New kids — one-time registration ($65 each, shirt + gloves), applied per child who has not paid it before.</span>
         <div class="week-kids-ctrl" style="opacity:1" aria-hidden="true">
           <button type="button" class="mini-btn" disabled>−</button>
           <input type="text" class="mini-val" value="1" readonly style="cursor:default" title="One camper per checkout" />
@@ -1159,7 +1214,7 @@
         </div>
       </div>
       <p class="week-dates-label" id="reg-fee-note" style="margin:-4px 0 8px;font-size:11px;line-height:1.5">
-        More than one child? Complete checkout for each camper separately so we can match enrollment and registration fees.
+        Multiple children? Use the dropdown on each week to assign a child. Registration fees line up per child when applicable.
       </p>
       <label class="ima-toggle">
         <input type="checkbox" id="ima-member" />
@@ -1167,21 +1222,21 @@
       </label>
     </div>
     <p class="week-dates-label" style="padding:0 16px 16px;font-size:12px;color:#555">
-      Signed-in parents: choose a child <strong>per week</strong> in step 2. Guests: complete child &amp; email at the top first.
+      Guests: finish child &amp; email on <strong>Account &amp; children</strong> first. Signed-in parents: add children there, then pick weeks below and choose a child per week from each dropdown.
     </p>
   </div>
 
   <div class="card">
     <div class="card-header">
       <div class="step-num">2</div>
-      <div class="card-title">Choose enrollment</div>
+      <div class="card-title">Weeks, days &amp; child per week</div>
     </div>
     <div class="enroll-type-bar">
       <button type="button" class="enroll-type-btn on" id="btn-enroll-full" data-type="full">Full week</button>
       <button type="button" class="enroll-type-btn" id="btn-enroll-daily" data-type="daily">Individual days</button>
     </div>
     <div class="enrollment-gate" id="enrollment-gate">
-      Sign in or complete guest details above, then choose weeks. For each week, pick which child is attending.
+      Sign in or complete guest details on the <strong>Account &amp; children</strong> tab, then choose weeks or days here. Each week has a dropdown to pick which child is attending.
     </div>
     <div class="weeks-mount-wrap" id="weeks-mount-wrap">
     <div class="weeks-list" id="weeks-mount-full" style="display:none;padding-top:0">
@@ -1199,7 +1254,7 @@
     </div>
     <div class="summary-body">
       <div id="empty-state" class="empty-state">
-        Add camper details, then choose full weeks or individual days.
+        Use <strong>Account &amp; children</strong> if needed, then select full weeks or days and assign a child on each week.
       </div>
       <div id="summary-lines" style="display:none"></div>
       <div id="total-row" class="summary-total-row" style="display:none">
@@ -1225,6 +1280,8 @@
     </div>
   </div>
 
+  </div>
+  </div>
 </main>
 
 <div id="test-price-bar" class="test-price-bar" role="region" aria-label="Stripe test pricing" hidden>
@@ -1561,7 +1618,7 @@
 
     if (!camperOk) {
       empty.textContent =
-        'Sign in (or continue as guest) and complete your details above — then choose weeks or days and pick which child is in each week.';
+        'On the Account & children tab, sign in (or continue as guest) and complete your details — then open Schedule camp to pick weeks and assign a child per week.';
       empty.style.display = '';
       lines.style.display = 'none';
       totalRow.style.display = 'none';
@@ -1701,7 +1758,7 @@
     sel.dataset.weekId = weekId;
     const ph = document.createElement('option');
     ph.value = '';
-    ph.textContent = parentCampers.length ? 'Select child…' : 'Add a child above first';
+    ph.textContent = parentCampers.length ? 'Select child…' : 'Add children on Account tab first';
     sel.appendChild(ph);
     parentCampers.forEach(function (c) {
       const o = document.createElement('option');
@@ -2210,6 +2267,63 @@
   });
   document.getElementById('ima-member').addEventListener('change', updateSummary);
   document.getElementById('checkout-btn').addEventListener('click', startCheckout);
+
+  function setRegTab(which) {
+    var account = document.getElementById('panel-account');
+    var schedule = document.getElementById('panel-schedule');
+    var t1 = document.getElementById('tab-account');
+    var t2 = document.getElementById('tab-schedule');
+    if (!account || !schedule || !t1 || !t2) return;
+    var isSchedule = which === 'schedule';
+    account.hidden = isSchedule;
+    schedule.hidden = !isSchedule;
+    t1.setAttribute('aria-selected', String(!isSchedule));
+    t2.setAttribute('aria-selected', String(isSchedule));
+    if (isSchedule) {
+      updateEnrollmentGate();
+      updateSummary();
+      refreshPricingPreview();
+      window.requestAnimationFrame(function () {
+        schedule.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    } else {
+      window.requestAnimationFrame(function () {
+        var rail = document.getElementById('signin-rail');
+        if (rail) rail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        else account.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+    try {
+      if (history.replaceState) {
+        var base = location.pathname + location.search;
+        history.replaceState(null, '', isSchedule ? '#schedule' : base);
+      }
+    } catch (eH) {}
+  }
+
+  function initRegTabs() {
+    var t1 = document.getElementById('tab-account');
+    var t2 = document.getElementById('tab-schedule');
+    if (t1) {
+      t1.addEventListener('click', function () {
+        setRegTab('account');
+      });
+    }
+    if (t2) {
+      t2.addEventListener('click', function () {
+        setRegTab('schedule');
+      });
+    }
+    if (location.hash === '#schedule') {
+      setRegTab('schedule');
+    }
+    window.addEventListener('hashchange', function () {
+      if (location.hash === '#schedule') setRegTab('schedule');
+      else if (location.hash === '#account' || location.hash === '') setRegTab('account');
+    });
+  }
+
+  initRegTabs();
 
   loadWeeks()
     .then(function () {
