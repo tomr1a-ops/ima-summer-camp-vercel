@@ -283,7 +283,28 @@ module.exports = async (req, res) => {
       },
     };
     if (emailForStripe) sessionParams.customer_email = emailForStripe;
-    const session = await stripe.checkout.sessions.create(sessionParams);
+
+    /** Hosted Checkout: hide Stripe Link (OTP modal) to avoid flaky UI / extension errors (e.g. tabs.outgoing.message.ready). */
+    const CHECKOUT_API_VERSION = '2025-04-30.basil';
+    let session;
+    try {
+      session = await stripe.checkout.sessions.create(
+        {
+          ...sessionParams,
+          wallet_options: { link: { display: 'never' } },
+        },
+        { apiVersion: CHECKOUT_API_VERSION }
+      );
+    } catch (err) {
+      const param = err && err.param;
+      const msg = err && err.message ? String(err.message) : '';
+      if (param === 'wallet_options' || /wallet_options/i.test(msg) || /api version/i.test(msg)) {
+        console.warn('create-checkout-session: retrying without wallet_options.link.never:', msg);
+        session = await stripe.checkout.sessions.create(sessionParams);
+      } else {
+        throw err;
+      }
+    }
 
     try {
       await sendResend({
