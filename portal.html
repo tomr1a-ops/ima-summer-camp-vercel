@@ -118,6 +118,43 @@
       transform: translateY(-2px);
       box-shadow: 0 10px 32px rgba(0,229,204,0.15);
     }
+    .portal-big-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+    .portal-big-btn:disabled:hover {
+      border-color: var(--border2);
+      transform: none;
+      box-shadow: none;
+    }
+    .schedule-child-bar {
+      max-width: 440px;
+      margin: 0 auto 24px;
+      padding: 16px 18px;
+      border: 1px solid rgba(0,229,204,0.25);
+      border-radius: 10px;
+      background: rgba(0,229,204,0.05);
+    }
+    .schedule-child-bar .portal-select { max-width: none; width: 100%; margin-bottom: 0; }
+    .scheduling-for-line {
+      font-size: 14px;
+      color: #ccc;
+      margin-bottom: 14px;
+      line-height: 1.5;
+    }
+    .scheduling-for-line strong { color: var(--cyan); }
+    .scheduling-for-line .change-child-link {
+      margin-left: 10px;
+      color: var(--cyan);
+      cursor: pointer;
+      text-decoration: underline;
+      background: none;
+      border: none;
+      font: inherit;
+      padding: 0;
+    }
     .portal-big-btn .sub {
       display: block;
       margin-top: 8px;
@@ -309,6 +346,14 @@
         <p id="add-child-err" style="color:#f88;font-size:13px;margin-top:8px"></p>
       </div>
 
+      <div class="schedule-child-bar" id="schedule-child-bar">
+        <label class="field-label" for="portal-sel-child">Which child are you scheduling?</label>
+        <select id="portal-sel-child" class="portal-select" aria-describedby="schedule-child-hint"></select>
+        <p id="schedule-child-hint" class="empty-hint" style="margin-top:10px;font-size:12px;margin-bottom:0">
+          Choose a child, then book a full week or individual days below.
+        </p>
+      </div>
+
       <div class="portal-actions">
         <button type="button" class="portal-big-btn" id="open-full-week">
           BOOK A FULL WEEK
@@ -324,8 +369,7 @@
     <section id="view-full" hidden>
       <div class="book-panel">
         <button type="button" class="link-back" id="back-from-full">← Back to dashboard</button>
-        <label class="field-label" for="sel-full-child">Which child?</label>
-        <select id="sel-full-child" class="portal-select"></select>
+        <div class="scheduling-for-line" id="scheduling-for-full" hidden></div>
         <p class="empty-hint" style="margin-bottom:12px" id="full-pricing-hint"></p>
         <div id="week-cards-full" class="week-grid"></div>
       </div>
@@ -334,8 +378,7 @@
     <section id="view-daily" hidden>
       <div class="book-panel">
         <button type="button" class="link-back" id="back-from-daily">← Back to dashboard</button>
-        <label class="field-label" for="sel-daily-child">Which child?</label>
-        <select id="sel-daily-child" class="portal-select"></select>
+        <div class="scheduling-for-line" id="scheduling-for-daily" hidden></div>
         <p class="empty-hint" style="margin-bottom:12px" id="daily-pricing-hint"></p>
         <div id="daily-weeks-mount"></div>
         <button type="button" class="checkout-daily-btn" id="btn-daily-checkout" disabled>Secure checkout →</button>
@@ -409,6 +452,9 @@
     document.getElementById('view-dashboard').hidden = v !== 'dashboard';
     document.getElementById('view-full').hidden = v !== 'full';
     document.getElementById('view-daily').hidden = v !== 'daily';
+    if (v === 'full' || v === 'daily') {
+      refreshSchedulingContextLines();
+    }
     try {
       if (history.replaceState) {
         const base = location.pathname;
@@ -417,16 +463,71 @@
     } catch (e) {}
   }
 
+  function getSelectedCamperId() {
+    const el = document.getElementById('portal-sel-child');
+    return el && el.value ? el.value : '';
+  }
+
+  function updateBookingButtonsEnabled() {
+    const o1 = document.getElementById('open-full-week');
+    const o2 = document.getElementById('open-daily');
+    const bar = document.getElementById('schedule-child-bar');
+    if (bar) {
+      bar.style.display = state.campers.length ? 'block' : 'none';
+    }
+    if (!state.campers.length) {
+      o1.disabled = true;
+      o2.disabled = true;
+      return;
+    }
+    const cid = getSelectedCamperId();
+    o1.disabled = !cid;
+    o2.disabled = !cid;
+  }
+
+  function refreshSchedulingContextLines() {
+    ['scheduling-for-full', 'scheduling-for-daily'].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const cid = getSelectedCamperId();
+      if (!cid) {
+        el.hidden = true;
+        el.innerHTML = '';
+        return;
+      }
+      el.hidden = false;
+      const name = camperNameById(cid);
+      el.innerHTML =
+        'Scheduling <strong>' +
+        escapeHtml(name) +
+        '</strong><button type="button" class="change-child-link">Change child</button>';
+      const btn = el.querySelector('.change-child-link');
+      if (btn) {
+        btn.onclick = function () {
+          showView('dashboard');
+          const s = document.getElementById('portal-sel-child');
+          if (s) s.focus();
+        };
+      }
+    });
+  }
+
   function fillChildSelects() {
-    const opts =
+    const sel = document.getElementById('portal-sel-child');
+    const prev = sel.value;
+    sel.innerHTML =
       '<option value="">Choose a child…</option>' +
       state.campers
         .map(function (c) {
           return '<option value="' + escapeHtml(c.id) + '">' + escapeHtml(c.first_name + ' ' + c.last_name) + '</option>';
         })
         .join('');
-    document.getElementById('sel-full-child').innerHTML = opts;
-    document.getElementById('sel-daily-child').innerHTML = opts;
+    if (state.campers.length === 1) {
+      sel.value = state.campers[0].id;
+    } else if (prev && state.campers.some(function (c) { return c.id === prev; })) {
+      sel.value = prev;
+    }
+    updateBookingButtonsEnabled();
   }
 
   function maxCap(w) {
@@ -564,9 +665,9 @@
   }
 
   async function startFullWeekCheckout(w) {
-    const cid = document.getElementById('sel-full-child').value;
+    const cid = getSelectedCamperId();
     if (!cid) {
-      showBanner('Choose which child is attending first.', false);
+      showBanner('Choose a child in the dropdown on the previous screen.', false);
       return;
     }
     const days = (w.days || []).map(function (d) {
@@ -604,7 +705,7 @@
     const has = Object.keys(state.selectedByWeek).some(function (wid) {
       return state.selectedByWeek[wid] && state.selectedByWeek[wid].size > 0;
     });
-    document.getElementById('btn-daily-checkout').disabled = !has || !document.getElementById('sel-daily-child').value;
+    document.getElementById('btn-daily-checkout').disabled = !has || !getSelectedCamperId();
   }
 
   function renderDailyWeeks() {
@@ -661,9 +762,9 @@
   }
 
   async function startDailyCheckout() {
-    const cid = document.getElementById('sel-daily-child').value;
+    const cid = getSelectedCamperId();
     if (!cid) {
-      showBanner('Choose which child is attending.', false);
+      showBanner('Choose a child in the dropdown on the previous screen.', false);
       return;
     }
     const bookings = [];
@@ -738,7 +839,7 @@
     });
   }
 
-  var dailySelectWired = false;
+  var portalChildSelectWired = false;
 
   async function load() {
     const session = await IMA.requireAuth('/login.html');
@@ -786,9 +887,13 @@
     renderBookings();
     renderFullWeekCards();
 
-    if (!dailySelectWired) {
-      dailySelectWired = true;
-      document.getElementById('sel-daily-child').addEventListener('change', updateDailyCheckoutBtn);
+    if (!portalChildSelectWired) {
+      portalChildSelectWired = true;
+      document.getElementById('portal-sel-child').addEventListener('change', function () {
+        updateBookingButtonsEnabled();
+        updateDailyCheckoutBtn();
+        refreshSchedulingContextLines();
+      });
     }
   }
 
@@ -804,12 +909,24 @@
       showBanner('Add a child first.', false);
       return;
     }
+    if (!getSelectedCamperId()) {
+      showBanner('Choose a child in the dropdown first.', false);
+      const s = document.getElementById('portal-sel-child');
+      if (s) s.focus();
+      return;
+    }
     showView('full');
     renderFullWeekCards();
   };
   document.getElementById('open-daily').onclick = function () {
     if (!state.campers.length) {
       showBanner('Add a child first.', false);
+      return;
+    }
+    if (!getSelectedCamperId()) {
+      showBanner('Choose a child in the dropdown first.', false);
+      const s = document.getElementById('portal-sel-child');
+      if (s) s.focus();
       return;
     }
     showView('daily');
@@ -863,6 +980,10 @@
   function routeHash() {
     const h = (location.hash || '').replace('#', '');
     if ((h === 'full' || h === 'daily') && !state.campers.length) {
+      showView('dashboard');
+      return;
+    }
+    if ((h === 'full' || h === 'daily') && !getSelectedCamperId()) {
       showView('dashboard');
       return;
     }
