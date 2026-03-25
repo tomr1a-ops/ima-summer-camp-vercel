@@ -1,6 +1,6 @@
 const { randomUUID } = require('crypto');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-const { serviceClient, userScopedClient } = require('./lib/supabase');
+const { serviceClient } = require('./lib/supabase');
 const { getUserFromRequest, upsertParentProfile } = require('./lib/auth');
 const { dayRate, weekRate, registrationFee } = require('./lib/pricing');
 const { validateBooking } = require('./lib/capacity');
@@ -118,9 +118,13 @@ module.exports = async (req, res) => {
   } else if (user) {
     if (!token) return json(res, 401, { error: 'Sign in required' });
     try {
-      sb = userScopedClient(token);
+      sb = serviceClient();
     } catch (e) {
-      return json(res, 503, { error: e.message || 'Server configuration error' });
+      return json(res, 503, {
+        error:
+          'Checkout needs SUPABASE_SERVICE_ROLE_KEY on the server. Add it in Vercel → Environment Variables → Production, then redeploy.',
+        code: 'MISSING_SERVICE_ROLE',
+      });
     }
     try {
       profile = await upsertParentProfile(user, {});

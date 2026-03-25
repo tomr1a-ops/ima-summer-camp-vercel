@@ -1,4 +1,4 @@
-const { serviceClient, anonClient, userScopedClient } = require('./supabase');
+const { serviceClient, anonClient } = require('./supabase');
 
 function bearerToken(req) {
   const h = req.headers.authorization || req.headers.Authorization || '';
@@ -15,17 +15,8 @@ async function getUserFromRequest(req) {
   return { user: data.user, token };
 }
 
-async function getProfileForUser(userId, accessToken) {
-  if (accessToken) {
-    const sb = userScopedClient(accessToken);
-    const { data, error } = await sb
-      .from('profiles')
-      .select('id,email,full_name,phone,role')
-      .eq('id', userId)
-      .maybeSingle();
-    if (error) throw error;
-    return data;
-  }
+/** Load profile by id using service role (JWT already validated by caller when userId comes from getUser). */
+async function getProfileForUser(userId) {
   const sb = serviceClient();
   const { data, error } = await sb
     .from('profiles')
@@ -72,7 +63,7 @@ async function upsertParentProfile(user, extras) {
     throw err;
   }
   const sb = serviceClient();
-  const existing = await getProfileForUser(user.id, null);
+  const existing = await getProfileForUser(user.id);
   const fnIn = extras && extras.full_name != null ? String(extras.full_name).trim() : '';
   const phIn = extras && extras.phone != null ? String(extras.phone).trim() : '';
   const row = {
@@ -104,7 +95,7 @@ async function requireParent(req) {
     err.statusCode = 401;
     throw err;
   }
-  const profile = await getProfileForUser(user.id, token);
+  const profile = await getProfileForUser(user.id);
   if (!profile || profile.role !== 'parent') {
     const err = new Error('Parent access only');
     err.statusCode = 403;
@@ -120,7 +111,7 @@ async function requireAdmin(req) {
     err.statusCode = 401;
     throw err;
   }
-  const profile = await getProfileForUser(user.id, token);
+  const profile = await getProfileForUser(user.id);
   if (!profile || profile.role !== 'admin') {
     const err = new Error('Admin only');
     err.statusCode = 403;

@@ -22,21 +22,27 @@ module.exports = async (req, res) => {
     const url = new URL(req.url || '', 'http://local');
     const testPricing = url.searchParams.get('test') === 'true';
     const camperIds = uniqueCamperIdsFromQuery(url);
-    const { user } = await getUserFromRequest(req);
+    const { user, token } = await getUserFromRequest(req);
 
     const perCamperNeedsReg = {};
     let profile = null;
 
-    if (user && camperIds.length) {
+    if (user && token && camperIds.length) {
+      let sb;
       try {
-        profile = await getProfileForUser(user.id);
+        sb = serviceClient();
+      } catch (cfg) {
+        console.warn('[preview-pricing] supabase config:', cfg.message);
+        sb = null;
+      }
+      try {
+        profile = sb ? await getProfileForUser(user.id) : null;
       } catch (pe) {
         console.warn('[preview-pricing] profile load:', pe.message);
         profile = null;
       }
 
-      if (profile) {
-        const sb = serviceClient();
+      if (profile && sb) {
         for (const camperId of camperIds) {
           const { data: camper, error: ce } = await sb.from('campers').select('parent_id').eq('id', camperId).single();
           if (ce || !camper || camper.parent_id !== user.id) {
