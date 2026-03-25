@@ -75,6 +75,68 @@
         return ret && ret.startsWith('/') && !ret.startsWith('//') ? ret : '/portal.html';
       }
 
+      function isMissingServiceRoleResponse(status, j) {
+        if (status === 503) return true;
+        var e = j && j.error ? String(j.error) : '';
+        return e.indexOf('SUPABASE_SERVICE_ROLE_KEY') !== -1 || e.indexOf('service_role') !== -1;
+      }
+
+      /**
+       * When Vercel has no service role key: signUp + RLS-safe profile/camper writes (requires session — turn off email confirm in Supabase).
+       * Returns true if children partially failed (caller re-enables button).
+       */
+      async function registerViaClientFallback(sb, email, password, full_name, phone, children) {
+        var up = await sb.auth.signUp({
+          email: email,
+          password: password,
+          options: {
+            data: { full_name: full_name, phone: phone },
+            emailRedirectTo: window.location.origin + '/portal.html',
+          },
+        });
+        if (up.error) throw up.error;
+        var user = up.data && up.data.user;
+        if (!user) throw new Error('Sign-up did not return a user.');
+        var sess = up.data && up.data.session;
+        if (!sess) {
+          throw new Error(
+            'No session after sign-up (email confirmation is probably ON).\n\nFix one of:\n• Supabase → Authentication → Providers → Email → turn OFF "Confirm email", then try again.\n• Or add SUPABASE_SERVICE_ROLE_KEY on Vercel so server registration works.'
+          );
+        }
+        var pe = await sb.from('profiles').upsert(
+          {
+            id: user.id,
+            email: email,
+            full_name: full_name,
+            phone: phone,
+            role: 'parent',
+          },
+          { onConflict: 'id' }
+        );
+        if (pe.error) throw new Error(pe.error.message || 'Could not save profile');
+
+        var childErrs = [];
+        for (var i = 0; i < children.length; i++) {
+          var ch = children[i];
+          var ins = await sb.from('campers').insert({
+            parent_id: user.id,
+            first_name: ch.firstName,
+            last_name: ch.lastName,
+            age: ch.age,
+          });
+          if (ins.error) childErrs.push(ch.firstName + ' ' + ch.lastName + ': ' + ins.error.message);
+        }
+        if (childErrs.length) {
+          show(
+            'Account created. Some children could not be saved:\n' + childErrs.join('\n') + '\n\nAdd them in the parent portal.',
+            false
+          );
+          return true;
+        }
+        window.location.replace(safeReturnPath());
+        return false;
+      }
+
       function renderChildFields() {
         var n = parseInt(countEl.value, 10) || 1;
         n = Math.max(1, Math.min(8, n));
@@ -193,6 +255,13 @@
           } catch (parseErr) {
             j = {};
           }
+
+          if (!res.ok && isMissingServiceRoleResponse(res.status, j)) {
+            var partial = await registerViaClientFallback(sb, email, password, full_name, phone, children);
+            if (partial) btn.disabled = false;
+            return;
+          }
+
           if (!res.ok) {
             var detail = j.error || j.message || raw || 'Registration failed';
             throw new Error(typeof detail === 'string' ? detail : 'Registration failed');
