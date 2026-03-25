@@ -7,10 +7,10 @@ alwaysApply: true
 
 **Rule: Always deploy.** After any change under the camp checkout project (`vercel-v2`: `index.html`, `success.html`, `api/`, `package.json`, `vercel.json`), you **must** run a **production** deploy before the task is done. Treat deploy as part of the same turn as the edit.
 
-- Deploy from the **project root** (parent of `api/`), not from `api/` alone:
+- Deploy from the **project root** (parent of `api/`), not from `api/` alone. Use project **`ima-summer-camp`** (serves `ima-summer-camp.vercel.app` and `ima-summer-camp-git-main-*.vercel.app`):
 
 ```bash
-cd /Users/tomrichardson/Downloads/vercel-v2 && npx vercel --prod --yes
+cd /Users/tomrichardson/Downloads/vercel-v2 && VERCEL_ORG_ID=team_PXMrLfQ01zlse3XBsDcaPa3s VERCEL_PROJECT_ID=prj_TJxRFRbKAK4AkYBe8AKL1DoH2k9p npx vercel deploy --prod --yes
 ```
 
 - Use the **Vercel CLI** for a forced production deploy; do not rely only on git-push auto deploys or tell the user to deploy later.
