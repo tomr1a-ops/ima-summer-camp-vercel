@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="ima-portal-build" content="2026-03-26" />
   <title>Parent Portal — IMA Summer Camp</title>
   <script src="https://js.stripe.com/v3/"></script>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
@@ -261,44 +262,6 @@
     .day-btn.on { border-color: var(--cyan); background: rgba(0,229,204,0.12); color: var(--cyan); }
     .day-btn:disabled { opacity: 0.35; cursor: not-allowed; }
     .day-meta { font-size: 10px; color: #555; margin-top: 2px; text-align: center; }
-    .booking-row {
-      border: 1px solid var(--border2);
-      border-radius: 10px;
-      padding: 14px 16px;
-      margin-bottom: 10px;
-      background: var(--card2);
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-    }
-    .booking-row .meta { flex: 1; min-width: 200px; }
-    .booking-row .amt { font-weight: 600; color: var(--cyan); }
-    .pill {
-      display: inline-block;
-      font-size: 11px;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      padding: 4px 8px;
-      border-radius: 4px;
-      background: #222;
-      color: #aaa;
-    }
-    .pill.ok { background: rgba(0,229,204,0.15); color: var(--cyan); }
-    .btn-small {
-      padding: 8px 14px;
-      border-radius: 6px;
-      border: 1px solid var(--cyan);
-      background: transparent;
-      color: var(--cyan);
-      font-size: 12px;
-      cursor: pointer;
-      font-family: var(--font-cond);
-      letter-spacing: 1px;
-      text-transform: uppercase;
-    }
-    .btn-small:hover { background: rgba(0,229,204,0.1); }
     #portal-banner.msg { margin-bottom: 16px; }
     .checkout-daily-btn {
       width: 100%;
@@ -411,7 +374,17 @@
         <p id="add-child-err" style="color:#f88;font-size:13px;margin-top:8px"></p>
       </div>
 
-      <p class="empty-hint" style="text-align:center;margin:8px 0 4px;font-size:13px;line-height:1.5">
+      <div class="book-panel" id="portal-reg-fee-section" style="display: none; margin-top: 16px">
+        <div class="section-title" style="margin-top: 0">Registration fee ($65)</div>
+        <p class="portal-reg-ima-note">
+          <strong>IMA Impact members</strong> pay <strong>no registration fee</strong>. For everyone else, the one-time fee is
+          <strong>$65 per child</strong> (shirt + gloves). Check the box for each child who should be charged at checkout —
+          <strong>uncheck</strong> for IMA members or if it does not apply.
+        </p>
+        <div id="portal-reg-fee-mount"></div>
+      </div>
+
+      <p class="empty-hint" style="text-align:center;margin:16px 0 4px;font-size:13px;line-height:1.5">
         For each camp week you add, check which children are attending that week — weekly or daily.
       </p>
 
@@ -424,16 +397,6 @@
           BOOK INDIVIDUAL DAYS
           <span class="sub">Pick only the days you need</span>
         </button>
-      </div>
-
-      <div class="book-panel" id="portal-reg-fee-section" style="display: none; margin-top: 20px">
-        <div class="section-title" style="margin-top: 0">Registration fee ($65)</div>
-        <p class="portal-reg-ima-note">
-          <strong>IMA Impact members</strong> pay <strong>no registration fee</strong>. For everyone else, the one-time fee is
-          <strong>$65 per child</strong> (shirt + gloves). Check the box for each child who should be charged at checkout —
-          <strong>uncheck</strong> for IMA members or if it does not apply.
-        </p>
-        <div id="portal-reg-fee-mount"></div>
       </div>
     </section>
 
@@ -480,9 +443,9 @@
         <button type="button" class="checkout-daily-btn" id="btn-daily-checkout" disabled>Secure checkout →</button>
       </div>
     </section>
-
-    <div class="section-title">My Bookings</div>
-    <div id="bookings-mount"></div>
+    <p id="portal-deploy-foot" style="text-align:center;color:#3a3a3a;font-size:11px;margin-top:28px;padding-bottom:8px">
+      Portal UI rev 2026-03-26 · no “My Bookings” block · selections saved in this browser
+    </p>
   </div>
 
   <script src="/js/ima-core.js"></script>
@@ -497,9 +460,7 @@
     profile: null,
     weeks: [],
     campers: [],
-    enrollments: [],
     selectedByWeek: {},
-    dayMap: {},
     /** weekId -> Set of camper ids (full week Mon–Fri) */
     fullWeekCampersByWeek: {},
     /** weekId -> Set of camper ids (daily picks apply to each checked child) */
@@ -509,6 +470,23 @@
     /** camper id -> include $65 registration at checkout */
     portalRegFeeInclude: {},
   };
+
+  let childAddedBannerTimer = null;
+
+  function portalDebugEnabled() {
+    try {
+      if (typeof location !== 'undefined' && /(?:\?|&)portalDebug=1(?:&|$)/.test(location.search)) return true;
+      return localStorage.getItem('IMA_PORTAL_DEBUG') === '1';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function portalDbg() {
+    if (!portalDebugEnabled()) return;
+    var args = ['[IMA portal]'].concat(Array.prototype.slice.call(arguments));
+    console.log.apply(console, args);
+  }
 
   function fmt(n) {
     return '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -573,21 +551,171 @@
   }
 
   function camperSetForWeek(map, weekId) {
-    if (!map[weekId]) map[weekId] = new Set();
-    return map[weekId];
+    const wk = String(weekId);
+    if (!map[wk]) map[wk] = new Set();
+    return map[wk];
   }
 
-  function clearFullWeekSelections() {
-    Object.keys(state.fullWeekCampersByWeek).forEach(function (k) {
-      delete state.fullWeekCampersByWeek[k];
-    });
+  const PORTAL_ENROLL_PREFIX = 'ima_portal_enroll_v1:';
+
+  function portalEnrollKey() {
+    if (!state.session || !state.session.user || !state.session.user.id) return null;
+    return PORTAL_ENROLL_PREFIX + String(state.session.user.id);
   }
 
-  function clearDailySelections() {
-    state.selectedByWeek = {};
-    Object.keys(state.dailyCampersByWeek).forEach(function (k) {
-      delete state.dailyCampersByWeek[k];
+  function persistPortalEnroll() {
+    try {
+      const k = portalEnrollKey();
+      if (!k) return;
+      const fw = {};
+      Object.keys(state.fullWeekCampersByWeek).forEach(function (wid) {
+        fw[String(wid)] = Array.from(state.fullWeekCampersByWeek[wid] || []).map(String);
+      });
+      const dw = {};
+      Object.keys(state.dailyCampersByWeek).forEach(function (wid) {
+        dw[String(wid)] = Array.from(state.dailyCampersByWeek[wid] || []).map(String);
+      });
+      const sw = {};
+      Object.keys(state.selectedByWeek).forEach(function (wid) {
+        sw[String(wid)] = Array.from(state.selectedByWeek[wid] || []).map(String);
+      });
+      const reg = {};
+      Object.keys(state.portalRegFeeInclude).forEach(function (rk) {
+        reg[String(rk)] = !!state.portalRegFeeInclude[rk];
+      });
+      const payload = JSON.stringify({
+        fw: fw,
+        dw: dw,
+        sw: sw,
+        reg: reg,
+        v: 2,
+        updatedAt: Date.now(),
+      });
+      portalDbg('persist', {
+        keySuffix: k.slice(-8),
+        fwWeeks: Object.keys(fw).length,
+        dwWeeks: Object.keys(dw).length,
+        swWeeks: Object.keys(sw).length,
+        regKeys: Object.keys(reg).length,
+      });
+      try {
+        sessionStorage.setItem(k, payload);
+      } catch (e1) {
+        portalDbg('sessionStorage.setItem failed', e1 && e1.message);
+      }
+      try {
+        localStorage.setItem(k, payload);
+      } catch (e2) {
+        portalDbg('localStorage.setItem failed', e2 && e2.message);
+      }
+    } catch (e) {
+      portalDbg('persistPortalEnroll error', e);
+    }
+  }
+
+  function mergeRegFeesFromStorage(o) {
+    if (!o || !o.reg || typeof o.reg !== 'object') return;
+    Object.keys(o.reg).forEach(function (k) {
+      state.portalRegFeeInclude[String(k)] = !!o.reg[k];
     });
+    portalDbg('mergeRegFeesFromStorage', o.reg);
+  }
+
+  function portalMemoryHasSelections() {
+    var fw = Object.keys(state.fullWeekCampersByWeek).some(function (wid) {
+      var s = state.fullWeekCampersByWeek[wid];
+      return s && s.size > 0;
+    });
+    var dw = Object.keys(state.dailyCampersByWeek).some(function (wid) {
+      var s = state.dailyCampersByWeek[wid];
+      return s && s.size > 0;
+    });
+    var sw = Object.keys(state.selectedByWeek).some(function (wid) {
+      var s = state.selectedByWeek[wid];
+      return s && s.size > 0;
+    });
+    return fw || dw || sw;
+  }
+
+  function portalStoredHasSelections(o) {
+    if (!o || typeof o !== 'object') return false;
+    var fw = Object.keys(o.fw || {}).some(function (wid) {
+      var arr = o.fw[wid];
+      return arr && arr.length > 0;
+    });
+    var dw = Object.keys(o.dw || {}).some(function (wid) {
+      var arr = o.dw[wid];
+      return arr && arr.length > 0;
+    });
+    var sw = Object.keys(o.sw || {}).some(function (wid) {
+      var arr = o.sw[wid];
+      return arr && arr.length > 0;
+    });
+    return fw || dw || sw;
+  }
+
+  function readPortalEnrollRaw(k) {
+    if (!k) return null;
+    try {
+      var s = sessionStorage.getItem(k);
+      if (s) return s;
+    } catch (e) {}
+    try {
+      return localStorage.getItem(k);
+    } catch (e2) {}
+    return null;
+  }
+
+  function restorePortalEnroll() {
+    try {
+      const k = portalEnrollKey();
+      if (!k) {
+        portalDbg('restore: no key');
+        return;
+      }
+      const raw = readPortalEnrollRaw(k);
+      if (!raw) {
+        portalDbg('restore: no stored payload');
+        return;
+      }
+      const o = JSON.parse(raw);
+      mergeRegFeesFromStorage(o);
+
+      if (!portalStoredHasSelections(o) && portalMemoryHasSelections()) {
+        portalDbg('restore: keeping in-memory week/daily picks (storage has no week data)');
+        return;
+      }
+
+      Object.keys(state.fullWeekCampersByWeek).forEach(function (key) {
+        delete state.fullWeekCampersByWeek[key];
+      });
+      Object.keys(state.dailyCampersByWeek).forEach(function (key) {
+        delete state.dailyCampersByWeek[key];
+      });
+      Object.keys(state.selectedByWeek).forEach(function (key) {
+        delete state.selectedByWeek[key];
+      });
+      Object.keys(o.fw || {}).forEach(function (wid) {
+        const arr = o.fw[wid];
+        if (arr && arr.length) state.fullWeekCampersByWeek[String(wid)] = new Set(arr.map(String));
+      });
+      Object.keys(o.dw || {}).forEach(function (wid) {
+        const arr = o.dw[wid];
+        if (arr && arr.length) state.dailyCampersByWeek[String(wid)] = new Set(arr.map(String));
+      });
+      Object.keys(o.sw || {}).forEach(function (wid) {
+        const arr = o.sw[wid];
+        if (arr && arr.length) state.selectedByWeek[String(wid)] = new Set(arr.map(String));
+      });
+      portalDbg('restore: applied week/daily from storage', {
+        fw: Object.keys(o.fw || {}),
+        dw: Object.keys(o.dw || {}),
+        v: o.v,
+        updatedAt: o.updatedAt,
+      });
+    } catch (e) {
+      portalDbg('restorePortalEnroll error', e);
+    }
   }
 
   function maxCap(w) {
@@ -622,74 +750,11 @@
       .join('');
   }
 
-  function weekLabel(wid) {
-    const w = state.weeks.find(function (x) {
-      return x.id === wid;
-    });
-    return w ? w.label : 'Week';
-  }
-
   function camperNameById(cid) {
     const c = state.campers.find(function (x) {
-      return x.id === cid;
+      return String(x.id) === String(cid);
     });
     return c ? c.first_name + ' ' + c.last_name : 'Camper';
-  }
-
-  function scheduleSummary(e) {
-    const ids = e.day_ids || [];
-    if (ids.length >= 5) return 'Full week (Mon–Fri)';
-    if (!ids.length) return '—';
-    const parts = ids.map(function (id) {
-      const d = state.dayMap[id];
-      return d ? formatDayLabel(d) : '';
-    }).filter(Boolean);
-    return parts.length ? parts.join(', ') : ids.length + ' day(s)';
-  }
-
-  function renderBookings() {
-    const mount = document.getElementById('bookings-mount');
-    const enr = state.enrollments || [];
-    if (!enr.length) {
-      mount.innerHTML = '<p class="empty-hint">No bookings yet. Use the buttons above to register.</p>';
-      return;
-    }
-    mount.innerHTML = enr
-      .map(function (e) {
-        const st = e.status === 'confirmed' ? 'ok' : '';
-        return (
-          '<div class="booking-row">' +
-          '<div class="meta">' +
-          '<div style="font-weight:600;margin-bottom:4px">' +
-          escapeHtml(camperNameById(e.camper_id)) +
-          '</div>' +
-          '<div style="color:#999;font-size:13px">' +
-          escapeHtml(weekLabel(e.week_id)) +
-          ' · ' +
-          escapeHtml(scheduleSummary(e)) +
-          '</div>' +
-          '<div style="margin-top:8px"><span class="pill ' +
-          st +
-          '">' +
-          escapeHtml(e.status) +
-          '</span></div></div>' +
-          '<div style="text-align:right">' +
-          '<div class="amt" style="margin-bottom:8px">' +
-          IMA.formatMoney(e.price_paid) +
-          '</div>' +
-          '<button type="button" class="btn-small btn-add-more" data-eid="' +
-          escapeHtml(e.id) +
-          '">Add more weeks/days</button></div></div>'
-        );
-      })
-      .join('');
-    mount.querySelectorAll('.btn-add-more').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        showView('dashboard');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        document.getElementById('open-full-week').focus();
-      });
-    });
   }
 
   function effectiveWeekRateForSummary() {
@@ -732,12 +797,14 @@
 
   function camperNeedsRegFee(cid) {
     const pcr = (state.portalRegEstimate && state.portalRegEstimate.perCamperNeedsReg) || {};
-    return pcr[cid] !== false;
+    const k = String(cid);
+    return pcr[k] !== false;
   }
 
   function getPortalRegFeeInclude(cid) {
-    if (state.portalRegFeeInclude[cid] === undefined) return camperNeedsRegFee(cid);
-    return !!state.portalRegFeeInclude[cid];
+    const k = String(cid);
+    if (state.portalRegFeeInclude[k] === undefined) return camperNeedsRegFee(cid);
+    return !!state.portalRegFeeInclude[k];
   }
 
   function renderPortalRegFeePanel() {
@@ -750,8 +817,9 @@
     }
     section.style.display = '';
     state.campers.forEach(function (c) {
-      if (state.portalRegFeeInclude[c.id] === undefined) {
-        state.portalRegFeeInclude[c.id] = camperNeedsRegFee(c.id);
+      const ck = String(c.id);
+      if (state.portalRegFeeInclude[ck] === undefined) {
+        state.portalRegFeeInclude[ck] = camperNeedsRegFee(ck);
       }
     });
     const rf = effectiveRegFeeForSummary();
@@ -783,7 +851,9 @@
     mount.querySelectorAll('input[data-portal-reg]').forEach(function (el) {
       el.addEventListener('change', function () {
         var pid = el.getAttribute('data-portal-reg');
-        if (pid) state.portalRegFeeInclude[pid] = el.checked;
+        if (pid) state.portalRegFeeInclude[String(pid)] = el.checked;
+        portalDbg('reg fee checkbox', String(pid), el.checked);
+        persistPortalEnroll();
         updateFullWeekSummary();
       });
     });
@@ -827,7 +897,7 @@
       const set = state.fullWeekCampersByWeek[wid];
       if (!set || !set.size) return;
       const w = state.weeks.find(function (x) {
-        return x.id === wid;
+        return String(x.id) === String(wid);
       });
       if (!w) return;
       set.forEach(function (cid) {
@@ -878,7 +948,8 @@
     mount.innerHTML = '';
     state.weeks.forEach(function (w) {
       const full = w.disabled || w.is_full;
-      const set = state.fullWeekCampersByWeek[w.id];
+      const wk = String(w.id);
+      const set = state.fullWeekCampersByWeek[wk];
       const any = !full && set && set.size > 0;
       const card = document.createElement('div');
       card.className = 'pw-card' + (full ? ' disabled' : '') + (any ? ' selected' : '');
@@ -908,12 +979,14 @@
           row.className = 'portal-kid-row';
           const cb = document.createElement('input');
           cb.type = 'checkbox';
-          cb.checked = !!(set && set.has(c.id));
+          const cid = String(c.id);
+          cb.checked = !!(set && set.has(cid));
           cb.addEventListener('change', function () {
-            const st = camperSetForWeek(state.fullWeekCampersByWeek, w.id);
-            if (cb.checked) st.add(c.id);
-            else st.delete(c.id);
-            if (!st.size) delete state.fullWeekCampersByWeek[w.id];
+            const st = camperSetForWeek(state.fullWeekCampersByWeek, wk);
+            if (cb.checked) st.add(cid);
+            else st.delete(cid);
+            if (!st.size) delete state.fullWeekCampersByWeek[wk];
+            persistPortalEnroll();
             renderFullWeekCards();
             updateFullWeekSummary();
           });
@@ -944,7 +1017,7 @@
       const cset = state.fullWeekCampersByWeek[wid];
       if (!cset || !cset.size) return;
       const w = state.weeks.find(function (x) {
-        return x.id === wid;
+        return String(x.id) === String(wid);
       });
       if (!w || w.disabled || w.is_full) return;
       const days = (w.days || []).map(function (d) {
@@ -968,18 +1041,21 @@
   }
 
   function toggleDailyDay(weekId, dayId, btn) {
-    const kids = state.dailyCampersByWeek[weekId];
+    const wk = String(weekId);
+    const dk = String(dayId);
+    const kids = state.dailyCampersByWeek[wk];
     if (!kids || !kids.size) return;
-    if (!state.selectedByWeek[weekId]) state.selectedByWeek[weekId] = new Set();
-    const set = state.selectedByWeek[weekId];
-    if (set.has(dayId)) {
-      set.delete(dayId);
+    if (!state.selectedByWeek[wk]) state.selectedByWeek[wk] = new Set();
+    const set = state.selectedByWeek[wk];
+    if (set.has(dk)) {
+      set.delete(dk);
       btn.classList.remove('on');
     } else {
-      set.add(dayId);
+      set.add(dk);
       btn.classList.add('on');
     }
-    if (set.size === 0) delete state.selectedByWeek[weekId];
+    if (set.size === 0) delete state.selectedByWeek[wk];
+    persistPortalEnroll();
     updateDailyCheckoutBtn();
   }
 
@@ -1005,7 +1081,8 @@
     mount.innerHTML = '';
     state.weeks.forEach(function (w) {
       const weekFull = w.disabled || w.is_full;
-      const cset = state.dailyCampersByWeek[w.id];
+      const wk = String(w.id);
+      const cset = state.dailyCampersByWeek[wk];
       const kidCount = cset && cset.size ? cset.size : 0;
       const block = document.createElement('div');
       block.className = 'daily-block' + (weekFull ? ' disabled' : '');
@@ -1033,15 +1110,17 @@
           row.className = 'portal-kid-row';
           const cb = document.createElement('input');
           cb.type = 'checkbox';
-          cb.checked = !!(cset && cset.has(c.id));
+          const cid = String(c.id);
+          cb.checked = !!(cset && cset.has(cid));
           cb.addEventListener('change', function () {
-            const st = camperSetForWeek(state.dailyCampersByWeek, w.id);
-            if (cb.checked) st.add(c.id);
-            else st.delete(c.id);
+            const st = camperSetForWeek(state.dailyCampersByWeek, wk);
+            if (cb.checked) st.add(cid);
+            else st.delete(cid);
             if (!st.size) {
-              delete state.dailyCampersByWeek[w.id];
-              delete state.selectedByWeek[w.id];
+              delete state.dailyCampersByWeek[wk];
+              delete state.selectedByWeek[wk];
             }
+            persistPortalEnroll();
             renderDailyWeeks();
             updateDailyCheckoutBtn();
           });
@@ -1070,10 +1149,10 @@
         else if (kidCount < 1 && !weekFull) btn.title = 'Select at least one child for this week first';
         btn.addEventListener('click', function () {
           if (btn.disabled) return;
-          toggleDailyDay(w.id, d.id, btn);
+          toggleDailyDay(wk, d.id, btn);
         });
-        const sel = state.selectedByWeek[w.id];
-        if (sel && sel.has(d.id)) btn.classList.add('on');
+        const sel = state.selectedByWeek[wk];
+        if (sel && sel.has(String(d.id))) btn.classList.add('on');
         const meta = document.createElement('div');
         meta.className = 'day-meta';
         meta.textContent = en + '/' + cap + (atCap ? ' FULL' : '');
@@ -1167,23 +1246,6 @@
     }
   }
 
-  async function loadDayMap(sb, enr) {
-    const dayIdSet = {};
-    enr.forEach(function (e) {
-      (e.day_ids || []).forEach(function (id) {
-        dayIdSet[id] = true;
-      });
-    });
-    const dayIds = Object.keys(dayIdSet);
-    state.dayMap = {};
-    if (!dayIds.length) return;
-    const { data: drows, error } = await sb.from('days').select('id,date,day_name,week_id').in('id', dayIds);
-    if (error) return;
-    (drows || []).forEach(function (d) {
-      state.dayMap[d.id] = d;
-    });
-  }
-
   var portalChildSelectWired = false;
 
   async function load() {
@@ -1208,15 +1270,6 @@
     if (ce) throw ce;
     state.campers = campers || [];
 
-    const { data: enr, error: ee } = await sb
-      .from('enrollments')
-      .select('*')
-      .eq('parent_id', uid)
-      .order('created_at', { ascending: false });
-    if (ee) throw ee;
-    state.enrollments = enr || [];
-    await loadDayMap(sb, state.enrollments);
-
     try {
       const wr = await fetch('/api/weeks');
       if (wr.ok) {
@@ -1227,9 +1280,9 @@
       state.weeks = [];
     }
 
+    restorePortalEnroll();
     renderCamperCards();
     updateBookingButtonsEnabled();
-    renderBookings();
     renderFullWeekCards();
     await refreshPortalPricingForFullWeek();
   }
@@ -1246,7 +1299,7 @@
       showBanner('Add a child first.', false);
       return;
     }
-    clearFullWeekSelections();
+    restorePortalEnroll();
     showView('full');
     renderFullWeekCards();
     refreshPortalPricingForFullWeek();
@@ -1256,14 +1309,16 @@
       showBanner('Add a child first.', false);
       return;
     }
-    clearDailySelections();
+    restorePortalEnroll();
     showView('daily');
     renderDailyWeeks();
   };
   document.getElementById('back-from-full').onclick = function () {
+    persistPortalEnroll();
     showView('dashboard');
   };
   document.getElementById('back-from-daily').onclick = function () {
+    persistPortalEnroll();
     showView('dashboard');
   };
   document.getElementById('btn-daily-checkout').onclick = startDailyCheckout;
@@ -1300,6 +1355,11 @@
       document.getElementById('aca').value = '';
       document.getElementById('add-child-form').classList.remove('is-open');
       showBanner('Child added.', true);
+      if (childAddedBannerTimer) clearTimeout(childAddedBannerTimer);
+      childAddedBannerTimer = setTimeout(function () {
+        showBanner('', false);
+        childAddedBannerTimer = null;
+      }, 4000);
       await load();
     } catch (e) {
       document.getElementById('add-child-err').textContent = e.message || String(e);
@@ -1312,18 +1372,32 @@
       showView('dashboard');
       return;
     }
-    if (h === 'full') showView('full');
-    else if (h === 'daily') showView('daily');
-    else showView('dashboard');
+    if (h === 'full') {
+      restorePortalEnroll();
+      showView('full');
+      if (state.campers.length) renderFullWeekCards();
+      refreshPortalPricingForFullWeek();
+    } else if (h === 'daily') {
+      restorePortalEnroll();
+      showView('daily');
+      if (state.campers.length) renderDailyWeeks();
+    } else showView('dashboard');
   }
 
   window.addEventListener('hashchange', routeHash);
+  window.addEventListener('pagehide', function () {
+    persistPortalEnroll();
+  });
 
   load()
     .then(function () {
+      if (portalDebugEnabled()) {
+        portalDbg(
+          'load complete — logging: add ?portalDebug=1 to URL or localStorage.setItem("IMA_PORTAL_DEBUG","1")',
+          { campers: state.campers.length, fw: Object.keys(state.fullWeekCampersByWeek) }
+        );
+      }
       routeHash();
-      if (location.hash === '#full' && state.campers.length) renderFullWeekCards();
-      if (location.hash === '#daily' && state.campers.length) renderDailyWeeks();
     })
     .catch(function (e) {
       showBanner(e.message || String(e), false);
