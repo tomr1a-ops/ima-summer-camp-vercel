@@ -76,6 +76,32 @@
     background: linear-gradient(90deg, transparent, var(--cyan), transparent);
   }
 
+  .header-auth-bar {
+    position: absolute;
+    top: 14px;
+    right: max(16px, env(safe-area-inset-right));
+    z-index: 3;
+  }
+  .header-auth-bar[hidden] {
+    display: none !important;
+  }
+  .header-logout-btn {
+    font-family: var(--font-cond);
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--cyan);
+    text-decoration: none;
+    padding: 8px 10px;
+    border: 1px solid rgba(0, 229, 204, 0.35);
+    border-radius: 6px;
+    background: rgba(0, 229, 204, 0.06);
+  }
+  .header-logout-btn:hover {
+    background: rgba(0, 229, 204, 0.12);
+    text-decoration: none;
+  }
+
   .logo-img {
     width: 110px; height: 110px;
     object-fit: contain;
@@ -1289,6 +1315,9 @@
 <body>
 
 <header>
+  <div id="header-auth-bar" class="header-auth-bar" hidden>
+    <a href="#" id="logout-link-header" class="header-logout-btn">Log out</a>
+  </div>
   <img class="logo-img" src="/logo.png" alt="Impact Martial Athletics" />
   <div class="header-eyebrow">Davie, Florida · Ages 5–15 · Mon–Fri</div>
   <div class="header-logo">2026 Summer Camp Registration</div>
@@ -2708,6 +2737,7 @@
     const out = document.getElementById('state-signed-out');
     const g = document.getElementById('state-guest');
     const inEl = document.getElementById('state-signed-in');
+    const headerBar = document.getElementById('header-auth-bar');
     if (!out || !g || !inEl) return;
     out.style.display = 'none';
     g.style.display = 'none';
@@ -2718,6 +2748,9 @@
       inEl.style.display = 'block';
     } else {
       out.style.display = 'block';
+    }
+    if (headerBar) {
+      headerBar.hidden = !(session && !guestMode);
     }
   }
 
@@ -2779,10 +2812,13 @@
       wipeRegEnrollStorage();
       showAuthPanels();
     }
-    document.getElementById('logout-link-top').addEventListener('click', function (ev) {
+    function onLogoutClick(ev) {
       ev.preventDefault();
       IMA.signOut();
-    });
+    }
+    document.getElementById('logout-link-top').addEventListener('click', onLogoutClick);
+    const logoutHeader = document.getElementById('logout-link-header');
+    if (logoutHeader) logoutHeader.addEventListener('click', onLogoutClick);
     document.getElementById('link-guest').addEventListener('click', function (ev) {
       ev.preventDefault();
       guestMode = true;
