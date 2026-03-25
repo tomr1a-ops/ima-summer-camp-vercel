@@ -89,7 +89,7 @@ module.exports = async (req, res) => {
       console.error('[register-parent] config', cfgErr);
       return json(res, 503, {
         error:
-          'Server is missing Supabase credentials (service role key). Add SUPABASE_SERVICE_ROLE_KEY to this Vercel project.',
+          'Missing SUPABASE_SERVICE_ROLE_KEY on this deployment.\n\n1) Supabase → Project Settings → API → copy service_role (secret).\n2) Vercel → the project for this domain (e.g. ima-summer-camp) → Settings → Environment Variables → Production → add SUPABASE_SERVICE_ROLE_KEY.\n3) Redeploy production.',
       });
     }
 
