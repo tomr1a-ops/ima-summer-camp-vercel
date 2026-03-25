@@ -303,17 +303,17 @@
     }
     .portal-kid-row input { width: 18px; height: 18px; accent-color: var(--cyan); cursor: pointer; }
     .portal-kid-row span { color: #e8e8e8; }
-    .portal-reg-ima-note {
+    .portal-reg-member-hint {
       margin: 0 0 14px;
       padding: 12px 14px;
       border-radius: 8px;
-      border: 1px solid rgba(0, 229, 204, 0.28);
-      background: rgba(0, 229, 204, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.04);
       font-size: 14px;
       line-height: 1.55;
-      color: #d8d8d8;
+      color: #fff;
     }
-    .portal-reg-ima-note strong { color: var(--cyan); }
+    .portal-reg-member-hint strong { color: #fff; font-weight: 700; }
     .portal-reg-fee-row {
       display: flex;
       align-items: flex-start;
@@ -334,8 +334,8 @@
       cursor: pointer;
       flex-shrink: 0;
     }
-    .portal-reg-fee-row .lbl { flex: 1; line-height: 1.45; color: #e8e8e8; }
-    .portal-reg-fee-row .amt { font-weight: 600; color: var(--cyan); }
+    .portal-reg-fee-row .lbl { flex: 1; line-height: 1.45; color: #fff; }
+    .portal-reg-fee-row .amt { font-weight: 600; color: #fff; }
   </style>
 </head>
 <body>
@@ -382,11 +382,10 @@
       </div>
 
       <div class="book-panel" id="portal-reg-fee-section" style="display: none; margin-top: 16px">
-        <div class="section-title" style="margin-top: 0">Registration fee ($65)</div>
-        <p class="portal-reg-ima-note">
-          <strong>IMA Impact members</strong> pay <strong>no registration fee</strong>. For everyone else, the one-time fee is
-          <strong>$65 per child</strong> (shirt + gloves). Check the box for each child who should be charged at checkout —
-          <strong>uncheck</strong> for IMA members or if it does not apply.
+        <div class="section-title" style="margin-top: 0">Registration fee</div>
+        <p class="portal-reg-member-hint">
+          For each child, <strong>check the box if they are an IMA member</strong> — we will not charge the one-time registration fee for
+          that child. Leave the box unchecked to include the fee at checkout.
         </p>
         <div id="portal-reg-fee-mount"></div>
       </div>
@@ -906,7 +905,7 @@
       .map(function (c) {
         const id = escapeHtml(c.id);
         const nm = escapeHtml(c.first_name + ' ' + c.last_name);
-        const chk = getPortalRegFeeInclude(c.id) ? ' checked' : '';
+        const chk = getPortalRegFeeInclude(c.id) ? '' : ' checked';
         return (
           '<label class="portal-reg-fee-row" for="portal-reg-cb-' +
           id +
@@ -918,9 +917,9 @@
           '"' +
           chk +
           ' />' +
-          '<span class="lbl"><strong>Registration fee</strong> — ' +
+          '<span class="lbl"><strong>IMA member</strong> — ' +
           nm +
-          '<br /><small style="color:#888">Uncheck for IMA members / waived</small></span>' +
+          '</span>' +
           '<span class="amt">' +
           escapeHtml(fmt(rf)) +
           '</span></label>'
@@ -930,7 +929,7 @@
     mount.querySelectorAll('input[data-portal-reg]').forEach(function (el) {
       el.addEventListener('change', function () {
         var pid = el.getAttribute('data-portal-reg');
-        if (pid) state.portalRegFeeInclude[String(pid)] = el.checked;
+        if (pid) state.portalRegFeeInclude[String(pid)] = !el.checked;
         portalDbg('reg fee checkbox', String(pid), el.checked);
         persistPortalEnroll();
         updateFullWeekSummary();
