@@ -1101,6 +1101,42 @@
   .day-chip.on + .day-chip-meta,
   .day-chip-wrap:has(.day-chip.on) .day-chip-meta { color: #666; }
 
+  .day-chip-wrap.daily-perday-col {
+    flex: 1 1 100%;
+    min-width: 220px;
+  }
+  .day-chip.daily-perday-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    min-height: auto;
+    padding: 10px 12px;
+    gap: 4px;
+  }
+  .day-chip.daily-perday-btn .dpm { font-weight: 700; }
+  .day-chip.daily-perday-btn .dps {
+    font-size: 11px;
+    color: #888;
+    font-weight: 400;
+    line-height: 1.35;
+  }
+  .day-chip.daily-perday-btn.has-kids {
+    border-color: var(--cyan);
+    background: rgba(0, 229, 204, 0.1);
+    color: var(--cyan);
+  }
+  .day-chip.daily-perday-btn.has-kids .dps { color: rgba(0, 229, 204, 0.85); }
+  .day-per-kids-panel {
+    display: none;
+    padding: 10px 12px;
+    border: 1px solid var(--border2);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    background: rgba(0, 0, 0, 0.28);
+  }
+  .day-per-kids-panel.open { display: block; }
+
   .daily-week-kids {
     display: flex;
     align-items: center;
@@ -1447,8 +1483,11 @@
   const camperIdByWeek = {};
   /** Signed-in weekly: week id → camper ids attending full week */
   const fullWeekCampersByWeek = {};
-  /** Signed-in daily: week id → camper ids (same days for each) */
+  /** Signed-in daily: week id → camper ids (legacy; unused when per-day map is used) */
   const dailyCampersByWeek = {};
+  /** Signed-in daily: weekId → dayId → Set of camper ids */
+  const dailyPerDayCampers = {};
+  const dailyExpandedKeysMain = new Set();
   /** @type {{ id: string, first_name: string, last_name: string }[]} */
   let parentCampers = [];
   let enrollmentType = 'full';
@@ -1523,6 +1562,35 @@
     return c ? (c.first_name + ' ' + c.last_name).trim() : '';
   }
 
+  function dailyExpandKeyMain(wk, dayId) {
+    return String(wk) + ':' + String(dayId);
+  }
+  function ensureDailyPerDayMapMain(wk) {
+    const k = String(wk);
+    if (!dailyPerDayCampers[k]) dailyPerDayCampers[k] = {};
+    return dailyPerDayCampers[k];
+  }
+  function ensureDayCamperSetMain(wk, dayId) {
+    const map = ensureDailyPerDayMapMain(wk);
+    const dk = String(dayId);
+    if (!map[dk]) map[dk] = new Set();
+    return map[dk];
+  }
+  function getDayCamperSetMain(wk, dayId) {
+    const inner = dailyPerDayCampers[String(wk)];
+    if (!inner) return null;
+    return inner[String(dayId)] || null;
+  }
+  function pruneEmptyDailyWeekMain(wk) {
+    const k = String(wk);
+    const inner = dailyPerDayCampers[k];
+    if (!inner) return;
+    Object.keys(inner).forEach(function (dk) {
+      if (!inner[dk] || !inner[dk].size) delete inner[dk];
+    });
+    if (!Object.keys(inner).length) delete dailyPerDayCampers[k];
+  }
+
   function camperSelectionReady() {
     if (guestMode) {
       return !!(
@@ -1537,16 +1605,6 @@
 
   function weeksMissingCamperAssignment() {
     if (guestMode || !session) return false;
-    if (enrollmentType === 'daily') {
-      for (let i = 0; i < weeksPayload.length; i++) {
-        const wid = String(weeksPayload[i].id);
-        const set = selectedByWeek[wid];
-        if (set && set.size >= 1) {
-          const cs = dailyCampersByWeek[wid];
-          if (!cs || !cs.size) return true;
-        }
-      }
-    }
     return false;
   }
 
@@ -1559,11 +1617,13 @@
         if (s) s.forEach(function (cid) { ids.add(String(cid)); });
       });
     } else {
-      Object.keys(selectedByWeek).forEach(function (wid) {
-        const set = selectedByWeek[wid];
-        if (!set || !set.size) return;
-        const cs = dailyCampersByWeek[wid];
-        if (cs) cs.forEach(function (cid) { ids.add(String(cid)); });
+      Object.keys(dailyPerDayCampers).forEach(function (wid) {
+        const inner = dailyPerDayCampers[wid];
+        if (!inner) return;
+        Object.keys(inner).forEach(function (dk) {
+          const s = inner[dk];
+          if (s) s.forEach(function (cid) { ids.add(String(cid)); });
+        });
       });
     }
     return Array.from(ids);
@@ -1586,13 +1646,19 @@
         ? '<div class="child-context">Children: ' + escapeHtml(names.join(', ')) + '</div>'
         : '';
     }
-    const s = dailyCampersByWeek[wk];
-    if (!s || !s.size) return '';
-    const names = Array.from(s)
+    const inner = dailyPerDayCampers[wk];
+    if (!inner) return '';
+    const all = new Set();
+    Object.keys(inner).forEach(function (dk) {
+      const s = inner[dk];
+      if (s) s.forEach(function (cid) { all.add(String(cid)); });
+    });
+    if (!all.size) return '';
+    const names = Array.from(all)
       .map(function (id) { return getCamperNameById(id); })
       .filter(Boolean);
     return names.length
-      ? '<div class="child-context">Children: ' + escapeHtml(names.join(', ')) + '</div>'
+      ? '<div class="child-context">Children this week: ' + escapeHtml(names.join(', ')) + '</div>'
       : '';
   }
 
@@ -1780,6 +1846,10 @@
     Object.keys(dailyCampersByWeek).forEach(function (k) {
       delete dailyCampersByWeek[k];
     });
+    Object.keys(dailyPerDayCampers).forEach(function (k) {
+      delete dailyPerDayCampers[k];
+    });
+    dailyExpandedKeysMain.clear();
     weeksPayload.forEach(function (w) {
       fullWeekQty[w.id] = 0;
       dailyKidsByWeek[w.id] = 1;
@@ -1815,18 +1885,22 @@
       Object.keys(fullWeekCampersByWeek).forEach(function (wid) {
         fw[String(wid)] = Array.from(fullWeekCampersByWeek[wid] || []).map(String);
       });
-      const dw = {};
-      Object.keys(dailyCampersByWeek).forEach(function (wid) {
-        dw[String(wid)] = Array.from(dailyCampersByWeek[wid] || []).map(String);
-      });
-      const sw = {};
-      Object.keys(selectedByWeek).forEach(function (wid) {
-        sw[String(wid)] = Array.from(selectedByWeek[wid] || []).map(String);
+      const pdc = {};
+      Object.keys(dailyPerDayCampers).forEach(function (wid) {
+        const inner = dailyPerDayCampers[wid];
+        if (!inner) return;
+        pdc[wid] = {};
+        Object.keys(inner).forEach(function (dk) {
+          const s = inner[dk];
+          if (s && s.size) pdc[wid][dk] = Array.from(s).map(String);
+        });
+        if (!Object.keys(pdc[wid]).length) delete pdc[wid];
       });
       var enrollPayload = JSON.stringify({
         fw: fw,
-        dw: dw,
-        sw: sw,
+        dw: {},
+        sw: {},
+        pdc: pdc,
         fullWeekQty: fullWeekQty,
         dailyKidsByWeek: dailyKidsByWeek,
         regFeeIncludeByCamper: regFeeIncludeByCamper,
@@ -1876,15 +1950,33 @@
       Object.keys(dailyCampersByWeek).forEach(function (k) {
         delete dailyCampersByWeek[k];
       });
+      Object.keys(dailyPerDayCampers).forEach(function (k) {
+        delete dailyPerDayCampers[k];
+      });
       Object.keys(o.fw || {}).forEach(function (wid) {
         fullWeekCampersByWeek[wid] = new Set((o.fw[wid] || []).map(String));
       });
-      Object.keys(o.dw || {}).forEach(function (wid) {
-        dailyCampersByWeek[wid] = new Set((o.dw[wid] || []).map(String));
-      });
-      Object.keys(o.sw || {}).forEach(function (wid) {
-        selectedByWeek[wid] = new Set((o.sw[wid] || []).map(String));
-      });
+      if (o.pdc && typeof o.pdc === 'object' && Object.keys(o.pdc).length) {
+        Object.keys(o.pdc).forEach(function (wid) {
+          const inner = o.pdc[wid];
+          if (!inner || typeof inner !== 'object') return;
+          const map = ensureDailyPerDayMapMain(wid);
+          Object.keys(inner).forEach(function (dk) {
+            const arr = inner[dk];
+            if (arr && arr.length) map[String(dk)] = new Set(arr.map(String));
+          });
+        });
+      } else {
+        Object.keys(o.sw || {}).forEach(function (wid) {
+          const days = o.sw[wid];
+          const kids = (o.dw && o.dw[wid]) || [];
+          if (!days || !days.length || !kids.length) return;
+          const map = ensureDailyPerDayMapMain(wid);
+          days.forEach(function (dk) {
+            map[String(dk)] = new Set(kids.map(String));
+          });
+        });
+      }
       if (o.fullWeekQty && typeof o.fullWeekQty === 'object') {
         Object.keys(o.fullWeekQty).forEach(function (wid) {
           fullWeekQty[wid] = o.fullWeekQty[wid];
@@ -1940,8 +2032,7 @@
       const v = dailyKidsByWeek[wid];
       return v == null ? 1 : v;
     }
-    const s = dailyCampersByWeek[String(wid)];
-    return s && s.size > 0 ? 1 : 0;
+    return parentCampers.length > 0 ? 1 : 0;
   }
 
   function collectBookings() {
@@ -1964,20 +2055,27 @@
         }
       });
     } else {
-      Object.keys(selectedByWeek).forEach(function (wid) {
-        const set = selectedByWeek[wid];
-        if (!set || !set.size) return;
-        if (guestMode || !session) {
+      if (guestMode || !session) {
+        Object.keys(selectedByWeek).forEach(function (wid) {
+          const set = selectedByWeek[wid];
+          if (!set || !set.size) return;
           if (getDailyKids(wid) < 1) return;
           out.push({ weekId: wid, dayIds: Array.from(set), pricingMode: 'daily' });
-        } else {
-          const cset = dailyCampersByWeek[wid];
-          if (!cset || !cset.size) return;
-          cset.forEach(function (cid) {
-            out.push({ weekId: wid, dayIds: Array.from(set), pricingMode: 'daily', camperId: cid });
+        });
+      } else {
+        weeksPayload.forEach(function (w) {
+          const wk = String(w.id);
+          const inner = dailyPerDayCampers[wk];
+          if (!inner) return;
+          Object.keys(inner).forEach(function (dk) {
+            const s = inner[dk];
+            if (!s || !s.size) return;
+            s.forEach(function (cid) {
+              out.push({ weekId: w.id, dayIds: [dk], pricingMode: 'daily', camperId: String(cid) });
+            });
           });
-        }
-      });
+        });
+      }
     }
     return out;
   }
@@ -2402,7 +2500,6 @@
         head.appendChild(b);
       }
       block.appendChild(head);
-      if (signedInParent) block.appendChild(buildWeekCamperCheckboxes(w.id, 'daily'));
 
       if (!signedInParent) {
         const dk = document.createElement('div');
@@ -2443,33 +2540,122 @@
 
       const chips = document.createElement('div');
       chips.className = 'day-chips';
-      (w.days || []).forEach(function (d) {
-        const col = document.createElement('div');
-        col.className = 'day-chip-wrap';
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'day-chip';
-        btn.textContent = formatDayLabel(d);
-        const cap = maxCap(w);
-        const enrolled = d.current_enrollment || 0;
-        const dc = dailyCampersByWeek[wk];
-        const needCamperDay = signedInParent ? !(dc && dc.size) : false;
-        btn.disabled = weekFull || d.at_capacity || kids < 1 || needCamperDay;
-        if (btn.disabled && !weekFull && kids >= 1) btn.title = 'This day is full';
-        else if (btn.disabled && signedInParent && !weekFull && !(dc && dc.size)) btn.title = 'Select at least one child for this week first';
-        btn.addEventListener('click', function () {
-          if (btn.disabled) return;
-          toggleDay(w.id, d.id, btn);
+      if (signedInParent) {
+        (w.days || []).forEach(function (d) {
+          const cap = maxCap(w);
+          const enrolled = d.current_enrollment || 0;
+          const atCap = d.at_capacity || enrolled >= cap;
+          const col = document.createElement('div');
+          col.className = 'day-chip-wrap daily-perday-col';
+          const dayBlocked = weekFull || atCap;
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'day-chip daily-perday-btn';
+          const dpm = document.createElement('span');
+          dpm.className = 'dpm';
+          const dps = document.createElement('span');
+          dps.className = 'dps';
+          btn.appendChild(dpm);
+          btn.appendChild(dps);
+          const ek = dailyExpandKeyMain(wk, d.id);
+          const panel = document.createElement('div');
+          panel.className = 'day-per-kids-panel';
+          if (dailyExpandedKeysMain.has(ek)) panel.classList.add('open');
+          function refreshMainDayBtn() {
+            const s = getDayCamperSetMain(wk, d.id);
+            const n = s ? s.size : 0;
+            btn.classList.toggle('has-kids', n > 0);
+            btn.classList.toggle('expanded', dailyExpandedKeysMain.has(ek));
+            dpm.textContent = formatDayLabel(d);
+            if (n === 0) dps.textContent = 'Tap to choose children';
+            else if (n <= 3) {
+              dps.textContent = Array.from(s)
+                .map(function (id) {
+                  return getCamperNameById(id);
+                })
+                .filter(Boolean)
+                .join(', ');
+            } else dps.textContent = n + ' children';
+          }
+          refreshMainDayBtn();
+          btn.disabled = dayBlocked;
+          if (atCap && !weekFull) btn.title = 'This day is full';
+          btn.addEventListener('click', function () {
+            if (btn.disabled) return;
+            if (dailyExpandedKeysMain.has(ek)) {
+              dailyExpandedKeysMain.delete(ek);
+              panel.classList.remove('open');
+            } else {
+              dailyExpandedKeysMain.add(ek);
+              panel.classList.add('open');
+            }
+            refreshMainDayBtn();
+          });
+          parentCampers.forEach(function (c) {
+            const cid = String(c.id);
+            const row = document.createElement('label');
+            row.className = 'week-kid-cb';
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            const st0 = getDayCamperSetMain(wk, d.id);
+            cb.checked = !!(st0 && st0.has(cid));
+            cb.addEventListener('click', function (ev) {
+              ev.stopPropagation();
+            });
+            cb.addEventListener('change', function () {
+              const set = ensureDayCamperSetMain(wk, d.id);
+              if (cb.checked) set.add(cid);
+              else set.delete(cid);
+              if (!set.size) {
+                const map = ensureDailyPerDayMapMain(wk);
+                delete map[String(d.id)];
+                pruneEmptyDailyWeekMain(wk);
+              }
+              refreshMainDayBtn();
+              persistEnrollLocal();
+              refreshPricingPreview();
+            });
+            const sp = document.createElement('span');
+            sp.textContent = c.first_name + ' ' + c.last_name;
+            row.appendChild(cb);
+            row.appendChild(sp);
+            panel.appendChild(row);
+          });
+          const meta = document.createElement('div');
+          meta.className = 'day-chip-meta';
+          meta.style.textAlign = 'left';
+          meta.textContent = enrolled + '/' + cap + (atCap ? ' FULL' : '');
+          col.appendChild(btn);
+          col.appendChild(panel);
+          col.appendChild(meta);
+          chips.appendChild(col);
         });
-        const sel = selectedByWeek[wk];
-        if (sel && sel.has(String(d.id))) btn.classList.add('on');
-        const meta = document.createElement('div');
-        meta.className = 'day-chip-meta';
-        meta.textContent = enrolled + '/' + cap;
-        col.appendChild(btn);
-        col.appendChild(meta);
-        chips.appendChild(col);
-      });
+      } else {
+        (w.days || []).forEach(function (d) {
+          const col = document.createElement('div');
+          col.className = 'day-chip-wrap';
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'day-chip';
+          btn.textContent = formatDayLabel(d);
+          const cap = maxCap(w);
+          const enrolled = d.current_enrollment || 0;
+          btn.disabled = weekFull || d.at_capacity || kids < 1;
+          if (btn.disabled && !weekFull && kids >= 1) btn.title = 'This day is full';
+          btn.addEventListener('click', function () {
+            if (btn.disabled) return;
+            toggleDay(w.id, d.id, btn);
+          });
+          const sel = selectedByWeek[wk];
+          if (sel && sel.has(String(d.id))) btn.classList.add('on');
+          const meta = document.createElement('div');
+          meta.className = 'day-chip-meta';
+          meta.textContent = enrolled + '/' + cap;
+          col.appendChild(btn);
+          col.appendChild(meta);
+          chips.appendChild(col);
+        });
+      }
       block.appendChild(chips);
       mount.appendChild(block);
     });
