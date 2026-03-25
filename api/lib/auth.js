@@ -1,4 +1,4 @@
-const { serviceClient } = require('./supabase');
+const { serviceClient, anonClient, userScopedClient } = require('./supabase');
 
 function bearerToken(req) {
   const h = req.headers.authorization || req.headers.Authorization || '';
@@ -9,13 +9,23 @@ function bearerToken(req) {
 async function getUserFromRequest(req) {
   const token = bearerToken(req);
   if (!token) return { user: null, token: null };
-  const sb = serviceClient();
+  const sb = anonClient();
   const { data, error } = await sb.auth.getUser(token);
   if (error || !data.user) return { user: null, token: null };
   return { user: data.user, token };
 }
 
-async function getProfileForUser(userId) {
+async function getProfileForUser(userId, accessToken) {
+  if (accessToken) {
+    const sb = userScopedClient(accessToken);
+    const { data, error } = await sb
+      .from('profiles')
+      .select('id,email,full_name,phone,role')
+      .eq('id', userId)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  }
   const sb = serviceClient();
   const { data, error } = await sb
     .from('profiles')
@@ -47,6 +57,8 @@ function resolveUserEmail(user) {
 
 /**
  * Ensures public.profiles has a row for this auth user (campers.parent_id FK targets profiles.id).
+ * Uses the service role so INSERT succeeds even when RLS would block anon/JWT-only writes.
+ * Preserves an existing role (e.g. admin); new rows default to parent.
  * @param {object} [extras] — optional full_name, phone (used after registration)
  */
 async function upsertParentProfile(user, extras) {
@@ -60,13 +72,16 @@ async function upsertParentProfile(user, extras) {
     throw err;
   }
   const sb = serviceClient();
-  const row = { id: user.id, email, role: 'parent' };
-  if (extras && typeof extras === 'object') {
-    const fn = extras.full_name != null ? String(extras.full_name).trim() : '';
-    const ph = extras.phone != null ? String(extras.phone).trim() : '';
-    if (fn) row.full_name = fn;
-    if (ph) row.phone = ph;
-  }
+  const existing = await getProfileForUser(user.id, null);
+  const fnIn = extras && extras.full_name != null ? String(extras.full_name).trim() : '';
+  const phIn = extras && extras.phone != null ? String(extras.phone).trim() : '';
+  const row = {
+    id: user.id,
+    email,
+    full_name: fnIn || (existing && existing.full_name) || null,
+    phone: phIn || (existing && existing.phone) || null,
+    role: (existing && existing.role) || 'parent',
+  };
   const { data: rows, error } = await sb
     .from('profiles')
     .upsert(row, { onConflict: 'id' })
@@ -89,7 +104,7 @@ async function requireParent(req) {
     err.statusCode = 401;
     throw err;
   }
-  const profile = await getProfileForUser(user.id);
+  const profile = await getProfileForUser(user.id, token);
   if (!profile || profile.role !== 'parent') {
     const err = new Error('Parent access only');
     err.statusCode = 403;
@@ -105,7 +120,7 @@ async function requireAdmin(req) {
     err.statusCode = 401;
     throw err;
   }
-  const profile = await getProfileForUser(user.id);
+  const profile = await getProfileForUser(user.id, token);
   if (!profile || profile.role !== 'admin') {
     const err = new Error('Admin only');
     err.statusCode = 403;

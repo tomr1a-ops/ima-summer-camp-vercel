@@ -1,6 +1,6 @@
 const { randomUUID } = require('crypto');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-const { serviceClient } = require('./lib/supabase');
+const { serviceClient, userScopedClient } = require('./lib/supabase');
 const { getUserFromRequest, upsertParentProfile } = require('./lib/auth');
 const { dayRate, weekRate, registrationFee } = require('./lib/pricing');
 const { validateBooking } = require('./lib/capacity');
@@ -76,15 +76,23 @@ module.exports = async (req, res) => {
     return json(res, 400, { error: 'No bookings' });
   }
 
-  const sb = serviceClient();
-  const { user } = await getUserFromRequest(req);
+  const { user, token } = await getUserFromRequest(req);
   let parentId = null;
   let profile = null;
   let guestEmailForStripe = null;
   let guestCamperId = null;
+  let sb = null;
 
   if (guestMode) {
     if (user) return json(res, 400, { error: 'Use per-week camper selections when signed in, not guest object' });
+    try {
+      sb = serviceClient();
+    } catch (e) {
+      return json(res, 503, {
+        error:
+          'Guest checkout needs SUPABASE_SERVICE_ROLE_KEY on the server. Sign in with a parent account or add the service role key in Vercel.',
+      });
+    }
     const email = String(guest.email).trim().toLowerCase();
     guestEmailForStripe = email;
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -108,8 +116,14 @@ module.exports = async (req, res) => {
     guestCamperId = ins.id;
     parentId = null;
   } else if (user) {
+    if (!token) return json(res, 401, { error: 'Sign in required' });
     try {
-      profile = await upsertParentProfile(user);
+      sb = userScopedClient(token);
+    } catch (e) {
+      return json(res, 503, { error: e.message || 'Server configuration error' });
+    }
+    try {
+      profile = await upsertParentProfile(user, {});
     } catch (pe) {
       return json(res, pe.statusCode || 500, { error: pe.message });
     }

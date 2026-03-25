@@ -40,14 +40,14 @@ async function readJsonBody(req) {
 }
 
 /**
- * POST — Create/update profiles row using service role (bypasses RLS).
- * Use right after signUp when session exists, or any time to sync name/phone.
+ * POST — Create/update profiles row (service role upsert after JWT verification).
+ * Use after sign-in when no profile row exists, or to sync name/phone.
  */
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });
 
-  const { user } = await getUserFromRequest(req);
-  if (!user) return json(res, 401, { error: 'Unauthorized' });
+  const { user, token } = await getUserFromRequest(req);
+  if (!user || !token) return json(res, 401, { error: 'Unauthorized' });
 
   let body = {};
   try {

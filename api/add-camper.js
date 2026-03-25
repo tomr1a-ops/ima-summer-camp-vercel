@@ -1,4 +1,4 @@
-const { serviceClient } = require('./lib/supabase');
+const { userScopedClient } = require('./lib/supabase');
 const { getUserFromRequest, upsertParentProfile } = require('./lib/auth');
 
 function json(res, code, obj) {
@@ -55,8 +55,8 @@ async function readJsonBody(req) {
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });
 
-  const { user } = await getUserFromRequest(req);
-  if (!user) return json(res, 401, { error: 'Sign in required' });
+  const { user, token } = await getUserFromRequest(req);
+  if (!user || !token) return json(res, 401, { error: 'Sign in required' });
 
   let body = {};
   try {
@@ -73,8 +73,8 @@ module.exports = async (req, res) => {
   }
 
   try {
-    await upsertParentProfile(user);
-    const sb = serviceClient();
+    await upsertParentProfile(user, {});
+    const sb = userScopedClient(token);
     const { data, error } = await sb
       .from('campers')
       .insert({

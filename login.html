@@ -47,6 +47,99 @@
         msg.className = 'msg show ' + (ok ? 'ok' : 'error');
       }
 
+      var PENDING_REG_KEY = 'ima_pending_registration_v1';
+
+      /**
+       * After email confirmation, parent signed up without server role: children were stored here.
+       */
+      async function flushPendingRegistration(email, accessToken) {
+        var raw;
+        try {
+          raw = localStorage.getItem(PENDING_REG_KEY);
+        } catch (e) {
+          return null;
+        }
+        if (!raw) return null;
+        var pending;
+        try {
+          pending = JSON.parse(raw);
+        } catch (e) {
+          try {
+            localStorage.removeItem(PENDING_REG_KEY);
+          } catch (e2) {}
+          return null;
+        }
+        if (!pending || String(pending.email).toLowerCase() !== String(email).toLowerCase()) {
+          return null;
+        }
+        var maxAge = 1000 * 60 * 60 * 24 * 14;
+        if (!pending.ts || Date.now() - pending.ts > maxAge) {
+          try {
+            localStorage.removeItem(PENDING_REG_KEY);
+          } catch (e3) {}
+          return null;
+        }
+        var er = await fetch('/api/ensure-profile', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + accessToken,
+          },
+          body: JSON.stringify({
+            full_name: pending.fullName,
+            phone: pending.phone,
+          }),
+        });
+        var ej = {};
+        try {
+          ej = await er.json();
+        } catch (e4) {
+          ej = {};
+        }
+        if (!er.ok) {
+          return { error: (ej && ej.error) || 'Could not complete your profile. Try again or contact IMA.' };
+        }
+        var children = Array.isArray(pending.children) ? pending.children : [];
+        var errs = [];
+        for (var i = 0; i < children.length; i++) {
+          var ch = children[i];
+          var ar = await fetch('/api/add-camper', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: 'Bearer ' + accessToken,
+            },
+            body: JSON.stringify({
+              firstName: ch.firstName,
+              lastName: ch.lastName,
+              age: ch.age,
+            }),
+          });
+          var aj = {};
+          try {
+            aj = await ar.json();
+          } catch (e5) {
+            aj = {};
+          }
+          if (!ar.ok) {
+            errs.push(
+              (ch.firstName || '') +
+                ' ' +
+                (ch.lastName || '') +
+                ': ' +
+                ((aj && aj.error) || 'could not save')
+            );
+          }
+        }
+        try {
+          localStorage.removeItem(PENDING_REG_KEY);
+        } catch (e6) {}
+        if (errs.length) {
+          return { partialErrors: errs };
+        }
+        return { ok: true };
+      }
+
       async function boot() {
         try {
           await IMA.getSupabase();
@@ -73,6 +166,21 @@
           const password = document.getElementById('password').value;
           const { data: signData, error } = await sb.auth.signInWithPassword({ email, password });
           if (error) throw error;
+          const tok = signData.session && signData.session.access_token;
+          const flushed = tok ? await flushPendingRegistration(email, tok) : null;
+          if (flushed && flushed.error) {
+            show(flushed.error, false);
+            btn.disabled = false;
+            return;
+          }
+          if (flushed && flushed.partialErrors && flushed.partialErrors.length) {
+            show(
+              'Signed in. Some children could not be added automatically:\n' +
+                flushed.partialErrors.join('\n') +
+                '\n\nAdd them under your account in the portal.',
+              false
+            );
+          }
           let profile = await IMA.getProfile();
           if (!profile && signData.session && signData.session.access_token) {
             const pr = await fetch('/api/ensure-profile', {
@@ -83,7 +191,19 @@
               },
               body: JSON.stringify({}),
             });
-            if (pr.ok) profile = await IMA.getProfile();
+            if (pr.ok) {
+              profile = await IMA.getProfile();
+            } else {
+              var pe = {};
+              try {
+                pe = await pr.json();
+              } catch (ePr) {
+                pe = {};
+              }
+              throw new Error(
+                (pe && pe.error) || 'Could not create your profile. Check that the site has SUPABASE_SERVICE_ROLE_KEY set, then try again.'
+              );
+            }
           }
           if (!profile) throw new Error('Profile not found. Complete registration or contact IMA.');
           const ret = new URLSearchParams(window.location.search).get('return');
