@@ -51,6 +51,35 @@ function errText(e) {
   }
 }
 
+function isDuplicateUserError(ce) {
+  const msg = String(ce.message || '');
+  const code = String(ce.code || ce.status || '');
+  return /already|registered|exists|duplicate|user_already_exists/i.test(msg + code);
+}
+
+/** Resolve auth user id when createUser reports duplicate (profile row or paginated admin list). */
+async function resolveExistingAuthUserId(sb, email) {
+  const em = String(email).trim().toLowerCase();
+  const { data: prof, error: pe } = await sb.from('profiles').select('id').eq('email', em).maybeSingle();
+  if (!pe && prof && prof.id) return prof.id;
+
+  let page = 1;
+  const perPage = 200;
+  const maxPages = 250;
+  for (; page <= maxPages; page++) {
+    const { data, error } = await sb.auth.admin.listUsers({ page, perPage });
+    if (error) {
+      console.warn('[register-parent] listUsers', error.message);
+      return null;
+    }
+    const users = (data && data.users) || [];
+    const u = users.find((x) => String(x.email || '').toLowerCase() === em);
+    if (u && u.id) return u.id;
+    if (users.length < perPage) break;
+  }
+  return null;
+}
+
 /**
  * POST — Create a confirmed parent account (no email-confirmation step).
  * Client should signInWithPassword immediately after success.
@@ -88,6 +117,7 @@ module.exports = async (req, res) => {
     } catch (cfgErr) {
       console.error('[register-parent] config', cfgErr);
       return json(res, 503, {
+        code: 'MISSING_SERVICE_ROLE',
         error:
           'Missing SUPABASE_SERVICE_ROLE_KEY on this deployment.\n\n1) Supabase → Project Settings → API → copy service_role (secret).\n2) Vercel → the project for this domain (e.g. ima-summer-camp) → Settings → Environment Variables → Production → add SUPABASE_SERVICE_ROLE_KEY.\n3) Redeploy production.',
       });
@@ -104,8 +134,26 @@ module.exports = async (req, res) => {
       const msg = ce.message || 'Registration failed';
       const code = ce.code || ce.status;
       console.warn('[register-parent] createUser', msg, code);
-      if (/already|registered|exists|duplicate|user_already_exists/i.test(msg + String(code))) {
-        return json(res, 409, { error: 'An account with this email already exists. Sign in instead.' });
+      if (isDuplicateUserError(ce)) {
+        const existingId = await resolveExistingAuthUserId(sb, email);
+        if (existingId) {
+          const userForProfile = {
+            id: existingId,
+            email,
+            user_metadata: { full_name: fullName, phone },
+          };
+          try {
+            await upsertParentProfile(userForProfile, { full_name: fullName, phone });
+          } catch (pe) {
+            console.error('[register-parent] profile (existing user)', pe);
+            return json(res, 500, { error: errText(pe) });
+          }
+        }
+        return json(res, 200, {
+          ok: true,
+          existingUser: true,
+          message: 'An account with this email already exists. Sign in with your password.',
+        });
       }
       return json(res, 400, { error: msg, code: code || undefined });
     }

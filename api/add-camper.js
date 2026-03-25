@@ -1,4 +1,4 @@
-const { userScopedClient } = require('./lib/supabase');
+const { serviceClient } = require('./lib/supabase');
 const { getUserFromRequest, upsertParentProfile } = require('./lib/auth');
 
 function json(res, code, obj) {
@@ -72,9 +72,20 @@ module.exports = async (req, res) => {
     return json(res, 400, { error: 'Valid first name, last name, and age (3–18) required' });
   }
 
+  let sb;
+  try {
+    sb = serviceClient();
+  } catch (cfgErr) {
+    console.error('[add-camper] config', cfgErr);
+    return json(res, 503, {
+      code: 'MISSING_SERVICE_ROLE',
+      error:
+        'Missing SUPABASE_SERVICE_ROLE_KEY on this deployment. Add it in Vercel → Environment Variables → Production, then redeploy.',
+    });
+  }
+
   try {
     await upsertParentProfile(user, {});
-    const sb = userScopedClient(token);
     const { data, error } = await sb
       .from('campers')
       .insert({
