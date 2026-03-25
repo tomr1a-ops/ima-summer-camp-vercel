@@ -726,6 +726,24 @@
     margin-top: 8px;
   }
   .auth-inline-links a { color: var(--cyan); }
+  .signed-in-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .auth-logout-top {
+    font-size: 13px;
+    color: var(--cyan);
+    text-decoration: none;
+    white-space: nowrap;
+    margin-top: 2px;
+  }
+  .auth-logout-top:hover {
+    text-decoration: underline;
+  }
   .pricing-tiers-box {
     margin-top: 10px;
     padding: 12px 14px;
@@ -1321,11 +1339,16 @@
         </div>
 
         <div id="state-signed-in" class="auth-hero-card" style="display:none">
-          <p class="auth-hero-kicker">Signed in</p>
-          <h2 class="auth-hero-title-sm">Your children</h2>
-          <p class="auth-hero-sub" style="margin-bottom:10px">Everyone listed here can be checked on each camp week (weekly or daily). Manage details anytime in the <a href="/portal.html" style="color:var(--cyan)">parent portal</a>.</p>
+          <div class="signed-in-head">
+            <div>
+              <p class="auth-hero-kicker">Signed in</p>
+              <h2 class="auth-hero-title-sm">Your children</h2>
+            </div>
+            <a href="#" id="logout-link-top" class="auth-logout-top">Log out</a>
+          </div>
+          <p class="auth-hero-sub" style="margin-bottom:10px">Everyone listed here can be checked on each camp week (weekly or daily).</p>
           <ul id="parent-camper-list" class="parent-camper-list" aria-label="Children on file"></ul>
-          <p id="parent-camper-empty" class="week-dates-label" style="display:none;margin-top:10px;line-height:1.5">No campers on file yet. Add one here (uses your account securely) or in the <a href="/portal.html" style="color:var(--cyan)">portal</a>.</p>
+          <p id="parent-camper-empty" class="week-dates-label" style="display:none;margin-top:10px;line-height:1.5">No campers on file yet. Add one here (uses your account securely).</p>
           <button type="button" class="add-camper-toggle" id="btn-toggle-add-camper" aria-expanded="false">+ Add a child</button>
           <div class="add-camper-panel" id="add-camper-panel">
             <div class="add-camper-grid">
@@ -1336,7 +1359,6 @@
             <button type="button" class="btn-primary" id="btn-save-camper" style="width:100%">Save camper</button>
             <p id="add-camper-msg" class="week-dates-label" style="margin-top:10px;color:#f88"></p>
           </div>
-          <p class="auth-inline-links"><a href="/portal.html">Manage in portal</a> · <a href="#" id="logout-link-top">Log out</a></p>
         </div>
         <div id="account-checkout-row" style="display:none;margin-top:18px;padding-top:18px;border-top:1px solid rgba(255,255,255,0.08)">
           <button type="button" class="btn-primary" id="btn-account-checkout" style="width:100%">Secure checkout →</button>
