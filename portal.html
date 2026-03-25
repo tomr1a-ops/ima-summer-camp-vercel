@@ -345,7 +345,14 @@
       <span>Parent Portal</span>
     </a>
     <div class="app-actions">
-      <button type="button" class="btn-ghost" id="btn-goto-checkout">Public checkout</button>
+      <button
+        type="button"
+        class="btn-ghost"
+        id="btn-goto-checkout"
+        title="Opens the main camp registration page (same site). Your children and week/day picks from this portal are copied over so they are not lost."
+      >
+        Main registration page →
+      </button>
       <button type="button" class="btn-ghost" id="btn-out">Log out</button>
     </div>
   </header>
@@ -557,6 +564,77 @@
   }
 
   const PORTAL_ENROLL_PREFIX = 'ima_portal_enroll_v1:';
+  /** Same prefix as index.html signed-in draft (ima_reg_enroll_v1) */
+  const INDEX_ENROLL_PREFIX = 'ima_reg_enroll_v1:';
+
+  function getPortalVisibleBookMode() {
+    try {
+      var vf = document.getElementById('view-full');
+      var vd = document.getElementById('view-daily');
+      if (vf && !vf.hidden) return 'full';
+      if (vd && !vd.hidden) return 'daily';
+    } catch (e) {}
+    return 'dashboard';
+  }
+
+  /** Copy portal draft into index.html storage so /index.html sees the same week/day + reg fee choices. */
+  function pushPortalDraftToIndexCheckout() {
+    if (!state.session || !state.session.user || !state.session.user.id) return;
+    var uid = String(state.session.user.id);
+    var sk = INDEX_ENROLL_PREFIX + uid;
+    var fw = {};
+    Object.keys(state.fullWeekCampersByWeek).forEach(function (wid) {
+      fw[String(wid)] = Array.from(state.fullWeekCampersByWeek[wid] || []).map(String);
+    });
+    var dw = {};
+    Object.keys(state.dailyCampersByWeek).forEach(function (wid) {
+      dw[String(wid)] = Array.from(state.dailyCampersByWeek[wid] || []).map(String);
+    });
+    var sw = {};
+    Object.keys(state.selectedByWeek).forEach(function (wid) {
+      sw[String(wid)] = Array.from(state.selectedByWeek[wid] || []).map(String);
+    });
+    var regFeeIncludeByCamper = {};
+    Object.keys(state.portalRegFeeInclude).forEach(function (k) {
+      regFeeIncludeByCamper[String(k)] = !!state.portalRegFeeInclude[k];
+    });
+    var hasDaily =
+      Object.keys(sw).some(function (w) {
+        return (sw[w] || []).length > 0;
+      }) ||
+      Object.keys(dw).some(function (w) {
+        return (dw[w] || []).length > 0;
+      });
+    var hasFull = Object.keys(fw).some(function (w) {
+      return (fw[w] || []).length > 0;
+    });
+    var ui = getPortalVisibleBookMode();
+    var enrollmentType = 'full';
+    if (ui === 'daily') enrollmentType = 'daily';
+    else if (ui === 'full') enrollmentType = 'full';
+    else {
+      if (hasDaily) enrollmentType = 'daily';
+      else if (hasFull) enrollmentType = 'full';
+    }
+    var payload = JSON.stringify({
+      fw: fw,
+      dw: dw,
+      sw: sw,
+      fullWeekQty: {},
+      dailyKidsByWeek: {},
+      regFeeIncludeByCamper: regFeeIncludeByCamper,
+      enrollmentType: enrollmentType,
+      syncedFromPortal: true,
+      updatedAt: Date.now(),
+    });
+    try {
+      sessionStorage.setItem(sk, payload);
+    } catch (e) {}
+    try {
+      localStorage.setItem(sk, payload);
+    } catch (e2) {}
+    portalDbg('pushPortalDraftToIndexCheckout', { sk: sk.slice(-12), enrollmentType: enrollmentType, ui: ui });
+  }
 
   function portalEnrollKey() {
     if (!state.session || !state.session.user || !state.session.user.id) return null;
@@ -588,7 +666,8 @@
         dw: dw,
         sw: sw,
         reg: reg,
-        v: 2,
+        lastBookUi: getPortalVisibleBookMode(),
+        v: 3,
         updatedAt: Date.now(),
       });
       portalDbg('persist', {
@@ -1291,7 +1370,9 @@
     IMA.signOut();
   };
   document.getElementById('btn-goto-checkout').onclick = function () {
-    location.href = '/index.html';
+    persistPortalEnroll();
+    pushPortalDraftToIndexCheckout();
+    location.href = '/index.html#schedule';
   };
 
   document.getElementById('open-full-week').onclick = function () {
@@ -1299,19 +1380,19 @@
       showBanner('Add a child first.', false);
       return;
     }
-    restorePortalEnroll();
     showView('full');
     renderFullWeekCards();
     refreshPortalPricingForFullWeek();
+    persistPortalEnroll();
   };
   document.getElementById('open-daily').onclick = function () {
     if (!state.campers.length) {
       showBanner('Add a child first.', false);
       return;
     }
-    restorePortalEnroll();
     showView('daily');
     renderDailyWeeks();
+    persistPortalEnroll();
   };
   document.getElementById('back-from-full').onclick = function () {
     persistPortalEnroll();

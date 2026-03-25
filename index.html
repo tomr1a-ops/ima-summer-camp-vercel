@@ -1298,6 +1298,11 @@
           </div>
           <p class="auth-inline-links"><a href="/portal.html">Manage in portal</a> · <a href="#" id="logout-link-top">Log out</a></p>
         </div>
+        <div id="account-checkout-row" style="display:none;margin-top:18px;padding-top:18px;border-top:1px solid rgba(255,255,255,0.08)">
+          <button type="button" class="btn-primary" id="btn-account-checkout" style="width:100%">Secure checkout →</button>
+          <p id="account-checkout-hint" class="week-dates-label" style="margin-top:8px;line-height:1.45"></p>
+          <p id="account-checkout-msg" class="msg" style="margin-top:8px;display:none"></p>
+        </div>
       </div>
     </div>
   </div>
@@ -1462,6 +1467,7 @@
   /** include registration line item / total for each camper id (guest uses REG_FEE_GUEST_KEY) */
   let regFeeIncludeByCamper = {};
   const API_ADD_CAMPER = '/api/add-camper';
+  const ENROLL_SS = 'ima_reg_enroll_v1';
 
   function dayRateClient() {
     if (testPriceMode) return 1;
@@ -1512,8 +1518,9 @@
 
   function getCamperNameById(id) {
     if (!id) return '';
+    const want = String(id);
     const c = parentCampers.find(function (x) {
-      return x.id === id;
+      return String(x.id) === want;
     });
     return c ? (c.first_name + ' ' + c.last_name).trim() : '';
   }
@@ -1534,7 +1541,7 @@
     if (guestMode || !session) return false;
     if (enrollmentType === 'daily') {
       for (let i = 0; i < weeksPayload.length; i++) {
-        const wid = weeksPayload[i].id;
+        const wid = String(weeksPayload[i].id);
         const set = selectedByWeek[wid];
         if (set && set.size >= 1) {
           const cs = dailyCampersByWeek[wid];
@@ -1550,15 +1557,15 @@
     if (guestMode || !session) return [];
     if (enrollmentType === 'full') {
       weeksPayload.forEach(function (w) {
-        const s = fullWeekCampersByWeek[w.id];
-        if (s) s.forEach(function (cid) { ids.add(cid); });
+        const s = fullWeekCampersByWeek[String(w.id)];
+        if (s) s.forEach(function (cid) { ids.add(String(cid)); });
       });
     } else {
       Object.keys(selectedByWeek).forEach(function (wid) {
         const set = selectedByWeek[wid];
         if (!set || !set.size) return;
         const cs = dailyCampersByWeek[wid];
-        if (cs) cs.forEach(function (cid) { ids.add(cid); });
+        if (cs) cs.forEach(function (cid) { ids.add(String(cid)); });
       });
     }
     return Array.from(ids);
@@ -1570,8 +1577,9 @@
       return n ? '<div class="child-context">Camper: ' + escapeHtml(n) + '</div>' : '';
     }
     if (!session) return '';
+    const wk = String(weekId);
     if (enrollmentType === 'full') {
-      const s = fullWeekCampersByWeek[weekId];
+      const s = fullWeekCampersByWeek[wk];
       if (!s || !s.size) return '';
       const names = Array.from(s)
         .map(function (id) { return getCamperNameById(id); })
@@ -1580,7 +1588,7 @@
         ? '<div class="child-context">Children: ' + escapeHtml(names.join(', ')) + '</div>'
         : '';
     }
-    const s = dailyCampersByWeek[weekId];
+    const s = dailyCampersByWeek[wk];
     if (!s || !s.size) return '';
     const names = Array.from(s)
       .map(function (id) { return getCamperNameById(id); })
@@ -1775,11 +1783,145 @@
       dailyKidsByWeek[w.id] = 1;
       delete camperIdByWeek[w.id];
     });
+    try {
+      var ck = enrollStorageKey();
+      if (ck) sessionStorage.removeItem(ck);
+    } catch (e) {}
   }
 
-  function setEnrollmentType(type) {
+  function enrollStorageKey() {
+    if (!session || !session.user || !session.user.id) return null;
+    return ENROLL_SS + ':' + String(session.user.id);
+  }
+
+  function wipeRegEnrollStorage() {
+    try {
+      var prefix = ENROLL_SS + ':';
+      for (var i = sessionStorage.length - 1; i >= 0; i--) {
+        var key = sessionStorage.key(i);
+        if (key && key.indexOf(prefix) === 0) sessionStorage.removeItem(key);
+      }
+    } catch (e) {}
+  }
+
+  function persistEnrollLocal() {
+    try {
+      if (!session || guestMode) return;
+      var sk = enrollStorageKey();
+      if (!sk) return;
+      const fw = {};
+      Object.keys(fullWeekCampersByWeek).forEach(function (wid) {
+        fw[String(wid)] = Array.from(fullWeekCampersByWeek[wid] || []).map(String);
+      });
+      const dw = {};
+      Object.keys(dailyCampersByWeek).forEach(function (wid) {
+        dw[String(wid)] = Array.from(dailyCampersByWeek[wid] || []).map(String);
+      });
+      const sw = {};
+      Object.keys(selectedByWeek).forEach(function (wid) {
+        sw[String(wid)] = Array.from(selectedByWeek[wid] || []).map(String);
+      });
+      var enrollPayload = JSON.stringify({
+        fw: fw,
+        dw: dw,
+        sw: sw,
+        fullWeekQty: fullWeekQty,
+        dailyKidsByWeek: dailyKidsByWeek,
+        regFeeIncludeByCamper: regFeeIncludeByCamper,
+        enrollmentType: enrollmentType,
+      });
+      try {
+        sessionStorage.setItem(sk, enrollPayload);
+      } catch (e1) {}
+      try {
+        localStorage.setItem(sk, enrollPayload);
+      } catch (e2) {}
+    } catch (e) {}
+  }
+
+  function restoreEnrollLocal() {
+    try {
+      if (!session || guestMode) return;
+      var sk = enrollStorageKey();
+      if (!sk) return;
+      var raw = null;
+      try {
+        raw = sessionStorage.getItem(sk);
+      } catch (e) {}
+      if (!raw) {
+        try {
+          raw = localStorage.getItem(sk);
+        } catch (eLs) {}
+      }
+      if (!raw) {
+        try {
+          var legacy = sessionStorage.getItem(ENROLL_SS);
+          if (legacy) {
+            sessionStorage.setItem(sk, legacy);
+            sessionStorage.removeItem(ENROLL_SS);
+            raw = legacy;
+          }
+        } catch (eL) {}
+      }
+      if (!raw) return;
+      const o = JSON.parse(raw);
+      Object.keys(selectedByWeek).forEach(function (k) {
+        delete selectedByWeek[k];
+      });
+      Object.keys(fullWeekCampersByWeek).forEach(function (k) {
+        delete fullWeekCampersByWeek[k];
+      });
+      Object.keys(dailyCampersByWeek).forEach(function (k) {
+        delete dailyCampersByWeek[k];
+      });
+      Object.keys(o.fw || {}).forEach(function (wid) {
+        fullWeekCampersByWeek[wid] = new Set((o.fw[wid] || []).map(String));
+      });
+      Object.keys(o.dw || {}).forEach(function (wid) {
+        dailyCampersByWeek[wid] = new Set((o.dw[wid] || []).map(String));
+      });
+      Object.keys(o.sw || {}).forEach(function (wid) {
+        selectedByWeek[wid] = new Set((o.sw[wid] || []).map(String));
+      });
+      if (o.fullWeekQty && typeof o.fullWeekQty === 'object') {
+        Object.keys(o.fullWeekQty).forEach(function (wid) {
+          fullWeekQty[wid] = o.fullWeekQty[wid];
+        });
+      }
+      if (o.dailyKidsByWeek && typeof o.dailyKidsByWeek === 'object') {
+        Object.keys(o.dailyKidsByWeek).forEach(function (wid) {
+          dailyKidsByWeek[wid] = o.dailyKidsByWeek[wid];
+        });
+      }
+      if (o.regFeeIncludeByCamper && typeof o.regFeeIncludeByCamper === 'object') {
+        Object.keys(regFeeIncludeByCamper).forEach(function (k) {
+          delete regFeeIncludeByCamper[k];
+        });
+        Object.keys(o.regFeeIncludeByCamper).forEach(function (k) {
+          regFeeIncludeByCamper[k] = o.regFeeIncludeByCamper[k];
+        });
+      }
+      const et = o.enrollmentType === 'daily' ? 'daily' : 'full';
+      setEnrollmentType(et, { skipClear: true });
+    } catch (e) {}
+  }
+
+  function syncAccountCheckoutUi(disabled, hintText) {
+    const row = document.getElementById('account-checkout-row');
+    const ac = document.getElementById('btn-account-checkout');
+    const hint = document.getElementById('account-checkout-hint');
+    if (!row || !ac) return;
+    const showRow = guestMode || !!session;
+    row.style.display = showRow ? 'block' : 'none';
+    if (!showRow) return;
+    ac.disabled = !!disabled;
+    if (hint) hint.textContent = disabled && hintText ? hintText : '';
+  }
+
+  function setEnrollmentType(type, opts) {
     if (type !== 'full' && type !== 'daily') return;
-    if (enrollmentType !== type) clearEnrollmentSelections();
+    const skipClear = opts && opts.skipClear;
+    if (!skipClear && enrollmentType !== type) clearEnrollmentSelections();
     enrollmentType = type;
     document.getElementById('btn-enroll-full').classList.toggle('on', type === 'full');
     document.getElementById('btn-enroll-daily').classList.toggle('on', type === 'daily');
@@ -1796,7 +1938,7 @@
       const v = dailyKidsByWeek[wid];
       return v == null ? 1 : v;
     }
-    const s = dailyCampersByWeek[wid];
+    const s = dailyCampersByWeek[String(wid)];
     return s && s.size > 0 ? 1 : 0;
   }
 
@@ -1812,7 +1954,7 @@
           if ((fullWeekQty[w.id] || 0) < 1) return;
           out.push({ weekId: w.id, dayIds: ids, pricingMode: 'full_week' });
         } else {
-          const cset = fullWeekCampersByWeek[w.id];
+          const cset = fullWeekCampersByWeek[String(w.id)];
           if (!cset || !cset.size) return;
           cset.forEach(function (cid) {
             out.push({ weekId: w.id, dayIds: ids, pricingMode: 'full_week', camperId: cid });
@@ -1880,7 +2022,13 @@
     const totalRow = document.getElementById('total-row');
     const btn = document.getElementById('checkout-btn');
     const msg = document.getElementById('msg');
+    const acMsg = document.getElementById('account-checkout-msg');
     msg.className = 'msg';
+    if (acMsg) {
+      acMsg.style.display = 'none';
+      acMsg.textContent = '';
+      acMsg.className = 'msg';
+    }
 
     const dr = Number(testPriceMode ? 1 : pricingPreview.dayRate != null ? pricingPreview.dayRate : dayRateClient());
     const wr = Number(testPriceMode ? 1 : pricingPreview.weekRate != null ? pricingPreview.weekRate : weekRateClient());
@@ -1902,6 +2050,8 @@
       lines.style.display = 'none';
       totalRow.style.display = 'none';
       btn.disabled = true;
+      syncAccountCheckoutUi(true, empty.textContent);
+      persistEnrollLocal();
       return;
     }
 
@@ -1912,6 +2062,8 @@
       lines.style.display = 'none';
       totalRow.style.display = 'none';
       btn.disabled = true;
+      syncAccountCheckoutUi(true, empty.textContent);
+      persistEnrollLocal();
       return;
     }
 
@@ -1922,6 +2074,8 @@
       lines.style.display = 'none';
       totalRow.style.display = 'none';
       btn.disabled = true;
+      syncAccountCheckoutUi(true, empty.textContent);
+      persistEnrollLocal();
       return;
     }
 
@@ -2015,6 +2169,8 @@
     const grand = Number(campTotal) + Number(reg);
     document.getElementById('total-amount').textContent = fmt(grand);
     btn.disabled = false;
+    syncAccountCheckoutUi(false, '');
+    persistEnrollLocal();
   }
 
   function buildWeekCamperCheckboxes(weekId, mode) {
@@ -2026,22 +2182,25 @@
     lab.textContent = mode === 'full' ? 'Children in this week (full week)' : 'Children for these days';
     wrap.appendChild(lab);
     const map = mode === 'full' ? fullWeekCampersByWeek : dailyCampersByWeek;
+    const wk = String(weekId);
     parentCampers.forEach(function (c) {
+      const cid = String(c.id);
       const row = document.createElement('label');
       row.className = 'week-kid-cb';
       const cb = document.createElement('input');
       cb.type = 'checkbox';
-      const st = map[weekId];
-      cb.checked = !!(st && st.has(c.id));
+      const st = map[wk];
+      cb.checked = !!(st && st.has(cid));
       cb.addEventListener('change', function () {
-        if (!map[weekId]) map[weekId] = new Set();
-        const s = map[weekId];
-        if (cb.checked) s.add(c.id);
-        else s.delete(c.id);
+        if (!map[wk]) map[wk] = new Set();
+        const s = map[wk];
+        if (cb.checked) s.add(cid);
+        else s.delete(cid);
         if (!s.size) {
-          delete map[weekId];
-          if (mode === 'daily') delete selectedByWeek[weekId];
+          delete map[wk];
+          if (mode === 'daily') delete selectedByWeek[wk];
         }
+        persistEnrollLocal();
         renderFullWeeks();
         renderDailyWeeks();
         refreshPricingPreview();
@@ -2086,17 +2245,20 @@
   }
 
   function toggleDay(weekId, dayId, btnEl) {
-    if (getDailyKids(weekId) < 1) return;
-    if (!selectedByWeek[weekId]) selectedByWeek[weekId] = new Set();
-    const set = selectedByWeek[weekId];
-    if (set.has(dayId)) {
-      set.delete(dayId);
+    const wk = String(weekId);
+    const dk = String(dayId);
+    if (getDailyKids(wk) < 1) return;
+    if (!selectedByWeek[wk]) selectedByWeek[wk] = new Set();
+    const set = selectedByWeek[wk];
+    if (set.has(dk)) {
+      set.delete(dk);
       btnEl.classList.remove('on');
     } else {
-      set.add(dayId);
+      set.add(dk);
       btnEl.classList.add('on');
     }
-    if (set.size === 0) delete selectedByWeek[weekId];
+    if (set.size === 0) delete selectedByWeek[wk];
+    persistEnrollLocal();
     updateSummary();
   }
 
@@ -2115,13 +2277,14 @@
     const wr = testPriceMode ? 1 : pricingPreview.weekRate || weekRateClient();
     const signedInParent = !!(session && !guestMode && parentCampers.length > 0);
     weeksPayload.forEach(function (w) {
+      const wk = String(w.id);
       const full = w.disabled || w.is_full;
       const qty = signedInParent
-        ? fullWeekCampersByWeek[w.id] && fullWeekCampersByWeek[w.id].size > 0
+        ? fullWeekCampersByWeek[wk] && fullWeekCampersByWeek[wk].size > 0
           ? 1
           : 0
         : fullWeekQty[w.id] || 0;
-      const fwSet = fullWeekCampersByWeek[w.id];
+      const fwSet = fullWeekCampersByWeek[wk];
       const hasKids = signedInParent ? !!(fwSet && fwSet.size) : qty > 0;
       const card = document.createElement('div');
       card.className = 'week-card' + (full ? ' full-card' : '') + (hasKids ? ' has-kids' : '');
@@ -2211,8 +2374,9 @@
     const dr = testPriceMode ? 1 : pricingPreview.dayRate || dayRateClient();
     const signedInParent = !!(session && !guestMode && parentCampers.length > 0);
     weeksPayload.forEach(function (w) {
+      const wk = String(w.id);
       const weekFull = w.disabled || w.is_full;
-      const kids = getDailyKids(w.id);
+      const kids = getDailyKids(wk);
       const block = document.createElement('div');
       block.className = 'week-block' + (weekFull ? ' full' : '');
       const head = document.createElement('div');
@@ -2286,7 +2450,7 @@
         btn.textContent = formatDayLabel(d);
         const cap = maxCap(w);
         const enrolled = d.current_enrollment || 0;
-        const dc = dailyCampersByWeek[w.id];
+        const dc = dailyCampersByWeek[wk];
         const needCamperDay = signedInParent ? !(dc && dc.size) : false;
         btn.disabled = weekFull || d.at_capacity || kids < 1 || needCamperDay;
         if (btn.disabled && !weekFull && kids >= 1) btn.title = 'This day is full';
@@ -2295,8 +2459,8 @@
           if (btn.disabled) return;
           toggleDay(w.id, d.id, btn);
         });
-        const sel = selectedByWeek[w.id];
-        if (sel && sel.has(d.id)) btn.classList.add('on');
+        const sel = selectedByWeek[wk];
+        if (sel && sel.has(String(d.id))) btn.classList.add('on');
         const meta = document.createElement('div');
         meta.className = 'day-chip-meta';
         meta.textContent = enrolled + '/' + cap;
@@ -2392,6 +2556,7 @@
     } catch (e) {
       guestMode = true;
       session = null;
+      wipeRegEnrollStorage();
       showAuthPanels();
       wireGuestInputs();
       refreshPricingPreview();
@@ -2401,6 +2566,7 @@
     if (session) {
       await loadParentCampers();
     } else {
+      wipeRegEnrollStorage();
       showAuthPanels();
     }
     document.getElementById('logout-link-top').addEventListener('click', function (ev) {
@@ -2463,7 +2629,6 @@
         refreshPricingPreview();
         updateSummary();
         updateRegFlowClasses();
-        setRegTab('schedule');
         msg.textContent = '';
       } catch (err) {
         msg.textContent = err.message || 'Could not add camper.';
@@ -2490,10 +2655,41 @@
 
   async function startCheckout() {
     const btn = document.getElementById('checkout-btn');
+    const btnAc = document.getElementById('btn-account-checkout');
     const msg = document.getElementById('msg');
+
+    function showCheckoutErr(t) {
+      if (msg) {
+        msg.className = 'msg error';
+        msg.textContent = t;
+      }
+      const acMsg = document.getElementById('account-checkout-msg');
+      const p = document.getElementById('panel-account');
+      if (acMsg && p && !p.hidden) {
+        acMsg.style.display = 'block';
+        acMsg.className = 'msg error';
+        acMsg.textContent = t;
+      }
+    }
+
+    function clearCheckoutLoading() {
+      if (btn) btn.classList.remove('loading');
+      if (btnAc) btnAc.classList.remove('loading');
+      updateSummary();
+    }
+
     if (STRIPE_PK.indexOf('REPLACE') !== -1) {
-      msg.className = 'msg warning';
-      msg.textContent = 'Configure Stripe publishable key.';
+      if (msg) {
+        msg.className = 'msg warning';
+        msg.textContent = 'Configure Stripe publishable key.';
+      }
+      const acMsg = document.getElementById('account-checkout-msg');
+      const p = document.getElementById('panel-account');
+      if (acMsg && p && !p.hidden) {
+        acMsg.style.display = 'block';
+        acMsg.className = 'msg warning';
+        acMsg.textContent = 'Configure Stripe publishable key.';
+      }
       return;
     }
     const bookings = collectBookings();
@@ -2524,18 +2720,22 @@
       body.registrationFeeForCamper = regMap;
     }
 
-    btn.classList.add('loading');
-    btn.disabled = true;
-    msg.className = 'msg';
+    if (btn) {
+      btn.classList.add('loading');
+      btn.disabled = true;
+    }
+    if (btnAc) {
+      btnAc.classList.add('loading');
+      btnAc.disabled = true;
+    }
+    if (msg) msg.className = 'msg';
 
     let stripe;
     try {
       stripe = window.Stripe(STRIPE_PK);
     } catch (e) {
-      msg.className = 'msg error';
-      msg.textContent = e.message;
-      btn.classList.remove('loading');
-      btn.disabled = false;
+      showCheckoutErr(e.message);
+      clearCheckoutLoading();
       return;
     }
 
@@ -2552,10 +2752,8 @@
       const out = await stripe.redirectToCheckout({ sessionId: data.sessionId });
       if (out.error) throw new Error(out.error.message);
     } catch (err) {
-      msg.className = 'msg error';
-      msg.textContent = err.message || String(err);
-      btn.classList.remove('loading');
-      btn.disabled = false;
+      showCheckoutErr(err.message || String(err));
+      clearCheckoutLoading();
     }
   }
 
@@ -2585,6 +2783,8 @@
     updateSummary();
   });
   document.getElementById('checkout-btn').addEventListener('click', startCheckout);
+  var btnAccCo = document.getElementById('btn-account-checkout');
+  if (btnAccCo) btnAccCo.addEventListener('click', startCheckout);
 
   function setRegTab(which) {
     var account = document.getElementById('panel-account');
@@ -2593,11 +2793,15 @@
     var t2 = document.getElementById('tab-schedule');
     if (!account || !schedule || !t1 || !t2) return;
     var isSchedule = which === 'schedule';
+    if (which === 'account') {
+      persistEnrollLocal();
+    }
     account.hidden = isSchedule;
     schedule.hidden = !isSchedule;
     t1.setAttribute('aria-selected', String(!isSchedule));
     t2.setAttribute('aria-selected', String(isSchedule));
     if (isSchedule) {
+      restoreEnrollLocal();
       updateEnrollmentGate();
       updateSummary();
       refreshPricingPreview();
@@ -2648,7 +2852,8 @@
       return bootAuth();
     })
     .then(function () {
-      refreshPricingPreview();
+      restoreEnrollLocal();
+      return refreshPricingPreview();
     });
   initTestBar();
 })();
