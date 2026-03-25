@@ -1184,6 +1184,48 @@
     accent-color: var(--cyan);
     cursor: pointer;
   }
+  .reg-fee-ima-note {
+    margin: 12px 0 14px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    border: 1px solid rgba(0, 229, 204, 0.28);
+    background: rgba(0, 229, 204, 0.06);
+    font-size: 14px;
+    line-height: 1.55;
+    color: #d8d8d8;
+  }
+  .reg-fee-ima-note strong { color: var(--cyan); }
+  .reg-fee-camper-mount { margin-top: 4px; }
+  .reg-fee-camper-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border2);
+    background: var(--card2);
+    cursor: pointer;
+    font-size: 15px;
+    color: var(--text);
+  }
+  .reg-fee-camper-row input {
+    width: 18px;
+    height: 18px;
+    margin-top: 3px;
+    accent-color: var(--cyan);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .reg-fee-camper-row .reg-fee-lbl {
+    flex: 1;
+    line-height: 1.45;
+  }
+  .reg-fee-camper-row .reg-fee-amt {
+    font-weight: 600;
+    color: var(--cyan);
+    white-space: nowrap;
+  }
 </style>
 </head>
 <body>
@@ -1275,20 +1317,28 @@
         <strong>Regular (May 1, 2026 onward):</strong> $425/week · $95/day.<br />
         <span style="color:#666;font-size:12px">You are charged the rate in effect when you complete checkout. Max 35 kids per week.</span>
       </div>
-      <div class="reg-kids-row" id="reg-fee-row">
-        <span class="lbl">New kids — one-time registration ($65 each, shirt + gloves), applied per child who has not paid it before.</span>
-        <div class="week-kids-ctrl" style="opacity:1" aria-hidden="true">
-          <button type="button" class="mini-btn" disabled>−</button>
-          <input type="text" class="mini-val" value="1" readonly style="cursor:default" title="One camper per checkout" />
-          <button type="button" class="mini-btn" disabled>+</button>
-        </div>
+      <div id="reg-fee-per-child-section" style="display: none">
+        <p class="reg-fee-ima-note" id="reg-fee-ima-note">
+          <strong>IMA Impact members</strong> pay <strong>no registration fee</strong>. For everyone else, the one-time registration is
+          <strong>$65 per child</strong> (Impact training shirt + protective gloves, first IMA camp). Check the box for each child who
+          should be charged this fee at checkout — <strong>uncheck</strong> for IMA members or if the fee does not apply.
+        </p>
+        <div id="reg-fee-camper-mount" class="reg-fee-camper-mount" aria-label="Registration fee per child"></div>
+        <label class="reg-fee-camper-row" id="guest-reg-fee-row" style="display: none">
+          <input type="checkbox" id="guest-reg-fee-cb" checked />
+          <span class="reg-fee-lbl">
+            <strong>Registration fee ($65)</strong><br />
+            <small style="color: #888">One-time for this camper · uncheck if IMA Impact member / fee waived</small>
+          </span>
+          <span class="reg-fee-amt">$65</span>
+        </label>
       </div>
-      <p class="week-dates-label" id="reg-fee-note" style="margin:-4px 0 8px;font-size:11px;line-height:1.5">
-        Signed-in parents: each week lists <strong>checkboxes for your children</strong>. Registration fee applies per child when needed.
+      <p class="week-dates-label" id="reg-fee-note" style="margin: 10px 0 8px; font-size: 11px; line-height: 1.5">
+        Signed-in parents: use the boxes above for registration fees; each camp week lists which children are attending.
       </p>
       <label class="ima-toggle">
         <input type="checkbox" id="ima-member" />
-        <span>IMA member (for our records; pricing is the same)</span>
+        <span>IMA Impact member family (optional — for our records at checkout)</span>
       </label>
     </div>
     <p class="week-dates-label" id="reg-pricing-footnote" style="padding:0 16px 16px;font-size:12px;color:#555">
@@ -1408,6 +1458,9 @@
     perCamperNeedsReg: {},
   };
   let guestMode = false;
+  const REG_FEE_GUEST_KEY = '__guest__';
+  /** include registration line item / total for each camper id (guest uses REG_FEE_GUEST_KEY) */
+  let regFeeIncludeByCamper = {};
   const API_ADD_CAMPER = '/api/add-camper';
 
   function dayRateClient() {
@@ -1586,6 +1639,94 @@
     pricingPreview = { dayRate: dr, weekRate: wr, registrationFee: rf, needsRegistration: nr, perCamperNeedsReg: pcr };
   }
 
+  function defaultRegFeeIncludeForCamper(cid) {
+    const m = pricingPreview.perCamperNeedsReg;
+    if (m && m[cid] === false) return false;
+    return true;
+  }
+
+  function getRegFeeInclude(cid) {
+    if (guestMode) {
+      if (regFeeIncludeByCamper[REG_FEE_GUEST_KEY] === undefined) return true;
+      return !!regFeeIncludeByCamper[REG_FEE_GUEST_KEY];
+    }
+    if (regFeeIncludeByCamper[cid] === undefined) return defaultRegFeeIncludeForCamper(cid);
+    return !!regFeeIncludeByCamper[cid];
+  }
+
+  function registrationFeeAppliesToCamper(cid) {
+    if (guestMode) return getRegFeeInclude(REG_FEE_GUEST_KEY);
+    return getRegFeeInclude(cid);
+  }
+
+  function renderRegFeeCamperBoxes() {
+    const section = document.getElementById('reg-fee-per-child-section');
+    const mount = document.getElementById('reg-fee-camper-mount');
+    const guestRow = document.getElementById('guest-reg-fee-row');
+    const guestCb = document.getElementById('guest-reg-fee-cb');
+    if (!section || !mount || !guestRow) return;
+
+    if (guestMode) {
+      section.style.display = '';
+      guestRow.style.display = '';
+      mount.innerHTML = '';
+      if (regFeeIncludeByCamper[REG_FEE_GUEST_KEY] === undefined) {
+        regFeeIncludeByCamper[REG_FEE_GUEST_KEY] = true;
+      }
+      if (guestCb) guestCb.checked = !!regFeeIncludeByCamper[REG_FEE_GUEST_KEY];
+      return;
+    }
+
+    guestRow.style.display = 'none';
+    if (!session || !parentCampers.length) {
+      section.style.display = 'none';
+      return;
+    }
+
+    section.style.display = '';
+    parentCampers.forEach(function (c) {
+      if (regFeeIncludeByCamper[c.id] === undefined) {
+        regFeeIncludeByCamper[c.id] = defaultRegFeeIncludeForCamper(c.id);
+      }
+    });
+
+    const rfNum = Number(testPriceMode ? 1 : pricingPreview.registrationFee != null ? pricingPreview.registrationFee : regFeeClient());
+    mount.innerHTML = parentCampers
+      .map(function (c) {
+        const nm = escapeHtml(String(c.first_name + ' ' + c.last_name).trim());
+        const id = escapeHtml(c.id);
+        const chk = getRegFeeInclude(c.id) ? ' checked' : '';
+        const amt = escapeHtml(fmt(rfNum));
+        return (
+          '<label class="reg-fee-camper-row" for="reg-fee-cb-' +
+          id +
+          '">' +
+          '<input type="checkbox" id="reg-fee-cb-' +
+          id +
+          '" data-reg-camper="' +
+          id +
+          '"' +
+          chk +
+          ' />' +
+          '<span class="reg-fee-lbl"><strong>Registration fee</strong> — ' +
+          nm +
+          '<br /><small style="color:#888">One-time shirt + gloves · uncheck for IMA Impact members or if already paid</small></span>' +
+          '<span class="reg-fee-amt">' +
+          amt +
+          '</span></label>'
+        );
+      })
+      .join('');
+
+    mount.querySelectorAll('input[data-reg-camper]').forEach(function (el) {
+      el.addEventListener('change', function () {
+        const id = el.getAttribute('data-reg-camper');
+        if (id) regFeeIncludeByCamper[id] = el.checked;
+        updateSummary();
+      });
+    });
+  }
+
   function updatePriceBanner() {
     const el = document.getElementById('price-banner-text');
     if (!el) return;
@@ -1724,22 +1865,7 @@
       pricingPreview.perCamperNeedsReg = {};
     }
     updatePriceBanner();
-    const regRow = document.getElementById('reg-fee-row');
-    if (regRow) {
-      if (guestMode) regRow.style.display = '';
-      else if (session) {
-        const ids = collectActiveCamperIds();
-        if (!ids.length) regRow.style.display = 'none';
-        else {
-          const show = ids.some(function (id) {
-            const m = pricingPreview.perCamperNeedsReg;
-            if (m && m[id] === false) return false;
-            return true;
-          });
-          regRow.style.display = show ? '' : 'none';
-        }
-      } else regRow.style.display = 'none';
-    }
+    renderRegFeeCamperBoxes();
     renderFullWeeks();
     renderDailyWeeks();
     updateEnrollmentGate();
@@ -1806,21 +1932,15 @@
     });
 
     const rf = Number(testPriceMode ? 1 : pricingPreview.registrationFee != null ? pricingPreview.registrationFee : regFeeClient());
-    function camperNeedsRegLine(cid) {
-      if (guestMode) return true;
-      const m = pricingPreview.perCamperNeedsReg;
-      if (m && m[cid] === false) return false;
-      return true;
-    }
     const regCamperIds = guestMode ? [''] : [...new Set(bookings.map(function (b) { return b.camperId; }).filter(Boolean))];
     let reg = 0;
-    regCamperIds.forEach(function (cid) {
-      if (guestMode) {
-        reg += rf;
-      } else if (camperNeedsRegLine(cid)) {
-        reg += rf;
-      }
-    });
+    if (guestMode) {
+      if (registrationFeeAppliesToCamper('')) reg += rf;
+    } else {
+      regCamperIds.forEach(function (cid) {
+        if (registrationFeeAppliesToCamper(cid)) reg += rf;
+      });
+    }
 
     empty.style.display = 'none';
     lines.style.display = '';
@@ -1871,16 +1991,16 @@
       }
     });
     if (reg > 0) {
-      if (guestMode) {
+      if (guestMode && registrationFeeAppliesToCamper('')) {
         html +=
           '<div class="summary-line"><span class="label">Registration — ' +
           escapeHtml(getGuestCamperName()) +
           ' <small style="color:#333">(one-time, first IMA camp if applicable)</small></span><span class="val">' +
           fmt(rf) +
           '</span></div>';
-      } else {
+      } else if (!guestMode) {
         regCamperIds.forEach(function (cid) {
-          if (!camperNeedsRegLine(cid)) return;
+          if (!registrationFeeAppliesToCamper(cid)) return;
           const nm = getCamperNameById(cid);
           html +=
             '<div class="summary-line"><span class="label">Registration — ' +
@@ -2245,6 +2365,7 @@
       parentCampers = [];
       renderParentCamperList();
       updateRegFlowClasses();
+      renderRegFeeCamperBoxes();
       return;
     }
     const sb = await IMA.getSupabase();
@@ -2261,6 +2382,7 @@
     });
     renderParentCamperList();
     updateRegFlowClasses();
+    renderRegFeeCamperBoxes();
   }
 
   async function bootAuth() {
@@ -2392,6 +2514,14 @@
         lastName: document.getElementById('g-last').value.trim(),
         age: document.getElementById('g-age').value,
       };
+      body.guestRegistrationFee = !!document.getElementById('guest-reg-fee-cb').checked;
+    } else {
+      const ids = [...new Set(bookings.map(function (b) { return b.camperId; }).filter(Boolean))];
+      const regMap = {};
+      ids.forEach(function (cid) {
+        regMap[cid] = registrationFeeAppliesToCamper(cid);
+      });
+      body.registrationFeeForCamper = regMap;
     }
 
     btn.classList.add('loading');
@@ -2450,6 +2580,10 @@
     setEnrollmentType('daily');
   });
   document.getElementById('ima-member').addEventListener('change', updateSummary);
+  document.getElementById('guest-reg-fee-cb').addEventListener('change', function () {
+    regFeeIncludeByCamper[REG_FEE_GUEST_KEY] = this.checked;
+    updateSummary();
+  });
   document.getElementById('checkout-btn').addEventListener('click', startCheckout);
 
   function setRegTab(which) {

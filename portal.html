@@ -340,6 +340,39 @@
     }
     .portal-kid-row input { width: 18px; height: 18px; accent-color: var(--cyan); cursor: pointer; }
     .portal-kid-row span { color: #e8e8e8; }
+    .portal-reg-ima-note {
+      margin: 0 0 14px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 229, 204, 0.28);
+      background: rgba(0, 229, 204, 0.06);
+      font-size: 14px;
+      line-height: 1.55;
+      color: #d8d8d8;
+    }
+    .portal-reg-ima-note strong { color: var(--cyan); }
+    .portal-reg-fee-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border2);
+      background: var(--card2);
+      cursor: pointer;
+      font-size: 15px;
+    }
+    .portal-reg-fee-row input {
+      width: 18px;
+      height: 18px;
+      margin-top: 3px;
+      accent-color: var(--cyan);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .portal-reg-fee-row .lbl { flex: 1; line-height: 1.45; color: #e8e8e8; }
+    .portal-reg-fee-row .amt { font-weight: 600; color: var(--cyan); }
   </style>
 </head>
 <body>
@@ -391,6 +424,16 @@
           BOOK INDIVIDUAL DAYS
           <span class="sub">Pick only the days you need</span>
         </button>
+      </div>
+
+      <div class="book-panel" id="portal-reg-fee-section" style="display: none; margin-top: 20px">
+        <div class="section-title" style="margin-top: 0">Registration fee ($65)</div>
+        <p class="portal-reg-ima-note">
+          <strong>IMA Impact members</strong> pay <strong>no registration fee</strong>. For everyone else, the one-time fee is
+          <strong>$65 per child</strong> (shirt + gloves). Check the box for each child who should be charged at checkout —
+          <strong>uncheck</strong> for IMA members or if it does not apply.
+        </p>
+        <div id="portal-reg-fee-mount"></div>
       </div>
     </section>
 
@@ -463,6 +506,8 @@
     dailyCampersByWeek: {},
     /** Server: perCamperNeedsReg + rates */
     portalRegEstimate: { weekRate: null, regFee: 65, perCamperNeedsReg: {} },
+    /** camper id -> include $65 registration at checkout */
+    portalRegFeeInclude: {},
   };
 
   function fmt(n) {
@@ -663,6 +708,7 @@
     });
     state.portalRegEstimate = { weekRate: null, regFee: 65, perCamperNeedsReg: {} };
     if (!ids.length || !state.session || !state.session.access_token) {
+      renderPortalRegFeePanel();
       updateFullWeekSummary();
       return;
     }
@@ -680,12 +726,67 @@
     } catch (e) {
       console.warn('[portal] preview-pricing', e);
     }
+    renderPortalRegFeePanel();
     updateFullWeekSummary();
   }
 
   function camperNeedsRegFee(cid) {
     const pcr = (state.portalRegEstimate && state.portalRegEstimate.perCamperNeedsReg) || {};
     return pcr[cid] !== false;
+  }
+
+  function getPortalRegFeeInclude(cid) {
+    if (state.portalRegFeeInclude[cid] === undefined) return camperNeedsRegFee(cid);
+    return !!state.portalRegFeeInclude[cid];
+  }
+
+  function renderPortalRegFeePanel() {
+    const section = document.getElementById('portal-reg-fee-section');
+    const mount = document.getElementById('portal-reg-fee-mount');
+    if (!section || !mount) return;
+    if (!state.campers.length) {
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = '';
+    state.campers.forEach(function (c) {
+      if (state.portalRegFeeInclude[c.id] === undefined) {
+        state.portalRegFeeInclude[c.id] = camperNeedsRegFee(c.id);
+      }
+    });
+    const rf = effectiveRegFeeForSummary();
+    mount.innerHTML = state.campers
+      .map(function (c) {
+        const id = escapeHtml(c.id);
+        const nm = escapeHtml(c.first_name + ' ' + c.last_name);
+        const chk = getPortalRegFeeInclude(c.id) ? ' checked' : '';
+        return (
+          '<label class="portal-reg-fee-row" for="portal-reg-cb-' +
+          id +
+          '">' +
+          '<input type="checkbox" id="portal-reg-cb-' +
+          id +
+          '" data-portal-reg="' +
+          id +
+          '"' +
+          chk +
+          ' />' +
+          '<span class="lbl"><strong>Registration fee</strong> — ' +
+          nm +
+          '<br /><small style="color:#888">Uncheck for IMA members / waived</small></span>' +
+          '<span class="amt">' +
+          escapeHtml(fmt(rf)) +
+          '</span></label>'
+        );
+      })
+      .join('');
+    mount.querySelectorAll('input[data-portal-reg]').forEach(function (el) {
+      el.addEventListener('change', function () {
+        var pid = el.getAttribute('data-portal-reg');
+        if (pid) state.portalRegFeeInclude[pid] = el.checked;
+        updateFullWeekSummary();
+      });
+    });
   }
 
   function countFullWeekChildSlots() {
@@ -749,7 +850,7 @@
     let regPart = 0;
     let regHtml = '';
     regCampers.forEach(function (cid) {
-      if (!camperNeedsRegFee(cid)) return;
+      if (!getPortalRegFeeInclude(cid)) return;
       regPart += rf;
       regHtml +=
         '<div style="display:flex;justify-content:space-between;gap:12px;margin-bottom:6px">' +
@@ -1013,6 +1114,18 @@
     await startStripeCheckout(bookings);
   }
 
+  function buildPortalCheckoutBody(bookings) {
+    const ids = [];
+    bookings.forEach(function (b) {
+      if (b.camperId && ids.indexOf(b.camperId) === -1) ids.push(b.camperId);
+    });
+    const registrationFeeForCamper = {};
+    ids.forEach(function (cid) {
+      registrationFeeForCamper[cid] = getPortalRegFeeInclude(cid);
+    });
+    return { bookings: bookings, imaMember: false, registrationFeeForCamper: registrationFeeForCamper };
+  }
+
   async function startStripeCheckout(bookings) {
     if (STRIPE_PK.indexOf('REPLACE') !== -1) {
       showBanner('Stripe is not configured.', false);
@@ -1039,7 +1152,7 @@
           'Content-Type': 'application/json',
           Authorization: 'Bearer ' + state.session.access_token,
         },
-        body: JSON.stringify({ bookings: bookings, imaMember: false }),
+        body: JSON.stringify(buildPortalCheckoutBody(bookings)),
       });
       const data = await res.json().catch(function () {
         return {};
@@ -1118,6 +1231,7 @@
     updateBookingButtonsEnabled();
     renderBookings();
     renderFullWeekCards();
+    await refreshPortalPricingForFullWeek();
   }
 
   document.getElementById('btn-out').onclick = function () {

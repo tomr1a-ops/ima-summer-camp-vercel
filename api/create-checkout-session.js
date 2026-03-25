@@ -62,7 +62,7 @@ module.exports = async (req, res) => {
     return json(res, 400, { error: 'Invalid JSON' });
   }
 
-  const { bookings, testPricing, guest, imaMember } = body;
+  const { bookings, testPricing, guest, imaMember, registrationFeeForCamper, guestRegistrationFee } = body;
   const guestMode = !!(guest && guest.email && guest.firstName && guest.lastName && guest.age != null);
   const secret = process.env.STRIPE_SECRET_KEY || '';
   const isStripeTestKey = secret.startsWith('sk_test_');
@@ -178,9 +178,20 @@ module.exports = async (req, res) => {
   const uniqueCampers = guestMode
     ? [guestCamperId]
     : [...new Set(bookings.map((b) => b.camperId).filter(Boolean))];
+  const regFeeChoice =
+    registrationFeeForCamper && typeof registrationFeeForCamper === 'object' && !Array.isArray(registrationFeeForCamper)
+      ? registrationFeeForCamper
+      : null;
+  const guestWantsRegistrationFee = guestRegistrationFee !== false;
+
   const regLineItems = [];
   let regCentsTotal = 0;
   for (const cid of uniqueCampers) {
+    if (guestMode) {
+      if (!guestWantsRegistrationFee) continue;
+    } else if (regFeeChoice && regFeeChoice[cid] === false) {
+      continue;
+    }
     const needs = !(await hasRegistrationFeePaid(sb, cid));
     if (needs) {
       const cents = Math.round(regFee * 100);
