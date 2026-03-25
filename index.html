@@ -389,8 +389,9 @@
   }
 
   .summary-line:last-of-type { border-bottom: none; }
-  .summary-line .label { color: var(--muted); flex: 1; line-height: 1.4; }
-  .summary-line .val   { color: var(--text); font-weight: 600; white-space: nowrap; }
+  .summary-line .label { color: #fff; flex: 1; line-height: 1.4; }
+  .summary-line .val   { color: #fff; font-weight: 600; white-space: nowrap; }
+  .summary-line .summary-line-detail { color: #fff; font-size: 0.85em; }
 
   .summary-total-row {
     display: flex;
@@ -405,16 +406,16 @@
     font-family: var(--font-display);
     font-size: 18px;
     letter-spacing: 3px;
-    color: var(--muted);
+    color: #fff;
     text-transform: uppercase;
   }
 
   .total-amount {
     font-family: var(--font-display);
     font-size: 38px;
-    color: var(--cyan);
+    color: #fff;
     line-height: 1;
-    text-shadow: 0 0 30px rgba(0,229,204,0.4);
+    text-shadow: none;
   }
 
   .empty-state {
@@ -425,6 +426,17 @@
     font-family: var(--font-cond);
     letter-spacing: 1px;
     line-height: 1.8;
+  }
+
+  .order-summary .empty-state,
+  .order-summary .card-title,
+  .order-summary .includes-item,
+  .order-summary .secure-note {
+    color: #fff;
+  }
+
+  .order-summary #checkout-btn {
+    color: #fff;
   }
 
   /* CHECKOUT BTN */
@@ -2112,7 +2124,7 @@
         html +=
           '<div class="summary-line"><span class="label">' +
           escapeHtml(headLine) +
-          '<br><small style="color:#444">Full week Mon–Fri · ' +
+          '<br><small class="summary-line-detail">Full week Mon–Fri · ' +
           fmt(wr) +
           '</small></span><span class="val">' +
           fmt(wr) +
@@ -2131,7 +2143,7 @@
         html +=
           '<div class="summary-line"><span class="label">' +
           escapeHtml(headLine) +
-          '<br><small style="color:#444">' +
+          '<br><small class="summary-line-detail">' +
           n +
           ' day' +
           (n === 1 ? '' : 's') +
@@ -2149,7 +2161,7 @@
         html +=
           '<div class="summary-line"><span class="label">Registration — ' +
           escapeHtml(getGuestCamperName()) +
-          ' <small style="color:#333">(one-time, first IMA camp if applicable)</small></span><span class="val">' +
+          ' <small class="summary-line-detail">(one-time, first IMA camp if applicable)</small></span><span class="val">' +
           fmt(rf) +
           '</span></div>';
       } else if (!guestMode) {
@@ -2159,7 +2171,7 @@
           html +=
             '<div class="summary-line"><span class="label">Registration — ' +
             escapeHtml(nm) +
-            ' <small style="color:#333">(one-time, first IMA camp if applicable)</small></span><span class="val">' +
+            ' <small class="summary-line-detail">(one-time, first IMA camp if applicable)</small></span><span class="val">' +
             fmt(rf) +
             '</span></div>';
         });
