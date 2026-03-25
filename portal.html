@@ -217,6 +217,13 @@
       transition: border-color 0.2s;
     }
     .pw-card:not(.disabled):hover { border-color: var(--cyan); }
+    .pw-card:not(.disabled):focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+    .pw-card.selected {
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 1px rgba(0,229,204,0.5), 0 10px 28px rgba(0,229,204,0.12);
+      background: rgba(0,229,204,0.07);
+    }
+    .pw-card.selected .t { color: #fff; }
     .pw-card.disabled { opacity: 0.45; pointer-events: none; }
     .pw-card .t { font-family: var(--font-display); font-size: 18px; color: var(--cyan); margin-bottom: 4px; }
     .pw-card .d { font-size: 13px; color: #999; margin-bottom: 8px; }
@@ -371,7 +378,31 @@
         <button type="button" class="link-back" id="back-from-full">← Back to dashboard</button>
         <div class="scheduling-for-line" id="scheduling-for-full" hidden></div>
         <p class="empty-hint" style="margin-bottom:12px" id="full-pricing-hint"></p>
+        <p class="empty-hint" style="margin-bottom:10px;font-size:13px" id="full-week-tap-hint">
+          Tap one or more weeks to select. Your total updates below — then use checkout when ready.
+        </p>
         <div id="week-cards-full" class="week-grid"></div>
+        <div id="full-week-summary" style="margin-top:18px;display:none">
+          <div class="field-label">Estimated total</div>
+          <div id="full-week-summary-lines" style="font-size:14px;line-height:1.5;color:#ccc"></div>
+          <div
+            id="full-week-total-row"
+            style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-top: 14px;
+              padding-top: 14px;
+              border-top: 1px solid var(--border2);
+              font-weight: 700;
+              font-size: 18px;
+            "
+          >
+            <span>Total</span>
+            <span id="full-week-total-amt" style="color: var(--cyan)">$0</span>
+          </div>
+        </div>
+        <button type="button" class="checkout-daily-btn" id="btn-full-checkout" disabled>Secure checkout →</button>
       </div>
     </section>
 
@@ -404,6 +435,10 @@
     enrollments: [],
     selectedByWeek: {},
     dayMap: {},
+    /** @type {Set<string>} full-week view: selected week ids (toggle on card tap) */
+    selectedFullWeekIds: new Set(),
+    /** Server-refined rates for summary (optional) */
+    portalRegEstimate: { weekRate: null, regFee: 65, needsReg: true },
   };
 
   function fmt(n) {
@@ -632,6 +667,100 @@
     });
   }
 
+  function effectiveWeekRateForSummary() {
+    const v = state.portalRegEstimate && state.portalRegEstimate.weekRate;
+    return v != null && Number.isFinite(Number(v)) ? Number(v) : weekRate();
+  }
+
+  function effectiveRegFeeForSummary() {
+    const v = state.portalRegEstimate && state.portalRegEstimate.regFee;
+    return v != null && Number.isFinite(Number(v)) ? Number(v) : 65;
+  }
+
+  async function refreshPortalPricingForFullWeek() {
+    const cid = getSelectedCamperId();
+    state.portalRegEstimate = { weekRate: null, regFee: 65, needsReg: true };
+    if (!cid || !state.session || !state.session.access_token) {
+      updateFullWeekSummary();
+      return;
+    }
+    try {
+      const res = await fetch('/api/preview-pricing?camperIds=' + encodeURIComponent(cid), {
+        headers: { Authorization: 'Bearer ' + state.session.access_token },
+      });
+      if (res.ok) {
+        const j = await res.json();
+        state.portalRegEstimate.weekRate = j.weekRate != null ? Number(j.weekRate) : null;
+        state.portalRegEstimate.regFee = j.registrationFee != null ? Number(j.registrationFee) : 65;
+        const pcr = j.perCamperNeedsReg || {};
+        state.portalRegEstimate.needsReg = pcr[cid] !== false;
+      }
+    } catch (e) {
+      console.warn('[portal] preview-pricing', e);
+    }
+    updateFullWeekSummary();
+  }
+
+  function updateFullWeekCheckoutBtn() {
+    const btn = document.getElementById('btn-full-checkout');
+    if (!btn) return;
+    btn.disabled = !getSelectedCamperId() || state.selectedFullWeekIds.size === 0;
+  }
+
+  function updateFullWeekSummary() {
+    const wrap = document.getElementById('full-week-summary');
+    const lines = document.getElementById('full-week-summary-lines');
+    const totalEl = document.getElementById('full-week-total-amt');
+    if (!wrap || !lines || !totalEl) return;
+
+    const wr = effectiveWeekRateForSummary();
+    const rf = effectiveRegFeeForSummary();
+    const needsReg = state.portalRegEstimate && state.portalRegEstimate.needsReg !== false;
+
+    if (state.selectedFullWeekIds.size === 0) {
+      wrap.style.display = 'none';
+      totalEl.textContent = fmt(0);
+      updateFullWeekCheckoutBtn();
+      return;
+    }
+
+    let campSub = 0;
+    let html = '';
+    state.selectedFullWeekIds.forEach(function (wid) {
+      const w = state.weeks.find(function (x) {
+        return x.id === wid;
+      });
+      if (!w) return;
+      campSub += wr;
+      html +=
+        '<div style="display:flex;justify-content:space-between;gap:12px;margin-bottom:6px">' +
+        '<span>' +
+        escapeHtml(w.label) +
+        '<br><small style="color:#666">Full week · ' +
+        fmt(wr) +
+        '</small></span>' +
+        '<span style="white-space:nowrap">' +
+        fmt(wr) +
+        '</span></div>';
+    });
+    let regPart = 0;
+    if (needsReg) {
+      regPart = rf;
+      const nm = camperNameById(getSelectedCamperId());
+      html +=
+        '<div style="display:flex;justify-content:space-between;gap:12px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border2)">' +
+        '<span>Registration <small style="color:#666">(one-time if needed) — ' +
+        escapeHtml(nm) +
+        '</small></span><span>' +
+        fmt(rf) +
+        '</span></div>';
+    }
+    lines.innerHTML = html || '<span style="color:#888">No weeks selected.</span>';
+    totalEl.textContent = fmt(campSub + regPart);
+    wrap.style.display = '';
+    updateFullWeekCheckoutBtn();
+  }
+
   function renderFullWeekCards() {
     const mount = document.getElementById('week-cards-full');
     const wr = weekRate();
@@ -641,8 +770,12 @@
     mount.innerHTML = '';
     state.weeks.forEach(function (w) {
       const full = w.disabled || w.is_full;
+      const selected = !full && state.selectedFullWeekIds.has(w.id);
       const card = document.createElement('div');
-      card.className = 'pw-card' + (full ? ' disabled' : '');
+      card.className = 'pw-card' + (full ? ' disabled' : '') + (selected ? ' selected' : '');
+      card.setAttribute('role', full ? 'presentation' : 'button');
+      card.setAttribute('tabindex', full ? '-1' : '0');
+      card.setAttribute('aria-pressed', selected ? 'true' : 'false');
       card.innerHTML =
         '<div class="t">' +
         escapeHtml(w.label) +
@@ -653,38 +786,63 @@
         '</div><div class="p">' +
         fmt(wr) +
         ' / week</div>' +
-        (full ? '<span class="badge-full">UNAVAILABLE · FULL</span>' : '');
+        (full ? '<span class="badge-full">UNAVAILABLE · FULL</span>' : '') +
+        (selected ? '<div style="margin-top:10px;font-size:11px;letter-spacing:1px;color:var(--cyan)">SELECTED</div>' : '');
       if (!full) {
         card.style.cursor = 'pointer';
         card.addEventListener('click', function () {
-          startFullWeekCheckout(w);
+          if (state.selectedFullWeekIds.has(w.id)) {
+            state.selectedFullWeekIds.delete(w.id);
+          } else {
+            state.selectedFullWeekIds.add(w.id);
+          }
+          renderFullWeekCards();
+          updateFullWeekSummary();
+        });
+        card.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Enter' || ev.key === ' ') {
+            ev.preventDefault();
+            card.click();
+          }
         });
       }
       mount.appendChild(card);
     });
+    updateFullWeekSummary();
   }
 
-  async function startFullWeekCheckout(w) {
+  async function startFullWeekCheckoutFromButton() {
     const cid = getSelectedCamperId();
     if (!cid) {
       showBanner('Choose a child in the dropdown on the previous screen.', false);
       return;
     }
-    const days = (w.days || []).map(function (d) {
-      return d.id;
-    });
-    if (days.length < 1) {
-      showBanner('This week has no bookable days loaded.', false);
+    if (state.selectedFullWeekIds.size === 0) {
+      showBanner('Select at least one week.', false);
       return;
     }
-    await startStripeCheckout([
-      {
+    const bookings = [];
+    state.selectedFullWeekIds.forEach(function (wid) {
+      const w = state.weeks.find(function (x) {
+        return x.id === wid;
+      });
+      if (!w || w.disabled || w.is_full) return;
+      const days = (w.days || []).map(function (d) {
+        return d.id;
+      });
+      if (days.length < 1) return;
+      bookings.push({
         weekId: w.id,
         dayIds: days,
         pricingMode: 'full_week',
         camperId: cid,
-      },
-    ]);
+      });
+    });
+    if (!bookings.length) {
+      showBanner('Selected weeks are not available or have no bookable days.', false);
+      return;
+    }
+    await startStripeCheckout(bookings);
   }
 
   function toggleDailyDay(weekId, dayId, btn) {
@@ -790,15 +948,18 @@
       showBanner('Stripe is not configured.', false);
       return;
     }
-    const btn = document.getElementById('btn-daily-checkout');
-    if (btn) btn.disabled = true;
+    const btnDaily = document.getElementById('btn-daily-checkout');
+    const btnFull = document.getElementById('btn-full-checkout');
+    if (btnDaily) btnDaily.disabled = true;
+    if (btnFull) btnFull.disabled = true;
     showBanner('', false);
     let stripe;
     try {
       stripe = window.Stripe(STRIPE_PK);
     } catch (e) {
       showBanner(e.message || 'Stripe error', false);
-      if (btn) btn.disabled = false;
+      if (btnDaily) updateDailyCheckoutBtn();
+      if (btnFull) updateFullWeekCheckoutBtn();
       return;
     }
     try {
@@ -818,7 +979,8 @@
       if (out.error) throw new Error(out.error.message);
     } catch (err) {
       showBanner(err.message || String(err), false);
-      if (btn) updateDailyCheckoutBtn();
+      if (btnDaily) updateDailyCheckoutBtn();
+      if (btnFull) updateFullWeekCheckoutBtn();
     }
   }
 
@@ -893,6 +1055,12 @@
         updateBookingButtonsEnabled();
         updateDailyCheckoutBtn();
         refreshSchedulingContextLines();
+        var vf = document.getElementById('view-full');
+        if (vf && !vf.hidden) {
+          state.selectedFullWeekIds = new Set();
+          renderFullWeekCards();
+          refreshPortalPricingForFullWeek();
+        }
       });
     }
   }
@@ -915,8 +1083,10 @@
       if (s) s.focus();
       return;
     }
+    state.selectedFullWeekIds = new Set();
     showView('full');
     renderFullWeekCards();
+    refreshPortalPricingForFullWeek();
   };
   document.getElementById('open-daily').onclick = function () {
     if (!state.campers.length) {
@@ -939,6 +1109,7 @@
     showView('dashboard');
   };
   document.getElementById('btn-daily-checkout').onclick = startDailyCheckout;
+  document.getElementById('btn-full-checkout').onclick = startFullWeekCheckoutFromButton;
 
   document.getElementById('btn-toggle-add').onclick = function () {
     const f = document.getElementById('add-child-form');
