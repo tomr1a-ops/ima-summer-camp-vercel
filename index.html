@@ -965,6 +965,44 @@
     color: var(--cyan);
     box-shadow: 0 0 0 1px var(--cyan);
   }
+  .enroll-type-btn .et-main {
+    font-family: var(--font-cond);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: inherit;
+  }
+  .enroll-type-btn .et-sub {
+    display: block;
+    margin-top: 4px;
+    font-family: var(--font-body);
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+    color: #777;
+    line-height: 1.3;
+  }
+  .enroll-type-btn.on .et-sub { color: rgba(0,229,204,0.75); }
+
+  .schedule-simple-banner {
+    display: none;
+    margin: 0 16px 14px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    border: 1px solid rgba(0,229,204,0.25);
+    background: rgba(0,229,204,0.06);
+    font-size: 13px;
+    color: #c8c8c8;
+    line-height: 1.5;
+  }
+  .reg-flow-simple .schedule-simple-banner { display: block; }
+  .reg-flow-simple #card-checkout-pricing .pricing-tiers-box,
+  .reg-flow-simple #card-checkout-pricing #reg-pricing-footnote,
+  .reg-flow-simple #card-checkout-pricing #reg-fee-note {
+    display: none !important;
+  }
 
   .week-cards-grid {
     padding: 12px 16px 18px;
@@ -1101,18 +1139,50 @@
   }
   .week-camper-row {
     margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px solid var(--border);
+    padding: 12px 14px;
+    border-radius: 8px;
+    border: 1px solid rgba(0,229,204,0.2);
+    background: rgba(0,0,0,0.35);
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
   }
   .week-camper-lbl {
     font-family: var(--font-cond);
-    font-size: 11px;
-    letter-spacing: 1px;
-    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: var(--cyan);
     text-transform: uppercase;
+  }
+  .week-camper-row .select-camper {
+    font-size: 15px;
+    padding: 12px 14px;
+  }
+  .week-kids-checkboxes .wkc-label {
+    font-family: var(--font-cond);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--cyan);
+    margin-bottom: 8px;
+    display: block;
+  }
+  .week-kid-cb {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    color: var(--text);
+  }
+  .week-kid-cb input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--cyan);
+    cursor: pointer;
   }
 </style>
 </head>
@@ -1134,8 +1204,8 @@
 
 <main class="reg-main" id="reg-main">
   <nav class="reg-tabs" role="tablist" aria-label="Summer camp registration">
-    <button type="button" class="reg-tab" role="tab" id="tab-account" aria-selected="true" aria-controls="panel-account">Account &amp; children</button>
-    <button type="button" class="reg-tab" role="tab" id="tab-schedule" aria-selected="false" aria-controls="panel-schedule">Schedule camp</button>
+    <button type="button" class="reg-tab" role="tab" id="tab-account" aria-selected="true" aria-controls="panel-account">My kids</button>
+    <button type="button" class="reg-tab" role="tab" id="tab-schedule" aria-selected="false" aria-controls="panel-schedule">Camp registration</button>
   </nav>
 
   <div id="panel-account" class="reg-tab-panel" role="tabpanel" aria-labelledby="tab-account">
@@ -1144,7 +1214,7 @@
         <div id="state-signed-out" class="auth-hero-card">
           <p class="auth-hero-kicker">IMA Summer Camp 2026</p>
           <h1 class="auth-hero-title">Sign in to register your camper</h1>
-          <p class="auth-hero-sub">Start here: sign in and add your children. Then open the <strong>Schedule camp</strong> tab to pick weeks or days and choose which child attends each week.</p>
+          <p class="auth-hero-sub">Sign in and add your kids, then open <strong>Camp registration</strong> — for each week, check which children are attending (weekly or daily).</p>
           <div class="auth-hero-actions">
             <a class="btn-primary" href="/login.html?return=/index.html">Sign in</a>
             <a class="btn-secondary" href="/register.html?return=/index.html">Create account</a>
@@ -1158,7 +1228,7 @@
         <div id="state-guest" class="auth-hero-card" style="display:none">
           <p class="auth-hero-kicker">Guest checkout</p>
           <h2 class="auth-hero-title-sm">Camper &amp; contact</h2>
-          <p class="auth-hero-sub" style="margin-bottom:12px">Enter your child and email, then use <strong>Schedule camp</strong> to pick weeks. Prefer an account? <a href="/login.html?return=/index.html" style="color:var(--cyan)">Sign in</a></p>
+          <p class="auth-hero-sub" style="margin-bottom:12px">Enter your child and email, then use <strong>Camp registration</strong> for weekly or daily. Prefer an account? <a href="/login.html?return=/index.html" style="color:var(--cyan)">Sign in</a></p>
           <div class="guest-grid">
             <input type="text" id="g-first" placeholder="Child first name" autocomplete="given-name" />
             <input type="text" id="g-last" placeholder="Child last name" autocomplete="family-name" />
@@ -1171,7 +1241,7 @@
         <div id="state-signed-in" class="auth-hero-card" style="display:none">
           <p class="auth-hero-kicker">Signed in</p>
           <h2 class="auth-hero-title-sm">Your children</h2>
-          <p class="auth-hero-sub" style="margin-bottom:10px">Add everyone who might attend. On the <strong>Schedule camp</strong> tab, use the dropdown on each week to pick which child is attending that week. You can also manage profiles in the <a href="/portal.html" style="color:var(--cyan)">parent portal</a>.</p>
+          <p class="auth-hero-sub" style="margin-bottom:10px">Everyone listed here can be checked on each camp week (weekly or daily). Manage details anytime in the <a href="/portal.html" style="color:var(--cyan)">parent portal</a>.</p>
           <ul id="parent-camper-list" class="parent-camper-list" aria-label="Children on file"></ul>
           <p id="parent-camper-empty" class="week-dates-label" style="display:none;margin-top:10px;line-height:1.5">No campers on file yet. Add one here (uses your account securely) or in the <a href="/portal.html" style="color:var(--cyan)">portal</a>.</p>
           <button type="button" class="add-camper-toggle" id="btn-toggle-add-camper" aria-expanded="false">+ Add a child</button>
@@ -1193,7 +1263,7 @@
   <div id="panel-schedule" class="reg-tab-panel" role="tabpanel" aria-labelledby="tab-schedule" hidden>
   <div class="page">
 
-  <div class="card">
+  <div class="card" id="card-checkout-pricing">
     <div class="card-header">
       <div class="step-num">1</div>
       <div class="card-title">Pricing &amp; options</div>
@@ -1214,30 +1284,40 @@
         </div>
       </div>
       <p class="week-dates-label" id="reg-fee-note" style="margin:-4px 0 8px;font-size:11px;line-height:1.5">
-        Multiple children? Use the dropdown on each week to assign a child. Registration fees line up per child when applicable.
+        Signed-in parents: each week lists <strong>checkboxes for your children</strong>. Registration fee applies per child when needed.
       </p>
       <label class="ima-toggle">
         <input type="checkbox" id="ima-member" />
         <span>IMA member (for our records; pricing is the same)</span>
       </label>
     </div>
-    <p class="week-dates-label" style="padding:0 16px 16px;font-size:12px;color:#555">
-      Guests: finish child &amp; email on <strong>Account &amp; children</strong> first. Signed-in parents: add children there, then pick weeks below and choose a child per week from each dropdown.
+    <p class="week-dates-label" id="reg-pricing-footnote" style="padding:0 16px 16px;font-size:12px;color:#555">
+      Guests: finish child &amp; email on <strong>My kids</strong> first. Parents: add kids there, then for each week check which children attend (weekly or daily).
     </p>
   </div>
 
-  <div class="card">
+  <div class="card" id="card-weeks-enroll">
     <div class="card-header">
       <div class="step-num">2</div>
-      <div class="card-title">Weeks, days &amp; child per week</div>
+      <div class="card-title">Weekly or daily — children per week</div>
+    </div>
+    <div class="schedule-simple-banner" id="schedule-simple-banner" aria-live="polite">
+      <strong style="color:var(--cyan)">Weekly registration</strong> = Mon–Fri, one price per week per child.
+      <strong style="color:var(--cyan)"> Daily registration</strong> = pick days, priced per day per child.
+      <span id="schedule-signedin-hint" style="display:none"> For each week, check which children are in that week, then add the week or tap days.</span>
+      <span id="schedule-guest-hint"> Guest: one child from My kids — use <strong>+</strong> for weekly or pick days.</span>
     </div>
     <div class="enroll-type-bar">
-      <button type="button" class="enroll-type-btn on" id="btn-enroll-full" data-type="full">Full week</button>
-      <button type="button" class="enroll-type-btn" id="btn-enroll-daily" data-type="daily">Individual days</button>
+      <button type="button" class="enroll-type-btn on" id="btn-enroll-full" data-type="full">
+        <span class="et-main">Weekly registration</span>
+        <span class="et-sub">Full week Mon–Fri, one price</span>
+      </button>
+      <button type="button" class="enroll-type-btn" id="btn-enroll-daily" data-type="daily">
+        <span class="et-main">Daily registration</span>
+        <span class="et-sub">Pick individual days</span>
+      </button>
     </div>
-    <div class="enrollment-gate" id="enrollment-gate">
-      Sign in or complete guest details on the <strong>Account &amp; children</strong> tab, then choose weeks or days here. Each week has a dropdown to pick which child is attending.
-    </div>
+    <div class="enrollment-gate" id="enrollment-gate"></div>
     <div class="weeks-mount-wrap" id="weeks-mount-wrap">
     <div class="weeks-list" id="weeks-mount-full" style="display:none;padding-top:0">
       <p class="empty-state" id="weeks-loading-full">Loading camp weeks…</p>
@@ -1254,7 +1334,7 @@
     </div>
     <div class="summary-body">
       <div id="empty-state" class="empty-state">
-        Use <strong>Account &amp; children</strong> if needed, then select full weeks or days and assign a child on each week.
+        Sign in on <strong>My kids</strong>, add children, then choose <strong>weekly</strong> or <strong>daily</strong> and check which children are in each week.
       </div>
       <div id="summary-lines" style="display:none"></div>
       <div id="total-row" class="summary-total-row" style="display:none">
@@ -1310,8 +1390,12 @@
   const fullWeekQty = {};
   /** @type {Record<string, number>} individual-days mode: kids 0|1 per week (gates day picks) */
   const dailyKidsByWeek = {};
-  /** @type {Record<string, string>} week id → camper id (signed-in only) */
+  /** @type {Record<string, string>} week id → camper id (legacy; guest flow unused) */
   const camperIdByWeek = {};
+  /** Signed-in weekly: week id → camper ids attending full week */
+  const fullWeekCampersByWeek = {};
+  /** Signed-in daily: week id → camper ids (same days for each) */
+  const dailyCampersByWeek = {};
   /** @type {{ id: string, first_name: string, last_name: string }[]} */
   let parentCampers = [];
   let enrollmentType = 'full';
@@ -1390,19 +1474,19 @@
         document.getElementById('g-age').value
       );
     }
-    return !!session;
+    return !!(session && parentCampers.length > 0);
   }
 
   function weeksMissingCamperAssignment() {
     if (guestMode || !session) return false;
-    for (let i = 0; i < weeksPayload.length; i++) {
-      const w = weeksPayload[i];
-      const wid = w.id;
-      if (enrollmentType === 'full') {
-        if ((fullWeekQty[wid] || 0) >= 1 && !camperIdByWeek[wid]) return true;
-      } else {
+    if (enrollmentType === 'daily') {
+      for (let i = 0; i < weeksPayload.length; i++) {
+        const wid = weeksPayload[i].id;
         const set = selectedByWeek[wid];
-        if (getDailyKids(wid) >= 1 && set && set.size >= 1 && !camperIdByWeek[wid]) return true;
+        if (set && set.size >= 1) {
+          const cs = dailyCampersByWeek[wid];
+          if (!cs || !cs.size) return true;
+        }
       }
     }
     return false;
@@ -1411,15 +1495,19 @@
   function collectActiveCamperIds() {
     const ids = new Set();
     if (guestMode || !session) return [];
-    weeksPayload.forEach(function (w) {
-      const wid = w.id;
-      if (enrollmentType === 'full') {
-        if ((fullWeekQty[wid] || 0) >= 1 && camperIdByWeek[wid]) ids.add(camperIdByWeek[wid]);
-      } else {
+    if (enrollmentType === 'full') {
+      weeksPayload.forEach(function (w) {
+        const s = fullWeekCampersByWeek[w.id];
+        if (s) s.forEach(function (cid) { ids.add(cid); });
+      });
+    } else {
+      Object.keys(selectedByWeek).forEach(function (wid) {
         const set = selectedByWeek[wid];
-        if (getDailyKids(wid) >= 1 && set && set.size && camperIdByWeek[wid]) ids.add(camperIdByWeek[wid]);
-      }
-    });
+        if (!set || !set.size) return;
+        const cs = dailyCampersByWeek[wid];
+        if (cs) cs.forEach(function (cid) { ids.add(cid); });
+      });
+    }
     return Array.from(ids);
   }
 
@@ -1429,10 +1517,24 @@
       return n ? '<div class="child-context">Camper: ' + escapeHtml(n) + '</div>' : '';
     }
     if (!session) return '';
-    const cid = camperIdByWeek[weekId];
-    if (!cid) return '';
-    const n = getCamperNameById(cid);
-    return n ? '<div class="child-context">Camper: ' + escapeHtml(n) + '</div>' : '';
+    if (enrollmentType === 'full') {
+      const s = fullWeekCampersByWeek[weekId];
+      if (!s || !s.size) return '';
+      const names = Array.from(s)
+        .map(function (id) { return getCamperNameById(id); })
+        .filter(Boolean);
+      return names.length
+        ? '<div class="child-context">Children: ' + escapeHtml(names.join(', ')) + '</div>'
+        : '';
+    }
+    const s = dailyCampersByWeek[weekId];
+    if (!s || !s.size) return '';
+    const names = Array.from(s)
+      .map(function (id) { return getCamperNameById(id); })
+      .filter(Boolean);
+    return names.length
+      ? '<div class="child-context">Children: ' + escapeHtml(names.join(', ')) + '</div>'
+      : '';
   }
 
   function updateEnrollmentGate() {
@@ -1443,9 +1545,34 @@
     if (ready) {
       gate.classList.add('ok');
       wrap.classList.remove('gated');
+      gate.textContent = '';
     } else {
       gate.classList.remove('ok');
       wrap.classList.add('gated');
+      if (guestMode) {
+        gate.textContent =
+          'Enter your child’s name, email, and age on the My kids tab, then come back to choose weekly or daily camp.';
+      } else if (!session) {
+        gate.textContent = 'Sign in or continue as guest on the My kids tab first.';
+      } else if (!parentCampers.length) {
+        gate.textContent =
+          'Add at least one child on the My kids tab — then check which children are in each camp week below.';
+      } else {
+        gate.textContent = '';
+      }
+    }
+  }
+
+  function updateRegFlowClasses() {
+    const main = document.getElementById('reg-main');
+    if (!main) return;
+    const simple = !!(session && !guestMode && parentCampers.length > 0);
+    main.classList.toggle('reg-flow-simple', simple);
+    const sh = document.getElementById('schedule-signedin-hint');
+    const gh = document.getElementById('schedule-guest-hint');
+    if (sh && gh) {
+      sh.style.display = simple ? 'inline' : 'none';
+      gh.style.display = simple ? 'none' : 'inline';
     }
   }
 
@@ -1496,6 +1623,12 @@
     Object.keys(selectedByWeek).forEach(function (k) {
       delete selectedByWeek[k];
     });
+    Object.keys(fullWeekCampersByWeek).forEach(function (k) {
+      delete fullWeekCampersByWeek[k];
+    });
+    Object.keys(dailyCampersByWeek).forEach(function (k) {
+      delete dailyCampersByWeek[k];
+    });
     weeksPayload.forEach(function (w) {
       fullWeekQty[w.id] = 0;
       dailyKidsByWeek[w.id] = 1;
@@ -1518,36 +1651,47 @@
   }
 
   function getDailyKids(wid) {
-    const v = dailyKidsByWeek[wid];
-    return v == null ? 1 : v;
+    if (guestMode || !session) {
+      const v = dailyKidsByWeek[wid];
+      return v == null ? 1 : v;
+    }
+    const s = dailyCampersByWeek[wid];
+    return s && s.size > 0 ? 1 : 0;
   }
 
   function collectBookings() {
     const out = [];
     if (enrollmentType === 'full') {
       weeksPayload.forEach(function (w) {
-        if ((fullWeekQty[w.id] || 0) < 1) return;
-        const cid = guestMode ? undefined : camperIdByWeek[w.id];
-        if (!guestMode && !cid) return;
         const ids = (w.days || []).map(function (d) {
           return d.id;
         });
-        if (ids.length === 5) {
-          const row = { weekId: w.id, dayIds: ids, pricingMode: 'full_week' };
-          if (cid) row.camperId = cid;
-          out.push(row);
+        if (ids.length !== 5) return;
+        if (guestMode || !session) {
+          if ((fullWeekQty[w.id] || 0) < 1) return;
+          out.push({ weekId: w.id, dayIds: ids, pricingMode: 'full_week' });
+        } else {
+          const cset = fullWeekCampersByWeek[w.id];
+          if (!cset || !cset.size) return;
+          cset.forEach(function (cid) {
+            out.push({ weekId: w.id, dayIds: ids, pricingMode: 'full_week', camperId: cid });
+          });
         }
       });
     } else {
       Object.keys(selectedByWeek).forEach(function (wid) {
-        if (getDailyKids(wid) < 1) return;
         const set = selectedByWeek[wid];
         if (!set || !set.size) return;
-        const cid = guestMode ? undefined : camperIdByWeek[wid];
-        if (!guestMode && !cid) return;
-        const row = { weekId: wid, dayIds: Array.from(set), pricingMode: 'daily' };
-        if (cid) row.camperId = cid;
-        out.push(row);
+        if (guestMode || !session) {
+          if (getDailyKids(wid) < 1) return;
+          out.push({ weekId: wid, dayIds: Array.from(set), pricingMode: 'daily' });
+        } else {
+          const cset = dailyCampersByWeek[wid];
+          if (!cset || !cset.size) return;
+          cset.forEach(function (cid) {
+            out.push({ weekId: wid, dayIds: Array.from(set), pricingMode: 'daily', camperId: cid });
+          });
+        }
       });
     }
     return out;
@@ -1599,6 +1743,7 @@
     renderFullWeeks();
     renderDailyWeeks();
     updateEnrollmentGate();
+    updateRegFlowClasses();
     updateSummary();
   }
 
@@ -1617,8 +1762,16 @@
     const camperOk = camperSelectionReady();
 
     if (!camperOk) {
-      empty.textContent =
-        'On the Account & children tab, sign in (or continue as guest) and complete your details — then open Schedule camp to pick weeks and assign a child per week.';
+      if (guestMode) {
+        empty.textContent =
+          'Finish your child’s name, email, and age on My kids, then choose weekly or daily camp and add weeks here.';
+      } else if (session && !parentCampers.length) {
+        empty.textContent =
+          'Add at least one child on My kids — then open Camp registration and check which children are in each week.';
+      } else {
+        empty.textContent =
+          'Sign in or continue as guest on My kids, then use Camp registration for weekly or daily picks.';
+      }
       empty.style.display = '';
       lines.style.display = 'none';
       totalRow.style.display = 'none';
@@ -1628,7 +1781,7 @@
 
     if (weeksMissingCamperAssignment()) {
       empty.textContent =
-        'For each week you selected, choose which child is attending from that week’s dropdown (you can use different children for different weeks).';
+        'For any week where you picked days, check at least one child for that week (under “Children for these days”).';
       empty.style.display = '';
       lines.style.display = 'none';
       totalRow.style.display = 'none';
@@ -1744,45 +1897,47 @@
     btn.disabled = false;
   }
 
-  function buildWeekCamperSelect(weekId) {
+  function buildWeekCamperCheckboxes(weekId, mode) {
     const wrap = document.createElement('div');
-    wrap.className = 'week-camper-row';
-    if (guestMode || !session) return wrap;
-    const lab = document.createElement('label');
-    lab.className = 'week-camper-lbl';
-    lab.setAttribute('for', 'wc-' + weekId);
-    lab.textContent = 'Which child this week?';
-    const sel = document.createElement('select');
-    sel.id = 'wc-' + weekId;
-    sel.className = 'select-camper week-camper-select';
-    sel.dataset.weekId = weekId;
-    const ph = document.createElement('option');
-    ph.value = '';
-    ph.textContent = parentCampers.length ? 'Select child…' : 'Add children on Account tab first';
-    sel.appendChild(ph);
-    parentCampers.forEach(function (c) {
-      const o = document.createElement('option');
-      o.value = c.id;
-      o.textContent = c.first_name + ' ' + c.last_name;
-      sel.appendChild(o);
-    });
-    const cur = camperIdByWeek[weekId];
-    if (cur && [...sel.options].some(function (o) { return o.value === cur; })) sel.value = cur;
-    else sel.value = '';
-    sel.addEventListener('change', function () {
-      if (sel.value) camperIdByWeek[weekId] = sel.value;
-      else delete camperIdByWeek[weekId];
-      renderFullWeeks();
-      renderDailyWeeks();
-      refreshPricingPreview();
-      updateSummary();
-    });
+    wrap.className = 'week-camper-row week-kids-checkboxes';
+    if (guestMode || !session || !parentCampers.length) return wrap;
+    const lab = document.createElement('span');
+    lab.className = 'wkc-label';
+    lab.textContent = mode === 'full' ? 'Children in this week (full week)' : 'Children for these days';
     wrap.appendChild(lab);
-    wrap.appendChild(sel);
+    const map = mode === 'full' ? fullWeekCampersByWeek : dailyCampersByWeek;
+    parentCampers.forEach(function (c) {
+      const row = document.createElement('label');
+      row.className = 'week-kid-cb';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      const st = map[weekId];
+      cb.checked = !!(st && st.has(c.id));
+      cb.addEventListener('change', function () {
+        if (!map[weekId]) map[weekId] = new Set();
+        const s = map[weekId];
+        if (cb.checked) s.add(c.id);
+        else s.delete(c.id);
+        if (!s.size) {
+          delete map[weekId];
+          if (mode === 'daily') delete selectedByWeek[weekId];
+        }
+        renderFullWeeks();
+        renderDailyWeeks();
+        refreshPricingPreview();
+        updateSummary();
+      });
+      const sp = document.createElement('span');
+      sp.textContent = c.first_name + ' ' + c.last_name;
+      row.appendChild(cb);
+      row.appendChild(sp);
+      wrap.appendChild(row);
+    });
     return wrap;
   }
 
   function adjustFullWeek(wid, delta) {
+    if (session && !guestMode) return;
     const w = weeksPayload.find(function (x) {
       return x.id === wid;
     });
@@ -1798,6 +1953,7 @@
   }
 
   function adjustDailyKids(wid, delta) {
+    if (session && !guestMode) return;
     const cur = getDailyKids(wid);
     if (delta > 0 && !guestMode && session) {
       if (!parentCampers.length || !camperIdByWeek[wid]) return;
@@ -1837,11 +1993,18 @@
     const grid = document.createElement('div');
     grid.className = 'week-cards-grid';
     const wr = testPriceMode ? 1 : pricingPreview.weekRate || weekRateClient();
+    const signedInParent = !!(session && !guestMode && parentCampers.length > 0);
     weeksPayload.forEach(function (w) {
       const full = w.disabled || w.is_full;
-      const qty = fullWeekQty[w.id] || 0;
+      const qty = signedInParent
+        ? fullWeekCampersByWeek[w.id] && fullWeekCampersByWeek[w.id].size > 0
+          ? 1
+          : 0
+        : fullWeekQty[w.id] || 0;
+      const fwSet = fullWeekCampersByWeek[w.id];
+      const hasKids = signedInParent ? !!(fwSet && fwSet.size) : qty > 0;
       const card = document.createElement('div');
-      card.className = 'week-card' + (full ? ' full-card' : '') + (qty > 0 ? ' has-kids' : '');
+      card.className = 'week-card' + (full ? ' full-card' : '') + (hasKids ? ' has-kids' : '');
       const head = document.createElement('div');
       head.className = 'week-card-head';
       const left = document.createElement('div');
@@ -1862,47 +2025,54 @@
         head.appendChild(b);
       }
       card.appendChild(head);
-      if (!guestMode && session) card.appendChild(buildWeekCamperSelect(w.id));
+      if (signedInParent) card.appendChild(buildWeekCamperCheckboxes(w.id, 'full'));
       const price = document.createElement('div');
       price.className = 'week-card-price';
       price.textContent = fmt(wr) + '/week · Mon–Fri';
       card.appendChild(price);
-      const ctrl = document.createElement('div');
-      ctrl.className = 'week-kids-ctrl';
-      const minus = document.createElement('button');
-      minus.type = 'button';
-      minus.className = 'mini-btn';
-      minus.textContent = '−';
-      minus.disabled = full || qty < 1;
-      minus.addEventListener('click', function () {
-        adjustFullWeek(w.id, -1);
-      });
-      const val = document.createElement('input');
-      val.type = 'text';
-      val.className = 'mini-val';
-      val.readOnly = true;
-      val.value = String(qty);
-      val.title = 'Child attending full week (this camper)';
-      const plus = document.createElement('button');
-      plus.type = 'button';
-      plus.className = 'mini-btn';
-      plus.textContent = '+';
-      const needCamperFw = !guestMode && session && (!camperIdByWeek[w.id] || !parentCampers.length);
-      plus.disabled = full || qty > 0 || needCamperFw;
-      plus.addEventListener('click', function () {
-        adjustFullWeek(w.id, 1);
-      });
-      ctrl.appendChild(minus);
-      ctrl.appendChild(val);
-      ctrl.appendChild(plus);
-      const tag = document.createElement('div');
-      tag.className = 'kids-tag';
-      tag.textContent = qty > 0 ? 'Attending full week' : 'Not attending';
-      const wrap = document.createElement('div');
-      wrap.className = 'week-kids-wrap';
-      wrap.appendChild(ctrl);
-      wrap.appendChild(tag);
-      card.appendChild(wrap);
+      if (!signedInParent) {
+        const ctrl = document.createElement('div');
+        ctrl.className = 'week-kids-ctrl';
+        const minus = document.createElement('button');
+        minus.type = 'button';
+        minus.className = 'mini-btn';
+        minus.textContent = '−';
+        minus.disabled = full || qty < 1;
+        minus.addEventListener('click', function () {
+          adjustFullWeek(w.id, -1);
+        });
+        const val = document.createElement('input');
+        val.type = 'text';
+        val.className = 'mini-val';
+        val.readOnly = true;
+        val.value = String(qty);
+        val.title = 'Child attending full week (this camper)';
+        const plus = document.createElement('button');
+        plus.type = 'button';
+        plus.className = 'mini-btn';
+        plus.textContent = '+';
+        plus.disabled = full || qty > 0;
+        plus.addEventListener('click', function () {
+          adjustFullWeek(w.id, 1);
+        });
+        ctrl.appendChild(minus);
+        ctrl.appendChild(val);
+        ctrl.appendChild(plus);
+        const tag = document.createElement('div');
+        tag.className = 'kids-tag';
+        tag.textContent = qty > 0 ? 'Attending full week' : 'Not attending';
+        const wrap = document.createElement('div');
+        wrap.className = 'week-kids-wrap';
+        wrap.appendChild(ctrl);
+        wrap.appendChild(tag);
+        card.appendChild(wrap);
+      } else {
+        const tag = document.createElement('div');
+        tag.className = 'kids-tag';
+        tag.style.marginTop = '10px';
+        tag.textContent = hasKids ? 'Full week for selected children' : 'Check which children above';
+        card.appendChild(tag);
+      }
       grid.appendChild(card);
     });
     mount.appendChild(grid);
@@ -1919,6 +2089,7 @@
     }
     mount.innerHTML = '';
     const dr = testPriceMode ? 1 : pricingPreview.dayRate || dayRateClient();
+    const signedInParent = !!(session && !guestMode && parentCampers.length > 0);
     weeksPayload.forEach(function (w) {
       const weekFull = w.disabled || w.is_full;
       const kids = getDailyKids(w.id);
@@ -1945,43 +2116,44 @@
         head.appendChild(b);
       }
       block.appendChild(head);
-      if (!guestMode && session) block.appendChild(buildWeekCamperSelect(w.id));
+      if (signedInParent) block.appendChild(buildWeekCamperCheckboxes(w.id, 'daily'));
 
-      const dk = document.createElement('div');
-      dk.className = 'daily-week-kids';
-      const lbl = document.createElement('span');
-      lbl.className = 'lbl';
-      lbl.textContent = 'Kids this week';
-      const ctrl = document.createElement('div');
-      ctrl.className = 'week-kids-ctrl';
-      const minus = document.createElement('button');
-      minus.type = 'button';
-      minus.className = 'mini-btn';
-      minus.textContent = '−';
-      minus.disabled = weekFull || kids < 1;
-      minus.addEventListener('click', function () {
-        adjustDailyKids(w.id, -1);
-      });
-      const val = document.createElement('input');
-      val.type = 'text';
-      val.className = 'mini-val';
-      val.readOnly = true;
-      val.value = String(kids);
-      const plus = document.createElement('button');
-      plus.type = 'button';
-      plus.className = 'mini-btn';
-      plus.textContent = '+';
-      const needCamperDw = !guestMode && session && (!camperIdByWeek[w.id] || !parentCampers.length);
-      plus.disabled = weekFull || kids > 0 || needCamperDw;
-      plus.addEventListener('click', function () {
-        adjustDailyKids(w.id, 1);
-      });
-      ctrl.appendChild(minus);
-      ctrl.appendChild(val);
-      ctrl.appendChild(plus);
-      dk.appendChild(lbl);
-      dk.appendChild(ctrl);
-      block.appendChild(dk);
+      if (!signedInParent) {
+        const dk = document.createElement('div');
+        dk.className = 'daily-week-kids';
+        const lbl = document.createElement('span');
+        lbl.className = 'lbl';
+        lbl.textContent = 'Kids this week';
+        const ctrl = document.createElement('div');
+        ctrl.className = 'week-kids-ctrl';
+        const minus = document.createElement('button');
+        minus.type = 'button';
+        minus.className = 'mini-btn';
+        minus.textContent = '−';
+        minus.disabled = weekFull || kids < 1;
+        minus.addEventListener('click', function () {
+          adjustDailyKids(w.id, -1);
+        });
+        const val = document.createElement('input');
+        val.type = 'text';
+        val.className = 'mini-val';
+        val.readOnly = true;
+        val.value = String(kids);
+        const plus = document.createElement('button');
+        plus.type = 'button';
+        plus.className = 'mini-btn';
+        plus.textContent = '+';
+        plus.disabled = weekFull || kids > 0;
+        plus.addEventListener('click', function () {
+          adjustDailyKids(w.id, 1);
+        });
+        ctrl.appendChild(minus);
+        ctrl.appendChild(val);
+        ctrl.appendChild(plus);
+        dk.appendChild(lbl);
+        dk.appendChild(ctrl);
+        block.appendChild(dk);
+      }
 
       const chips = document.createElement('div');
       chips.className = 'day-chips';
@@ -1994,9 +2166,11 @@
         btn.textContent = formatDayLabel(d);
         const cap = maxCap(w);
         const enrolled = d.current_enrollment || 0;
-        const needCamperDay = !guestMode && session && (!camperIdByWeek[w.id] || !parentCampers.length);
+        const dc = dailyCampersByWeek[w.id];
+        const needCamperDay = signedInParent ? !(dc && dc.size) : false;
         btn.disabled = weekFull || d.at_capacity || kids < 1 || needCamperDay;
         if (btn.disabled && !weekFull && kids >= 1) btn.title = 'This day is full';
+        else if (btn.disabled && signedInParent && !weekFull && !(dc && dc.size)) btn.title = 'Select at least one child for this week first';
         btn.addEventListener('click', function () {
           if (btn.disabled) return;
           toggleDay(w.id, d.id, btn);
@@ -2070,6 +2244,7 @@
     if (!session) {
       parentCampers = [];
       renderParentCamperList();
+      updateRegFlowClasses();
       return;
     }
     const sb = await IMA.getSupabase();
@@ -2085,6 +2260,7 @@
       if (!parentCampers.some(function (c) { return c.id === cid; })) delete camperIdByWeek[wid];
     });
     renderParentCamperList();
+    updateRegFlowClasses();
   }
 
   async function bootAuth() {
@@ -2116,12 +2292,14 @@
       showAuthPanels();
       wireGuestInputs();
       refreshPricingPreview();
+      updateRegFlowClasses();
     });
     document.getElementById('link-back-signin').addEventListener('click', function (ev) {
       ev.preventDefault();
       guestMode = false;
       showAuthPanels();
       refreshPricingPreview();
+      updateRegFlowClasses();
     });
     document.getElementById('btn-toggle-add-camper').addEventListener('click', function () {
       const p = document.getElementById('add-camper-panel');
@@ -2162,6 +2340,8 @@
         renderDailyWeeks();
         refreshPricingPreview();
         updateSummary();
+        updateRegFlowClasses();
+        setRegTab('schedule');
         msg.textContent = '';
       } catch (err) {
         msg.textContent = err.message || 'Could not add camper.';
@@ -2169,6 +2349,10 @@
     });
     showAuthPanels();
     if (guestMode) wireGuestInputs();
+    updateRegFlowClasses();
+    if (session && parentCampers.length > 0 && location.hash !== '#account') {
+      setRegTab('schedule');
+    }
   }
 
   function wireGuestInputs() {
