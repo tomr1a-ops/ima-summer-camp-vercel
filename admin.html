@@ -22,7 +22,7 @@
   <main class="app-main">
     <div id="banner" class="msg" style="margin-bottom:18px"></div>
 
-    <div class="grid-cards">
+    <div class="grid-cards" id="admin-overview">
       <div class="stat-card">
         <h3>Enrolled campers (confirmed)</h3>
         <div class="num" id="st-kids">0</div>
@@ -38,7 +38,7 @@
     </div>
 
     <div class="panel">
-      <div class="panel-head">Week capacity</div>
+      <div class="panel-head">Week capacity (X / 35)</div>
       <div class="panel-body" id="week-bars"></div>
     </div>
 
@@ -47,8 +47,8 @@
       <div class="panel-body" id="week-manage"></div>
     </div>
 
-    <div class="panel">
-      <div class="panel-head">Attendance</div>
+    <div class="panel" id="admin-attendance">
+      <div class="panel-head">Full attendance tracker</div>
       <div class="panel-body">
         <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin-bottom:14px">
           <div>
@@ -83,6 +83,7 @@
               <th>Parent / guest</th>
               <th>Camper</th>
               <th>Week</th>
+              <th>Schedule</th>
               <th>Status</th>
               <th>Paid</th>
               <th>Created</th>
@@ -126,10 +127,12 @@
         const profile = await IMA.getProfile();
         if (!profile) {
           showBanner('No profile found.', false);
+          window.location.replace('/portal.html');
           return null;
         }
-        if (profile.role !== 'admin') {
-          showBanner('Admin access only. Ask IMA to set your profile role to admin in Supabase.', false);
+        const em = String(session.user && session.user.email ? session.user.email : '').toLowerCase();
+        if (profile.role !== 'admin' && !IMA.isAdminLoginEmail(em)) {
+          showBanner('Admin access only.', false);
           window.location.replace('/portal.html');
           return null;
         }
@@ -353,6 +356,13 @@
         return escapeHtml(p.full_name || p.email || e.parent_id);
       }
 
+      function scheduleLabel(e) {
+        const n = (e.day_ids || []).length;
+        if (n >= 5) return 'Full week';
+        if (!n) return '—';
+        return n + ' day' + (n === 1 ? '' : 's');
+      }
+
       function renderTable(enr, parents) {
         const flt = document.getElementById('flt-week').value;
         const body = document.querySelector('#tbl tbody');
@@ -362,14 +372,30 @@
           const w = e.weeks || {};
           const pname = parentGuestLabel(e, parents);
           const cname = escapeHtml((c.first_name || '') + ' ' + (c.last_name || ''));
-          return '<tr><td>' + pname + '</td><td>' + cname + '</td><td>' + escapeHtml(w.label || '') + '</td><td>' + escapeHtml(e.status) + '</td><td>' + escapeHtml(IMA.formatMoney(e.price_paid)) + '</td><td>' + escapeHtml(IMA.formatDate(e.created_at)) + '</td></tr>';
+          return (
+            '<tr><td>' +
+            pname +
+            '</td><td>' +
+            cname +
+            '</td><td>' +
+            escapeHtml(w.label || '') +
+            '</td><td>' +
+            escapeHtml(scheduleLabel(e)) +
+            '</td><td>' +
+            escapeHtml(e.status) +
+            '</td><td>' +
+            escapeHtml(IMA.formatMoney(e.price_paid)) +
+            '</td><td>' +
+            escapeHtml(IMA.formatDate(e.created_at)) +
+            '</td></tr>'
+          );
         }).join('');
       }
 
       function exportCsv(enr, parents) {
         const flt = document.getElementById('flt-week').value;
         const rows = enr.filter(function (e) { return !flt || e.week_id === flt; });
-        const lines = [['parent_name', 'parent_email', 'guest_email', 'camper', 'week', 'status', 'price_paid', 'created_at'].join(',')];
+        const lines = [['parent_name', 'parent_email', 'guest_email', 'camper', 'week', 'schedule', 'status', 'price_paid', 'created_at'].join(',')];
         rows.forEach(function (e) {
           const p = parents[e.parent_id] || {};
           const c = e.campers || {};
@@ -380,6 +406,7 @@
             csv(e.guest_email || ''),
             csv((c.first_name || '') + ' ' + (c.last_name || '')),
             csv(w.label || ''),
+            csv(scheduleLabel(e)),
             csv(e.status),
             csv(String(e.price_paid)),
             csv(e.created_at),

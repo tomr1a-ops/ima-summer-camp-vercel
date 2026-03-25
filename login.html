@@ -148,8 +148,11 @@
             const profile = await IMA.getProfile();
             const ret = new URLSearchParams(window.location.search).get('return');
             const safe = ret && ret.startsWith('/') && !ret.startsWith('//') ? ret : null;
-            if (profile && profile.role === 'admin') window.location.replace('/admin.html');
-            else window.location.replace(safe || '/portal.html');
+            if ((profile && profile.role === 'admin') || IMA.isAdminLoginEmail(session.user && session.user.email)) {
+              window.location.replace('/admin.html');
+            } else {
+              window.location.replace(safe || '/portal.html');
+            }
           }
         } catch (e) {
           show(e.message || String(e), false);
@@ -208,8 +211,11 @@
           if (!profile) throw new Error('Profile not found. Complete registration or contact IMA.');
           const ret = new URLSearchParams(window.location.search).get('return');
           const safe = ret && ret.startsWith('/') && !ret.startsWith('//') ? ret : null;
-          if (profile.role === 'admin') window.location.replace('/admin.html');
-          else window.location.replace(safe || '/portal.html');
+          if (profile.role === 'admin' || IMA.isAdminLoginEmail(session.user && session.user.email)) {
+            window.location.replace('/admin.html');
+          } else {
+            window.location.replace(safe || '/portal.html');
+          }
         } catch (e) {
           show(e.message || 'Sign in failed', false);
           btn.disabled = false;

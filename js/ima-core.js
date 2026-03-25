@@ -22,6 +22,7 @@
       if (!cfg.url || !cfg.anonKey) {
         throw new Error('Supabase URL or anon key missing. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY on Vercel.');
       }
+      g.IMA.authProvidersHelpUrl = cfg.authProvidersHelpUrl || null;
       return createClientFn(cfg.url, cfg.anonKey, {
         auth: {
           persistSession: true,
@@ -80,5 +81,14 @@
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return iso;
     return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  /** Emails that always land on admin after login (in addition to profiles.role = admin). */
+  g.IMA.ADMIN_LOGIN_EMAILS = ['tom@imaimpact.com', 'coachshick@imaimpact.com'];
+  g.IMA.isAdminLoginEmail = function (email) {
+    const e = String(email || '')
+      .trim()
+      .toLowerCase();
+    return g.IMA.ADMIN_LOGIN_EMAILS.indexOf(e) !== -1;
   };
 })();
