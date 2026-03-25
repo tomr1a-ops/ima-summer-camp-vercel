@@ -336,6 +336,9 @@
     }
     .portal-reg-fee-row .lbl { flex: 1; line-height: 1.45; color: #fff; }
     .portal-reg-fee-row .amt { font-weight: 600; color: #fff; }
+    .portal-reg-fee-row:has(> input[type='checkbox']:checked) .amt {
+      display: none;
+    }
   </style>
 </head>
 <body>

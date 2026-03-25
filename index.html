@@ -1226,6 +1226,10 @@
     color: #fff;
     white-space: nowrap;
   }
+  /* Checked = IMA member (no registration fee) — hide price */
+  .reg-fee-camper-row:has(> input[type='checkbox']:checked) .reg-fee-amt {
+    display: none;
+  }
 </style>
 </head>
 <body>
