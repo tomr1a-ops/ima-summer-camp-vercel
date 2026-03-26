@@ -837,7 +837,7 @@
         return (state.campers[i].first_name + ' ' + state.campers[i].last_name).trim();
       }
     }
-    return '';
+    return 'Camper';
   }
 
   function migrateLegacyDailyToPerDay(o) {
@@ -1126,13 +1126,6 @@
         );
       })
       .join('');
-  }
-
-  function camperNameById(cid) {
-    const c = state.campers.find(function (x) {
-      return String(x.id) === String(cid);
-    });
-    return c ? c.first_name + ' ' + c.last_name : 'Camper';
   }
 
   function effectiveWeekRateForSummary() {
