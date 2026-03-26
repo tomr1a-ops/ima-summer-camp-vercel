@@ -3,6 +3,13 @@
  */
 
 async function countDistinctCampersInWeek(sb, weekId, excludeEnrollmentId) {
+  const { data: rpcData, error: rpcErr } = await sb.rpc('week_distinct_camper_count', {
+    p_week_id: weekId,
+    p_exclude_enrollment_id: excludeEnrollmentId || null,
+  });
+  if (!rpcErr && rpcData != null && Number.isFinite(Number(rpcData))) {
+    return Number(rpcData);
+  }
   let q = sb
     .from('enrollments')
     .select('camper_id')
@@ -25,6 +32,29 @@ async function camperHasEnrollmentInWeek(sb, weekId, camperId, excludeEnrollment
   const { data, error } = await q.limit(1);
   if (error) throw error;
   return (data || []).length > 0;
+}
+
+/**
+ * True if any proposed day is already covered by a confirmed enrollment for this camper/week
+ * (excluding one row when editing via PUT).
+ */
+async function proposedOverlapsConfirmedDays(sb, weekId, camperId, proposedDayIds, excludeEnrollmentId) {
+  let q = sb
+    .from('enrollments')
+    .select('id,day_ids')
+    .eq('week_id', weekId)
+    .eq('camper_id', camperId)
+    .eq('status', 'confirmed');
+  if (excludeEnrollmentId) q = q.neq('id', excludeEnrollmentId);
+  const { data, error } = await q;
+  if (error) throw error;
+  const proposed = new Set((proposedDayIds || []).map((id) => String(id)));
+  for (const r of data || []) {
+    for (const d of r.day_ids || []) {
+      if (proposed.has(String(d))) return true;
+    }
+  }
+  return false;
 }
 
 async function loadOrderedDaysForWeek(sb, weekId) {
@@ -100,6 +130,15 @@ async function validateBooking(sb, { weekId, dayIds, camperId, excludeEnrollment
     }
   }
 
+  const overlapsConfirmed = await proposedOverlapsConfirmedDays(sb, weekId, camperId, ids, excludeEnrollmentId);
+  if (overlapsConfirmed) {
+    const err = new Error(
+      'This child is already registered for one or more of these days this week. Uncheck days you already paid for, or contact IMA to change a registration.'
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
   const inWeek = await countDistinctCampersInWeek(sb, weekId, excludeEnrollmentId);
   const camperAlready = await camperHasEnrollmentInWeek(sb, weekId, camperId, excludeEnrollmentId);
   if (!camperAlready && inWeek >= max) {
@@ -166,7 +205,9 @@ async function syncConfirmedDayCounts(sb, oldDayIds, newDayIds) {
 module.exports = {
   countDistinctCampersInWeek,
   camperHasEnrollmentInWeek,
+  proposedOverlapsConfirmedDays,
   validateBooking,
   validateAddedDaysOnly,
   syncConfirmedDayCounts,
+  loadOrderedDaysForWeek,
 };

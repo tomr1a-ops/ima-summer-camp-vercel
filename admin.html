@@ -32,38 +32,29 @@
         <div class="num" id="st-rev">$0</div>
       </div>
       <div class="stat-card">
-        <h3>Total enrollments</h3>
+        <h3>Active enrollment rows</h3>
         <div class="num" id="st-enr">0</div>
       </div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head">Week capacity (X / 35)</div>
-      <div class="panel-body" id="week-bars"></div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head">Week management</div>
-      <div class="panel-body" id="week-manage"></div>
-    </div>
-
-    <div class="panel" id="admin-attendance">
-      <div class="panel-head">Full attendance tracker</div>
-      <div class="panel-body">
-        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin-bottom:14px">
-          <div>
-            <label class="label" for="att-week">Week</label>
-            <select class="input input-inline" id="att-week" style="min-width:220px"></select>
-          </div>
-          <div>
-            <label class="label" for="att-day">Day</label>
-            <select class="input input-inline" id="att-day" style="min-width:220px"></select>
-          </div>
-          <button type="button" class="btn-primary" style="width:auto;padding:10px 16px;margin-top:18px" id="att-refresh">Refresh</button>
-        </div>
-        <div id="att-summary" class="empty-hint" style="margin-bottom:10px"></div>
-        <ul class="attendance-list" id="att-list"></ul>
+      <div class="stat-card">
+        <h3>Cancelled rows</h3>
+        <div class="num" id="st-cancel">0</div>
       </div>
+    </div>
+
+    <div id="week-people-modal" class="admin-modal" aria-hidden="true">
+      <button type="button" class="admin-modal-backdrop" id="week-people-backdrop" aria-label="Close"></button>
+      <div class="admin-modal-panel" role="dialog" aria-modal="true" aria-labelledby="week-people-title">
+        <div class="admin-modal-head">
+          <h2 class="admin-modal-title" id="week-people-title">Week</h2>
+          <button type="button" class="btn-ghost" id="week-people-close">Close</button>
+        </div>
+        <div class="admin-modal-body" id="week-people-body"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">Week management <span class="panel-hint">· click the <strong>0/35</strong> count (or row) to see who’s registered</span></div>
+      <div class="panel-body" id="week-manage"></div>
     </div>
 
     <div class="panel">
@@ -72,6 +63,11 @@
         <span style="display:flex;gap:10px;flex-wrap:wrap">
           <select class="input input-inline" id="flt-week" style="min-width:160px;margin:0">
             <option value="">All weeks</option>
+          </select>
+          <select class="input input-inline" id="flt-status" style="min-width:150px;margin:0">
+            <option value="active" selected>Active only</option>
+            <option value="all">All statuses</option>
+            <option value="cancelled">Cancelled only</option>
           </select>
           <button type="button" class="btn-ghost" id="btn-csv">Export CSV</button>
         </span>
@@ -100,7 +96,9 @@
     (function () {
       const banner = document.getElementById('banner');
 
-      document.getElementById('btn-out').onclick = function () { IMA.signOut(); };
+      document.getElementById('btn-out').onclick = function () {
+        IMA.signOut('/admin-login.html');
+      };
       document.getElementById('btn-portal').onclick = function () { window.location.href = '/portal.html'; };
 
       function showBanner(text, ok) {
@@ -121,8 +119,10 @@
           .replace(/"/g, '&quot;');
       }
 
+      var state = { weeks: [], enr: [], parents: {} };
+
       async function requireAdmin() {
-        const session = await IMA.requireAuth('/login.html');
+        const session = await IMA.requireAuth('/admin-login.html');
         if (!session) return null;
         const profile = await IMA.getProfile();
         if (!profile) {
@@ -195,15 +195,139 @@
 
       function overviewStats(enr) {
         const confirmed = enr.filter(function (e) { return e.status === 'confirmed'; });
+        const activeRows = enr.filter(function (e) {
+          return e.status === 'confirmed' || e.status === 'pending';
+        });
+        const cancelledRows = enr.filter(function (e) { return e.status === 'cancelled'; });
         const campers = {};
         confirmed.forEach(function (e) { campers[e.camper_id] = true; });
         const rev = confirmed.reduce(function (s, e) { return s + (Number(e.price_paid) || 0); }, 0);
         document.getElementById('st-kids').textContent = String(Object.keys(campers).length);
         document.getElementById('st-rev').textContent = IMA.formatMoney(rev);
-        document.getElementById('st-enr').textContent = String(enr.length);
+        document.getElementById('st-enr').textContent = String(activeRows.length);
+        var stc = document.getElementById('st-cancel');
+        if (stc) stc.textContent = String(cancelledRows.length);
       }
 
-      function renderWeekBars(weeks, enr) {
+      function closeWeekPeopleModal() {
+        const modal = document.getElementById('week-people-modal');
+        modal.classList.remove('open');
+        modal.setAttribute('aria-hidden', 'true');
+      }
+
+      function openWeekPeopleModal(weekId) {
+        const w = state.weeks.find(function (x) {
+          return String(x.id) === String(weekId);
+        });
+        const label = w ? w.label : 'Week';
+        const rows = state.enr.filter(function (e) {
+          return String(e.week_id) === String(weekId);
+        });
+        rows.sort(function (a, b) {
+          const sa = a.status === 'confirmed' ? 0 : 1;
+          const sb = b.status === 'confirmed' ? 0 : 1;
+          if (sa !== sb) return sa - sb;
+          const ca = a.campers || {};
+          const cb = b.campers || {};
+          const na = (ca.first_name || '') + ' ' + (ca.last_name || '');
+          const nb = (cb.first_name || '') + ' ' + (cb.last_name || '');
+          return na.localeCompare(nb);
+        });
+        const titleEl = document.getElementById('week-people-title');
+        const bodyEl = document.getElementById('week-people-body');
+        const modal = document.getElementById('week-people-modal');
+        titleEl.textContent = label + ' — roster';
+        if (!rows.length) {
+          bodyEl.innerHTML = '<p class="empty-hint">No enrollments for this week yet.</p>';
+        } else {
+          const activeRoster = rows.filter(function (r) {
+            return r.status !== 'cancelled';
+          });
+          const cancelledRoster = rows.filter(function (r) {
+            return r.status === 'cancelled';
+          });
+          const distinct = {};
+          activeRoster
+            .filter(function (r) {
+              return r.status === 'confirmed';
+            })
+            .forEach(function (r) {
+              distinct[r.camper_id] = true;
+            });
+          const summary =
+            '<p class="empty-hint" style="margin-bottom:12px">' +
+            Object.keys(distinct).length +
+            ' distinct camper(s) confirmed (capacity bar) · ' +
+            activeRoster.length +
+            ' active row(s)</p>';
+          function rosterTable(title, list) {
+            if (!list.length) return '';
+            return (
+              '<h4 style="margin:16px 0 8px;font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#888">' +
+              escapeHtml(title) +
+              '</h4>' +
+              '<table class="week-roster-table"><thead><tr>' +
+              '<th>Camper</th><th>Parent / guest</th><th>Schedule</th><th>Status</th><th>Paid</th>' +
+              '</tr></thead><tbody>' +
+              list
+                .map(function (e) {
+                  const c = e.campers || {};
+                  const cname = escapeHtml((c.first_name || '') + ' ' + (c.last_name || ''));
+                  return (
+                    '<tr><td>' +
+                    cname +
+                    '</td><td>' +
+                    parentGuestLabel(e, state.parents) +
+                    '</td><td>' +
+                    escapeHtml(scheduleLabel(e)) +
+                    '</td><td>' +
+                    escapeHtml(e.status) +
+                    '</td><td>' +
+                    escapeHtml(IMA.formatMoney(e.price_paid)) +
+                    '</td></tr>'
+                  );
+                })
+                .join('') +
+              '</tbody></table>'
+            );
+          }
+          bodyEl.innerHTML =
+            summary + rosterTable('Active & pending', activeRoster) + rosterTable('Cancelled', cancelledRoster);
+        }
+        modal.classList.add('open');
+        modal.setAttribute('aria-hidden', 'false');
+        document.getElementById('week-people-close').focus();
+      }
+
+      var rosterUiBound = false;
+
+      function bindRosterModalUiOnce() {
+        if (rosterUiBound) return;
+        rosterUiBound = true;
+        const modal = document.getElementById('week-people-modal');
+        const manage = document.getElementById('week-manage');
+        manage.addEventListener('click', function (ev) {
+          if (ev.target.closest('[data-week-active]') || ev.target.closest('.week-manage-active')) return;
+          const row = ev.target.closest('.week-manage-row');
+          if (!row) return;
+          openWeekPeopleModal(row.getAttribute('data-week-id'));
+        });
+        manage.addEventListener('keydown', function (ev) {
+          if (ev.key !== 'Enter' && ev.key !== ' ') return;
+          if (ev.target.closest('[data-week-active]')) return;
+          const row = ev.target.closest('.week-manage-row');
+          if (!row) return;
+          ev.preventDefault();
+          openWeekPeopleModal(row.getAttribute('data-week-id'));
+        });
+        document.getElementById('week-people-close').addEventListener('click', closeWeekPeopleModal);
+        document.getElementById('week-people-backdrop').addEventListener('click', closeWeekPeopleModal);
+        document.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Escape' && modal.classList.contains('open')) closeWeekPeopleModal();
+        });
+      }
+
+      function renderWeekManage(sb, weeks, enr) {
         const confirmed = enr.filter(function (e) { return e.status === 'confirmed'; });
         const byWeek = {};
         weeks.forEach(function (w) { byWeek[w.id] = {}; });
@@ -211,32 +335,49 @@
           if (!byWeek[e.week_id]) byWeek[e.week_id] = {};
           byWeek[e.week_id][e.camper_id] = true;
         });
-        const el = document.getElementById('week-bars');
-        el.innerHTML = weeks.map(function (w) {
-          const set = byWeek[w.id] || {};
-          const n = Object.keys(set).length;
-          const max = w.max_capacity || 35;
-          const pct = Math.min(100, Math.round((n / max) * 100));
-          const full = w.is_full || n >= max;
-          return '<div class="week-row-admin">' +
-            '<div class="meta"><span>' + escapeHtml(w.label) + '</span><span>' + n + '/' + max + (full ? ' · FULL' : '') + '</span></div>' +
-            '<div class="progress-bar"><i style="width:' + pct + '%"></i></div>' +
-            '</div>';
-        }).join('');
-      }
-
-      function renderWeekManage(sb, weeks) {
         const el = document.getElementById('week-manage');
-        el.innerHTML = weeks.map(function (w) {
-          return '<div class="week-row-admin" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">' +
-            '<span>' + escapeHtml(w.label) + '</span>' +
-            '<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)">' +
-            '<input type="checkbox" data-week-active="' + w.id + '" ' + (w.is_active ? 'checked' : '') + '/> Active' +
-            '</label>' +
-            '</div>';
-        }).join('');
+        el.innerHTML = weeks
+          .map(function (w) {
+            const set = byWeek[w.id] || {};
+            const n = Object.keys(set).length;
+            const max = w.max_capacity || 35;
+            const pct = Math.min(100, Math.round((n / max) * 100));
+            const full = w.is_full || n >= max;
+            return (
+              '<div class="week-manage-row week-row-admin" data-week-id="' +
+              escapeHtml(String(w.id)) +
+              '" tabindex="0" role="button" aria-label="View roster for ' +
+              escapeHtml(w.label) +
+              '">' +
+              '<div class="week-manage-row-body">' +
+              '<div class="meta">' +
+              '<span class="week-manage-label-text">' +
+              escapeHtml(w.label) +
+              '</span>' +
+              '<span class="week-capacity-btn" title="Who is registered for this week?">' +
+              n +
+              '/' +
+              max +
+              (full ? ' · FULL' : '') +
+              '</span></div>' +
+              '<div class="progress-bar"><i style="width:' +
+              pct +
+              '%"></i></div>' +
+              '</div>' +
+              '<label class="week-manage-active">' +
+              '<input type="checkbox" data-week-active="' +
+              escapeHtml(String(w.id)) +
+              '" ' +
+              (w.is_active ? 'checked' : '') +
+              '/> Active' +
+              '</label>' +
+              '</div>'
+            );
+          })
+          .join('');
         el.querySelectorAll('input[data-week-active]').forEach(function (cb) {
-          cb.addEventListener('change', async function () {
+          cb.addEventListener('change', async function (ev) {
+            ev.stopPropagation();
             const id = cb.getAttribute('data-week-active');
             try {
               const { error } = await sb.from('weeks').update({ is_active: cb.checked }).eq('id', id);
@@ -250,99 +391,15 @@
         });
       }
 
-      var state = { weeks: [], daysByWeek: {}, enr: [], parents: {} };
-
-      function fillWeekSelects() {
-        const aw = document.getElementById('att-week');
+      function fillWeekFilterSelect() {
         const fw = document.getElementById('flt-week');
-        aw.innerHTML = '<option value="">Select week…</option>' + state.weeks.map(function (w) {
-          return '<option value="' + w.id + '">' + escapeHtml(w.label) + '</option>';
-        }).join('');
-        fw.innerHTML = '<option value="">All weeks</option>' + state.weeks.map(function (w) {
-          return '<option value="' + w.id + '">' + escapeHtml(w.label) + '</option>';
-        }).join('');
-      }
-
-      async function loadDaysForWeek(sb, weekId) {
-        if (state.daysByWeek[weekId]) return state.daysByWeek[weekId];
-        const { data, error } = await sb.from('days').select('*').eq('week_id', weekId).order('date');
-        if (error) throw error;
-        state.daysByWeek[weekId] = data || [];
-        return state.daysByWeek[weekId];
-      }
-
-      async function renderAttendance(sb) {
-        const weekId = document.getElementById('att-week').value;
-        const dayId = document.getElementById('att-day').value;
-        const daySel = document.getElementById('att-day');
-        const list = document.getElementById('att-list');
-        const sum = document.getElementById('att-summary');
-
-        if (!weekId) {
-          daySel.innerHTML = '<option value="">Select week first…</option>';
-          list.innerHTML = '';
-          sum.textContent = '';
-          return;
-        }
-        const days = await loadDaysForWeek(sb, weekId);
-        daySel.innerHTML = '<option value="">Select day…</option>' + days.map(function (d) {
-          return '<option value="' + d.id + '">' + escapeHtml(d.day_name + ' ' + d.date) + '</option>';
-        }).join('');
-        if (dayId && days.some(function (d) { return d.id === dayId; })) daySel.value = dayId;
-
-        const effectiveDay = daySel.value;
-        if (!effectiveDay) {
-          list.innerHTML = '';
-          sum.textContent = 'Select a day to list enrolled campers.';
-          return;
-        }
-
-        const { data: enrOnDay, error } = await sb
-          .from('enrollments')
-          .select('id,camper_id,day_ids, campers(first_name,last_name)')
-          .eq('status', 'confirmed')
-          .contains('day_ids', [effectiveDay]);
-        if (error) throw error;
-        const rows = enrOnDay || [];
-
-        const { data: att, error: ae } = await sb.from('attendance').select('*').eq('day_id', effectiveDay);
-        if (ae) throw ae;
-        const attMap = {};
-        (att || []).forEach(function (a) { attMap[a.camper_id] = a; });
-
-        sum.textContent = rows.length ? (rows.length + ' enrolled for this day') : 'No enrollments for this day.';
-
-        list.innerHTML = rows.map(function (r) {
-          const c = r.campers || {};
-          const name = escapeHtml((c.first_name || '') + ' ' + (c.last_name || ''));
-          const a = attMap[r.camper_id];
-          const checked = a && a.present ? ' checked' : '';
-          return '<li data-eid="' + escapeHtml(r.id) + '" data-cid="' + escapeHtml(r.camper_id) + '">' +
-            '<span>' + name + '</span>' +
-            '<label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)">' +
-            'Present <input type="checkbox" class="att-chk"' + checked + ' />' +
-            '</label></li>';
-        }).join('');
-
-        list.querySelectorAll('li').forEach(function (li) {
-          const chk = li.querySelector('.att-chk');
-          chk.addEventListener('change', async function () {
-            const eid = li.getAttribute('data-eid');
-            const cid = li.getAttribute('data-cid');
-            try {
-              const { error: ue } = await sb.from('attendance').upsert({
-                enrollment_id: eid,
-                camper_id: cid,
-                day_id: effectiveDay,
-                present: chk.checked,
-                marked_at: new Date().toISOString(),
-              }, { onConflict: 'camper_id,day_id' });
-              if (ue) throw ue;
-            } catch (e) {
-              showBanner(e.message || String(e), false);
-            }
-          });
-        });
+        fw.innerHTML =
+          '<option value="">All weeks</option>' +
+          state.weeks
+            .map(function (w) {
+              return '<option value="' + w.id + '">' + escapeHtml(w.label) + '</option>';
+            })
+            .join('');
       }
 
       function parentGuestLabel(e, parents) {
@@ -363,10 +420,20 @@
         return n + ' day' + (n === 1 ? '' : 's');
       }
 
-      function renderTable(enr, parents) {
+      function filterEnrollmentsForTable(enr) {
         const flt = document.getElementById('flt-week').value;
+        const st = document.getElementById('flt-status') && document.getElementById('flt-status').value;
+        return enr.filter(function (e) {
+          if (flt && e.week_id !== flt) return false;
+          if (st === 'active') return e.status === 'confirmed' || e.status === 'pending';
+          if (st === 'cancelled') return e.status === 'cancelled';
+          return true;
+        });
+      }
+
+      function renderTable(enr, parents) {
         const body = document.querySelector('#tbl tbody');
-        const rows = enr.filter(function (e) { return !flt || e.week_id === flt; });
+        const rows = filterEnrollmentsForTable(enr);
         body.innerHTML = rows.map(function (e) {
           const c = e.campers || {};
           const w = e.weeks || {};
@@ -393,8 +460,7 @@
       }
 
       function exportCsv(enr, parents) {
-        const flt = document.getElementById('flt-week').value;
-        const rows = enr.filter(function (e) { return !flt || e.week_id === flt; });
+        const rows = filterEnrollmentsForTable(enr);
         const lines = [['parent_name', 'parent_email', 'guest_email', 'camper', 'week', 'schedule', 'status', 'price_paid', 'created_at'].join(',')];
         rows.forEach(function (e) {
           const p = parents[e.parent_id] || {};
@@ -437,24 +503,20 @@
         state.parents = await hydrateParents(sb, state.enr);
 
         overviewStats(state.enr);
-        renderWeekBars(state.weeks, state.enr);
-        renderWeekManage(sb, state.weeks);
-        fillWeekSelects();
+        renderWeekManage(sb, state.weeks, state.enr);
+        bindRosterModalUiOnce();
+        fillWeekFilterSelect();
         renderTable(state.enr, state.parents);
 
         document.getElementById('flt-week').addEventListener('change', function () {
           renderTable(state.enr, state.parents);
         });
+        document.getElementById('flt-status').addEventListener('change', function () {
+          renderTable(state.enr, state.parents);
+        });
         document.getElementById('btn-csv').addEventListener('click', function () {
           exportCsv(state.enr, state.parents);
         });
-
-        document.getElementById('att-week').addEventListener('change', async function () {
-          document.getElementById('att-day').innerHTML = '<option value="">Loading…</option>';
-          await renderAttendance(sb);
-        });
-        document.getElementById('att-day').addEventListener('change', function () { renderAttendance(sb); });
-        document.getElementById('att-refresh').addEventListener('click', function () { renderAttendance(sb); });
       }
 
       boot().catch(function (e) {

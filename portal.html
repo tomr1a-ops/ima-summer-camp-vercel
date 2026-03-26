@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="ima-portal-build" content="2026-03-26" />
+  <meta name="ima-portal-build" content="2026-03-28" />
   <title>Parent Portal — IMA Summer Camp</title>
   <script src="https://js.stripe.com/v3/"></script>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
@@ -233,11 +233,14 @@
       display: inline-block;
       margin-top: 8px;
       font-size: 10px;
-      letter-spacing: 2px;
-      color: #ff8888;
-      border: 1px solid rgba(255,100,100,0.4);
+      letter-spacing: 1.5px;
+      color: #ff3b3b;
+      background: rgba(255, 59, 59, 0.14);
+      border: 1px solid rgba(255, 80, 80, 0.65);
       padding: 4px 8px;
       border-radius: 4px;
+      font-weight: 700;
+      text-transform: uppercase;
     }
     .daily-block {
       border: 1px solid var(--border2);
@@ -245,6 +248,9 @@
       padding: 16px;
       margin-bottom: 12px;
       background: var(--card2);
+    }
+    .daily-block.disabled {
+      pointer-events: none;
     }
     .daily-block .head { margin-bottom: 12px; }
     .daily-block .wn { font-family: var(--font-display); color: var(--cyan); font-size: 20px; }
@@ -402,6 +408,142 @@
     .portal-reg-fee-row:has(> input[type='checkbox']:checked) .amt {
       display: none;
     }
+    .booking-card {
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      padding: 16px 18px;
+      margin-bottom: 12px;
+      background: var(--card2);
+      text-align: left;
+    }
+    .booking-card .bc-head {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+    .booking-card .bc-child {
+      font-weight: 700;
+      font-size: 17px;
+      color: #fff;
+    }
+    .booking-card .bc-status {
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--cyan);
+      border: 1px solid rgba(0, 229, 204, 0.35);
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+    .booking-card .bc-status.pending {
+      color: #ffcc66;
+      border-color: rgba(255, 204, 102, 0.4);
+    }
+    .booking-card .bc-meta {
+      font-size: 14px;
+      color: #bbb;
+      line-height: 1.5;
+      margin-bottom: 14px;
+    }
+    .booking-card .bc-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .booking-card .bc-actions button {
+      font-family: var(--font-cond);
+      font-size: 12px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border2);
+      background: #141414;
+      color: #e8e8e8;
+      cursor: pointer;
+    }
+    .booking-card .bc-actions button:hover {
+      border-color: var(--cyan);
+      color: #fff;
+    }
+    .booking-card .bc-actions button.danger:hover {
+      border-color: #ff6b6b;
+      color: #ffaaa5;
+    }
+    .booking-card .bc-actions button:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    .portal-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(0, 0, 0, 0.72);
+    }
+    .portal-modal[hidden] {
+      display: none !important;
+    }
+    .portal-modal-panel {
+      width: 100%;
+      max-width: 480px;
+      max-height: 85vh;
+      overflow: auto;
+      background: var(--card);
+      border: 1px solid var(--border2);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .portal-modal-panel h3 {
+      font-family: var(--font-display);
+      font-size: 22px;
+      color: var(--cyan);
+      margin: 0 0 12px;
+      letter-spacing: 1px;
+    }
+    .portal-modal-panel .pm-hint {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+    .swap-week-option {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      border-radius: 8px;
+      border: 1px solid var(--border2);
+      background: var(--card2);
+      color: #e8e8e8;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .swap-week-option:hover:not(:disabled) {
+      border-color: var(--cyan);
+    }
+    .swap-week-option:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .portal-modal-close {
+      margin-top: 16px;
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border2);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
@@ -460,6 +602,12 @@
         For each camp week you add, check which children are attending that week — weekly or daily.
       </p>
 
+      <div class="section-title">My bookings</div>
+      <div id="portal-bookings-mount"></div>
+      <p id="portal-bookings-empty" class="empty-hint" style="display: none; margin-bottom: 20px">
+        No camp bookings yet. Use the buttons below to register.
+      </p>
+
       <div class="portal-actions">
         <button type="button" class="portal-big-btn" id="open-full-week">
           BOOK A FULL WEEK
@@ -471,6 +619,15 @@
         </button>
       </div>
     </section>
+
+    <div id="portal-swap-modal" class="portal-modal" hidden aria-hidden="true">
+      <div class="portal-modal-panel" role="dialog" aria-modal="true" aria-labelledby="portal-swap-title">
+        <h3 id="portal-swap-title">Swap to another week</h3>
+        <p class="pm-hint" id="portal-swap-hint"></p>
+        <div id="portal-swap-options"></div>
+        <button type="button" class="portal-modal-close" id="portal-swap-close">Cancel</button>
+      </div>
+    </div>
 
     <section id="view-full" hidden>
       <div class="book-panel">
@@ -524,14 +681,13 @@
       </div>
     </section>
     <p id="portal-deploy-foot" style="text-align:center;color:#666;font-size:11px;margin-top:28px;padding-bottom:8px">
-      Portal UI rev 2026-03-26 · no “My Bookings” block · selections saved in this browser
+      Portal · My bookings · selections saved in this browser
     </p>
   </div>
 
   <script src="/js/ima-core.js"></script>
   <script>
 (function () {
-  const STRIPE_PK = 'pk_live_51RTV7gJWx3IGJhgTvjwdzh9n9luSbxB3Dp3nZCvQCPmx7mWCpoJFrROegF5WH1Ig4fHSuhZ04nVz0b345IV6wCWI00NxR9jpED';
   const API_CHECKOUT = '/api/create-checkout-session';
   const EARLY = new Date('2026-05-01T00:00:00.000Z');
 
@@ -548,6 +704,10 @@
     portalRegEstimate: { weekRate: null, regFee: 65, perCamperNeedsReg: {} },
     /** camper id -> include $65 registration at checkout */
     portalRegFeeInclude: {},
+    /** From GET /api/enrollments */
+    enrollments: [],
+    /** When set, full/daily pickers only list this child (add-another-week flow). */
+    addWeekCamperId: null,
   };
 
   let childAddedBannerTimer = null;
@@ -1005,6 +1165,12 @@
         state.portalRegEstimate.regFee = j.registrationFee != null ? Number(j.registrationFee) : 65;
         state.portalRegEstimate.perCamperNeedsReg =
           j.perCamperNeedsReg && typeof j.perCamperNeedsReg === 'object' ? j.perCamperNeedsReg : {};
+        const pcr = state.portalRegEstimate.perCamperNeedsReg;
+        Object.keys(pcr).forEach(function (rk) {
+          if (pcr[rk] === false) {
+            state.portalRegFeeInclude[String(rk)] = false;
+          }
+        });
       }
     } catch (e) {
       console.warn('[portal] preview-pricing', e);
@@ -1021,6 +1187,10 @@
 
   function getPortalRegFeeInclude(cid) {
     const k = String(cid);
+    const pcr = (state.portalRegEstimate && state.portalRegEstimate.perCamperNeedsReg) || {};
+    if (pcr[k] === false || pcr[cid] === false) {
+      return false;
+    }
     if (state.portalRegFeeInclude[k] === undefined) return camperNeedsRegFee(cid);
     return !!state.portalRegFeeInclude[k];
   }
@@ -1090,6 +1260,285 @@
     const btn = document.getElementById('btn-full-checkout');
     if (!btn) return;
     btn.disabled = countFullWeekChildSlots() === 0;
+  }
+
+  function portalCampersForPicker() {
+    if (state.addWeekCamperId) {
+      return state.campers.filter(function (c) {
+        return String(c.id) === String(state.addWeekCamperId);
+      });
+    }
+    return state.campers;
+  }
+
+  function portalWeekById(wid) {
+    return state.weeks.find(function (w) {
+      return String(w.id) === String(wid);
+    });
+  }
+
+  function formatEnrollmentSchedule(e) {
+    const w = portalWeekById(e.week_id);
+    if (!w || !(w.days && w.days.length)) {
+      return (e.day_ids || []).length + ' day(s)';
+    }
+    const idSet = new Set((e.day_ids || []).map(String));
+    const weekDayIds = w.days.map(function (d) {
+      return String(d.id);
+    });
+    const isFull =
+      weekDayIds.length === 5 &&
+      idSet.size === 5 &&
+      weekDayIds.every(function (id) {
+        return idSet.has(id);
+      });
+    if (isFull) {
+      return escapeHtml(w.label) + ' — Full week Mon–Fri';
+    }
+    const parts = w.days
+      .filter(function (d) {
+        return idSet.has(String(d.id));
+      })
+      .map(function (d) {
+        return formatDayLabel(d);
+      });
+    return escapeHtml(w.label) + ' — ' + escapeHtml(parts.join(', ') || 'Days');
+  }
+
+  function mapEnrollmentDaysToNewWeek(enrollment, newWeekId) {
+    const curW = portalWeekById(enrollment.week_id);
+    const newW = portalWeekById(newWeekId);
+    if (!curW || !newW || !(curW.days && curW.days.length) || !(newW.days && newW.days.length)) return null;
+    const wantNames = new Set();
+    (enrollment.day_ids || []).forEach(function (did) {
+      const d = curW.days.find(function (x) {
+        return String(x.id) === String(did);
+      });
+      if (d && d.day_name != null) wantNames.add(String(d.day_name));
+    });
+    const mapped = [];
+    newW.days.forEach(function (d) {
+      if (wantNames.has(String(d.day_name))) mapped.push(d.id);
+    });
+    return mapped.length ? mapped : null;
+  }
+
+  async function refreshPortalBookings() {
+    state.enrollments = [];
+    if (!state.session || !state.session.access_token) return;
+    try {
+      const res = await fetch('/api/enrollments', {
+        headers: { Authorization: 'Bearer ' + state.session.access_token },
+      });
+      if (!res.ok) return;
+      const j = await res.json();
+      state.enrollments = j.enrollments || [];
+    } catch (e) {
+      console.warn('[portal] enrollments', e);
+    }
+  }
+
+  function closeSwapWeekModal() {
+    const m = document.getElementById('portal-swap-modal');
+    if (m) {
+      m.hidden = true;
+      m.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  async function performSwapToWeek(enrollment, newWeekId) {
+    const newDayIds = mapEnrollmentDaysToNewWeek(enrollment, newWeekId);
+    if (!newDayIds || !newDayIds.length) {
+      showBanner('Could not map days to the selected week. Contact IMA for help.', false);
+      return;
+    }
+    try {
+      const res = await fetch('/api/enrollments', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + state.session.access_token,
+        },
+        body: JSON.stringify({
+          id: enrollment.id,
+          week_id: newWeekId,
+          day_ids: newDayIds,
+        }),
+      });
+      const j = await res.json().catch(function () {
+        return {};
+      });
+      if (!res.ok) throw new Error(j.error || 'Swap failed');
+      closeSwapWeekModal();
+      showBanner('Week updated.', true);
+      await refreshPortalBookings();
+      renderPortalBookings();
+      try {
+        const wr = await fetch('/api/weeks');
+        if (wr.ok) {
+          const wj = await wr.json();
+          state.weeks = wj.weeks || [];
+        }
+      } catch (eW) {}
+    } catch (e) {
+      showBanner(e.message || String(e), false);
+    }
+  }
+
+  function openSwapWeekModal(enrollment) {
+    const hint = document.getElementById('portal-swap-hint');
+    const opts = document.getElementById('portal-swap-options');
+    const modal = document.getElementById('portal-swap-modal');
+    if (!hint || !opts || !modal) return;
+    const cur = portalWeekById(enrollment.week_id);
+    hint.textContent =
+      'Choose a week with space (under 35 campers). Your schedule keeps the same weekdays (Mon–Fri pattern) in the new week.';
+    opts.innerHTML = '';
+    state.weeks.forEach(function (w) {
+      if (String(w.id) === String(enrollment.week_id)) return;
+      const max = w.max_capacity || 35;
+      const n = typeof w.distinct_camper_count === 'number' ? w.distinct_camper_count : 0;
+      const hasRoom = n < max && !w.is_full;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'swap-week-option';
+      btn.disabled = !hasRoom;
+      btn.innerHTML =
+        '<strong>' +
+        escapeHtml(w.label) +
+        '</strong><br><span style="font-size:12px;color:#888">' +
+        escapeHtml(String(w.start_date) + ' – ' + String(w.end_date)) +
+        ' · ' +
+        n +
+        '/' +
+        max +
+        ' campers' +
+        (hasRoom ? '' : ' · Full') +
+        '</span>';
+      btn.addEventListener('click', function () {
+        if (btn.disabled) return;
+        void performSwapToWeek(enrollment, w.id);
+      });
+      opts.appendChild(btn);
+    });
+    modal.hidden = false;
+    modal.setAttribute('aria-hidden', 'false');
+  }
+
+  function renderPortalBookings() {
+    const mount = document.getElementById('portal-bookings-mount');
+    const empty = document.getElementById('portal-bookings-empty');
+    if (!mount || !empty) return;
+    const rows = (state.enrollments || []).filter(function (e) {
+      return e && e.status !== 'cancelled';
+    });
+    if (!rows.length) {
+      mount.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    empty.style.display = 'none';
+    mount.innerHTML = rows
+      .map(function (e) {
+        const st = String(e.status || '');
+        const stClass = st === 'pending' ? 'bc-status pending' : 'bc-status';
+        const paid = Number(e.price_paid || 0);
+        const paidTxt = paid > 0 ? '$' + paid.toFixed(2) : st === 'pending' ? 'Pending payment' : '$0.00';
+        const id = escapeHtml(e.id);
+        return (
+          '<div class="booking-card" data-booking-id="' +
+          id +
+          '">' +
+          '<div class="bc-head"><div class="bc-child">' +
+          escapeHtml(camperNameById(e.camper_id)) +
+          '</div><span class="' +
+          stClass +
+          '">' +
+          escapeHtml(st) +
+          '</span></div>' +
+          '<div class="bc-meta">' +
+          formatEnrollmentSchedule(e) +
+          '<br>Amount paid: ' +
+          escapeHtml(paidTxt) +
+          '</div>' +
+          '<div class="bc-actions">' +
+          '<button type="button" class="btn-swap-week" data-eid="' +
+          id +
+          '">Swap week</button>' +
+          '<button type="button" class="btn-add-week" data-camper="' +
+          escapeHtml(String(e.camper_id)) +
+          '">Add another week</button>' +
+          '<button type="button" class="danger btn-cancel-booking" data-eid="' +
+          id +
+          '">Cancel</button>' +
+          '</div></div>'
+        );
+      })
+      .join('');
+
+    mount.querySelectorAll('.btn-swap-week').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const id = btn.getAttribute('data-eid');
+        const en = rows.find(function (r) {
+          return String(r.id) === String(id);
+        });
+        if (en) openSwapWeekModal(en);
+      });
+    });
+    mount.querySelectorAll('.btn-add-week').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const cid = btn.getAttribute('data-camper');
+        state.addWeekCamperId = cid ? String(cid) : null;
+        persistPortalEnroll();
+        showView('full');
+        document.getElementById('full-context-hint').textContent =
+          'Select an additional week for ' +
+          escapeHtml(camperNameById(cid)) +
+          ', then checkout. Only this child is shown while adding a week.';
+        renderFullWeekCards();
+        refreshPortalPricingForFullWeek();
+      });
+    });
+    mount.querySelectorAll('.btn-cancel-booking').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const id = btn.getAttribute('data-eid');
+        const en = rows.find(function (r) {
+          return String(r.id) === String(id);
+        });
+        if (!en) return;
+        if (
+          !confirm(
+            'Are you sure you want to cancel this week? This action cannot be undone.'
+          )
+        ) {
+          return;
+        }
+        void (async function () {
+          try {
+            const res = await fetch('/api/enrollments?id=' + encodeURIComponent(en.id), {
+              method: 'DELETE',
+              headers: { Authorization: 'Bearer ' + state.session.access_token },
+            });
+            const j = await res.json().catch(function () {
+              return {};
+            });
+            if (!res.ok) throw new Error(j.error || 'Could not cancel');
+            showBanner('Booking cancelled.', true);
+            await refreshPortalBookings();
+            renderPortalBookings();
+            try {
+              const wr = await fetch('/api/weeks');
+              if (wr.ok) {
+                const wj = await wr.json();
+                state.weeks = wj.weeks || [];
+              }
+            } catch (eW) {}
+          } catch (err) {
+            showBanner(err.message || String(err), false);
+          }
+        })();
+      });
+    });
   }
 
   function updateFullWeekSummary() {
@@ -1183,7 +1632,7 @@
         '</div><div class="p">' +
         fmt(wr) +
         ' / week per child</div>' +
-        (full ? '<span class="badge-full">UNAVAILABLE · FULL</span>' : '');
+        (full ? '<span class="badge-full">Sold out</span>' : '');
       card.appendChild(head);
       if (!full && state.campers.length) {
         const kidsBox = document.createElement('div');
@@ -1192,7 +1641,7 @@
         lab.className = 'wk-label';
         lab.textContent = 'Children in this week';
         kidsBox.appendChild(lab);
-        state.campers.forEach(function (c) {
+        portalCampersForPicker().forEach(function (c) {
           const row = document.createElement('label');
           row.className = 'portal-kid-row';
           const cb = document.createElement('input');
@@ -1243,6 +1692,7 @@
       });
       if (days.length < 1) return;
       cset.forEach(function (cid) {
+        if (state.addWeekCamperId && String(cid) !== String(state.addWeekCamperId)) return;
         bookings.push({
           weekId: w.id,
           dayIds: days,
@@ -1371,7 +1821,8 @@
         escapeHtml(String(w.start_date)) +
         ' – ' +
         escapeHtml(String(w.end_date)) +
-        '</div>';
+        '</div>' +
+        (weekFull ? '<div class="badge-full" style="margin-top:10px">Sold out</div>' : '');
       block.appendChild(head);
       const row = document.createElement('div');
       row.className = 'day-row';
@@ -1409,7 +1860,7 @@
           }
           refreshDayButtonState(wk, d, btnMain, btnSub, btn);
         });
-        state.campers.forEach(function (c) {
+        portalCampersForPicker().forEach(function (c) {
           const cid = String(c.id);
           const lblRow = document.createElement('label');
           lblRow.className = 'portal-kid-row';
@@ -1455,6 +1906,32 @@
     updateDailyCheckoutBtn();
   }
 
+  function mergeDailyBookingsByCamperWeek(bookings) {
+    const full = bookings.filter(function (b) {
+      return b.pricingMode === 'full_week';
+    });
+    const dailyBy = {};
+    bookings.forEach(function (b) {
+      if (b.pricingMode !== 'daily') return;
+      const k = String(b.camperId) + '|' + String(b.weekId);
+      if (!dailyBy[k]) {
+        dailyBy[k] = {
+          weekId: b.weekId,
+          camperId: b.camperId,
+          pricingMode: 'daily',
+          dayIds: [],
+        };
+      }
+      (b.dayIds || []).forEach(function (d) {
+        const id = String(d);
+        if (dailyBy[k].dayIds.indexOf(id) === -1) dailyBy[k].dayIds.push(id);
+      });
+    });
+    return full.concat(Object.keys(dailyBy).map(function (k) {
+      return dailyBy[k];
+    }));
+  }
+
   async function startDailyCheckout() {
     if (!state.campers.length) {
       showBanner('Add a child first.', false);
@@ -1470,6 +1947,7 @@
         const s = inner[dk];
         if (!s || !s.size) return;
         s.forEach(function (cid) {
+          if (state.addWeekCamperId && String(cid) !== String(state.addWeekCamperId)) return;
           bookings.push({
             weekId: w.id,
             dayIds: [dk],
@@ -1483,7 +1961,7 @@
       showBanner('Open at least one day and choose which children attend.', false);
       return;
     }
-    await startStripeCheckout(bookings);
+    await startStripeCheckout(mergeDailyBookingsByCamperWeek(bookings));
   }
 
   function buildPortalCheckoutBody(bookings) {
@@ -1493,14 +1971,43 @@
     });
     const registrationFeeForCamper = {};
     ids.forEach(function (cid) {
-      registrationFeeForCamper[cid] = getPortalRegFeeInclude(cid);
+      registrationFeeForCamper[String(cid)] = getPortalRegFeeInclude(cid);
     });
     return { bookings: bookings, imaMember: false, registrationFeeForCamper: registrationFeeForCamper };
   }
 
+  /** Match server totals: camp lines + per-camper registration when included. */
+  function portalExpectedCheckoutTotalDollars(bookings) {
+    const wr = effectiveWeekRateForSummary();
+    const dr = dayRate();
+    const rf = effectiveRegFeeForSummary();
+    let camp = 0;
+    const regCampers = new Set();
+    bookings.forEach(function (b) {
+      if (b.pricingMode === 'full_week') {
+        camp += wr;
+      } else {
+        camp += Number((b.dayIds || []).length) * dr;
+      }
+      if (b.camperId) regCampers.add(String(b.camperId));
+    });
+    var reg = 0;
+    regCampers.forEach(function (cid) {
+      if (getPortalRegFeeInclude(cid)) reg += rf;
+    });
+    return camp + reg;
+  }
+
   async function startStripeCheckout(bookings) {
-    if (STRIPE_PK.indexOf('REPLACE') !== -1) {
-      showBanner('Stripe is not configured.', false);
+    let stripePk = '';
+    try {
+      stripePk = await IMA.getStripePublishableKey();
+    } catch (eCfg) {
+      showBanner('Could not load configuration.', false);
+      return;
+    }
+    if (!stripePk) {
+      showBanner('Set STRIPE_PUBLISHABLE_KEY on Vercel and redeploy.', false);
       return;
     }
     const btnDaily = document.getElementById('btn-daily-checkout');
@@ -1508,9 +2015,18 @@
     if (btnDaily) btnDaily.disabled = true;
     if (btnFull) btnFull.disabled = true;
     showBanner('', false);
+    if (typeof window.Stripe !== 'function') {
+      showBanner(
+        'Stripe could not load (blocked or network). Disable ad blockers for this site, refresh, and try again.',
+        false
+      );
+      if (btnDaily) updateDailyCheckoutBtn();
+      if (btnFull) updateFullWeekCheckoutBtn();
+      return;
+    }
     let stripe;
     try {
-      stripe = window.Stripe(STRIPE_PK);
+      stripe = window.Stripe(stripePk);
     } catch (e) {
       showBanner(e.message || 'Stripe error', false);
       if (btnDaily) updateDailyCheckoutBtn();
@@ -1530,6 +2046,27 @@
         return {};
       });
       if (!res.ok) throw new Error(data.error || 'Checkout failed');
+      if (!data.sessionId || typeof data.sessionId !== 'string') {
+        throw new Error(
+          'No Stripe session returned. Check Network → create-checkout-session, or contact IMA.'
+        );
+      }
+      if (data.totals != null && data.totals.total != null) {
+        var serverT = Number(data.totals.total);
+        var clientT = portalExpectedCheckoutTotalDollars(bookings);
+        if (Number.isFinite(serverT) && Number.isFinite(clientT) && Math.abs(serverT - clientT) > 0.02) {
+          throw new Error(
+            'Your order total was updated to match what you will pay in Stripe ($' +
+              serverT.toFixed(2) +
+              '). The summary has been refreshed — please review and tap checkout again.'
+          );
+        }
+      }
+      var hostedUrl = data.checkoutUrl && /^https:\/\//i.test(String(data.checkoutUrl));
+      if (hostedUrl) {
+        window.location.assign(String(data.checkoutUrl));
+        return;
+      }
       const out = await stripe.redirectToCheckout({ sessionId: data.sessionId });
       if (out.error) throw new Error(out.error.message);
     } catch (err) {
@@ -1547,11 +2084,6 @@
     state.session = session;
 
     const profile = await IMA.getProfile();
-    const email = (session.user && session.user.email) || '';
-    if ((profile && profile.role === 'admin') || IMA.isAdminLoginEmail(email)) {
-      window.location.replace('/admin.html');
-      return;
-    }
     state.profile = profile;
 
     document.getElementById('welcome-first').textContent = parentFirstName();
@@ -1573,12 +2105,35 @@
       state.weeks = [];
     }
 
+    if (IMA.consumePostCheckoutClearEnrollFlag()) {
+      state.addWeekCamperId = null;
+      state.fullWeekCampersByWeek = {};
+      state.dailyPerDayCampers = {};
+      state.portalRegFeeInclude = {};
+      try {
+        var puid = String(session.user.id);
+        var pPk = 'ima_portal_enroll_v1:' + puid;
+        var pIk = 'ima_reg_enroll_v1:' + puid;
+        sessionStorage.removeItem(pPk);
+        localStorage.removeItem(pPk);
+        sessionStorage.removeItem(pIk);
+        localStorage.removeItem(pIk);
+      } catch (ePayClear) {}
+    }
+
     restorePortalEnroll();
     renderCamperCards();
     updateBookingButtonsEnabled();
+    await refreshPortalBookings();
+    renderPortalBookings();
     renderFullWeekCards();
     await refreshPortalPricingForFullWeek();
   }
+
+  document.getElementById('portal-swap-close').addEventListener('click', closeSwapWeekModal);
+  document.getElementById('portal-swap-modal').addEventListener('click', function (ev) {
+    if (ev.target.id === 'portal-swap-modal') closeSwapWeekModal();
+  });
 
   document.getElementById('btn-out').onclick = function () {
     IMA.signOut();
@@ -1594,6 +2149,12 @@
       showBanner('Add a child first.', false);
       return;
     }
+    state.addWeekCamperId = null;
+    var fh = document.getElementById('full-context-hint');
+    if (fh) {
+      fh.textContent =
+        'For each week, check which children get a full-week spot. Your total updates below, then use checkout.';
+    }
     showView('full');
     renderFullWeekCards();
     refreshPortalPricingForFullWeek();
@@ -1604,11 +2165,18 @@
       showBanner('Add a child first.', false);
       return;
     }
+    state.addWeekCamperId = null;
     showView('daily');
     renderDailyWeeks();
     persistPortalEnroll();
   };
   document.getElementById('back-from-full').onclick = function () {
+    state.addWeekCamperId = null;
+    var fh = document.getElementById('full-context-hint');
+    if (fh) {
+      fh.textContent =
+        'For each week, check which children get a full-week spot. Your total updates below, then use checkout.';
+    }
     persistPortalEnroll();
     showView('dashboard');
   };

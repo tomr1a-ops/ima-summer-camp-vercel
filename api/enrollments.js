@@ -1,6 +1,11 @@
 const { serviceClient } = require('./lib/supabase');
-const { requireParent } = require('./lib/auth');
-const { validateBooking, validateAddedDaysOnly, syncConfirmedDayCounts } = require('./lib/capacity');
+const { getUserFromRequest } = require('./lib/auth');
+const {
+  validateBooking,
+  validateAddedDaysOnly,
+  syncConfirmedDayCounts,
+  loadOrderedDaysForWeek,
+} = require('./lib/capacity');
 
 async function readJsonBody(req) {
   if (req.body !== undefined && req.body !== null) {
@@ -31,19 +36,44 @@ async function readJsonBody(req) {
   return JSON.parse(raw);
 }
 
+async function requireAuthUser(req) {
+  const { user } = await getUserFromRequest(req);
+  if (!user) {
+    const err = new Error('Unauthorized');
+    err.statusCode = 401;
+    throw err;
+  }
+  return user;
+}
+
+/** Infer full_week vs daily for validateBooking from day set vs week's Mon–Fri. */
+async function inferPricingModeForWeek(sb, weekId, dayIds) {
+  const ids = Array.isArray(dayIds) ? dayIds : [];
+  const allDays = await loadOrderedDaysForWeek(sb, weekId);
+  if (allDays.length !== 5 || ids.length !== 5) return 'daily';
+  const expectedIds = allDays.map((d) => d.id).sort().join(',');
+  const gotIds = [...ids].sort().join(',');
+  return expectedIds === gotIds ? 'full_week' : 'daily';
+}
+
 module.exports = async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     return res.status(204).end();
   }
 
   try {
     const sb = serviceClient();
-    const { user } = await requireParent(req);
 
     if (req.method === 'GET') {
+      const { user } = await getUserFromRequest(req);
+      if (!user) {
+        const err = new Error('Unauthorized');
+        err.statusCode = 401;
+        throw err;
+      }
       const { data, error } = await sb
         .from('enrollments')
         .select('*')
@@ -54,6 +84,13 @@ module.exports = async (req, res) => {
       return res.end(JSON.stringify({ enrollments: data || [] }));
     }
 
+    const user = await requireAuthUser(req);
+
+    /**
+     * POST — create a pending enrollment (optional / admin flows).
+     * Paid “add week” or “add days” from the parent portal uses POST /api/create-checkout-session
+     * (Stripe creates pending rows in the same batch as payment).
+     */
     if (req.method === 'POST') {
       const body = await readJsonBody(req);
       const { week_id, day_ids, camper_id } = body;
@@ -62,16 +99,18 @@ module.exports = async (req, res) => {
         return res.end(JSON.stringify({ error: 'week_id, camper_id, day_ids required' }));
       }
       const { data: camper, error: ce } = await sb.from('campers').select('parent_id').eq('id', camper_id).single();
-      if (ce || !camper || camper.parent_id !== user.id) {
+      if (ce || !camper || String(camper.parent_id) !== String(user.id)) {
         res.statusCode = 403;
         return res.end(JSON.stringify({ error: 'Invalid camper' }));
       }
+      const pricingMode = await inferPricingModeForWeek(sb, week_id, day_ids);
       try {
         await validateBooking(sb, {
           weekId: week_id,
           dayIds: day_ids,
           camperId: camper_id,
           excludeEnrollmentId: null,
+          pricingMode,
         });
       } catch (e) {
         res.statusCode = e.statusCode || 400;
@@ -107,7 +146,7 @@ module.exports = async (req, res) => {
         .select('id,parent_id,status,week_id,day_ids,camper_id')
         .eq('id', id)
         .single();
-      if (fe || !row || row.parent_id !== user.id) {
+      if (fe || !row || String(row.parent_id) !== String(user.id)) {
         res.statusCode = 403;
         return res.end(JSON.stringify({ error: 'Not found' }));
       }
@@ -130,6 +169,8 @@ module.exports = async (req, res) => {
       const newSet = new Set(newDayIds);
       const addedDays = [...newSet].filter((d) => !oldSet.has(d));
 
+      const pricingMode = await inferPricingModeForWeek(sb, newWeekId, newDayIds);
+
       try {
         if (row.status === 'pending') {
           await validateBooking(sb, {
@@ -137,6 +178,7 @@ module.exports = async (req, res) => {
             dayIds: newDayIds,
             camperId: row.camper_id,
             excludeEnrollmentId: row.id,
+            pricingMode,
           });
         } else if (row.status === 'confirmed') {
           if (weekChanged) {
@@ -145,6 +187,7 @@ module.exports = async (req, res) => {
               dayIds: newDayIds,
               camperId: row.camper_id,
               excludeEnrollmentId: row.id,
+              pricingMode,
             });
           } else {
             await validateAddedDaysOnly(sb, newWeekId, addedDays);
@@ -163,6 +206,42 @@ module.exports = async (req, res) => {
         await syncConfirmedDayCounts(sb, oldDayIds, newDayIds);
       }
 
+      res.statusCode = 200;
+      return res.end(JSON.stringify({ ok: true }));
+    }
+
+    if (req.method === 'DELETE') {
+      let enrollmentId = null;
+      try {
+        const u = new URL(req.url || '/', 'http://x');
+        enrollmentId = u.searchParams.get('id');
+      } catch (eU) {}
+      if (!enrollmentId) {
+        const body = await readJsonBody(req);
+        enrollmentId = body && body.id;
+      }
+      if (!enrollmentId) {
+        res.statusCode = 400;
+        return res.end(JSON.stringify({ error: 'id required (query ?id= or JSON body)' }));
+      }
+      const { data: row, error: fe } = await sb
+        .from('enrollments')
+        .select('id,parent_id,status,day_ids')
+        .eq('id', enrollmentId)
+        .single();
+      if (fe || !row || String(row.parent_id) !== String(user.id)) {
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ error: 'Not found' }));
+      }
+      if (row.status === 'cancelled') {
+        res.statusCode = 200;
+        return res.end(JSON.stringify({ ok: true, already: true }));
+      }
+      if (row.status === 'confirmed') {
+        await syncConfirmedDayCounts(sb, row.day_ids || [], []);
+      }
+      const { error: ue } = await sb.from('enrollments').update({ status: 'cancelled' }).eq('id', enrollmentId);
+      if (ue) throw ue;
       res.statusCode = 200;
       return res.end(JSON.stringify({ ok: true }));
     }
