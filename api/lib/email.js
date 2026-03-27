@@ -3,8 +3,8 @@ let warnedDefaultFrom = false;
 /** Avoid hanging serverless handlers if Resend is slow or the connection stalls. */
 const RESEND_FETCH_TIMEOUT_MS = 15000;
 
-/** Default From when RESEND_FROM is unset (Resend onboarding domain). */
-const DEFAULT_RESEND_FROM = 'IMA Summer Camp <onboarding@resend.dev>';
+/** Default From when RESEND_FROM is unset — use after imaimpact.com is verified in Resend. */
+const DEFAULT_RESEND_FROM = 'IMA Summer Camp <noreply@imaimpact.com>';
 
 /**
  * Single place to read the secret (trim whitespace/newlines from Vercel paste mistakes).
@@ -28,7 +28,7 @@ async function sendResend({ to, subject, text, html, bcc, cc }) {
   const from = (process.env.RESEND_FROM && String(process.env.RESEND_FROM).trim()) || DEFAULT_RESEND_FROM;
   if (!warnedDefaultFrom && !process.env.RESEND_FROM) {
     warnedDefaultFrom = true;
-    console.warn('[email] RESEND_FROM not set — using', DEFAULT_RESEND_FROM);
+    console.warn('[email] RESEND_FROM not set — using default', DEFAULT_RESEND_FROM, '(set RESEND_FROM in Vercel to override)');
   }
   const toList = Array.isArray(to) ? to : [to];
   const payload = {
@@ -95,16 +95,16 @@ const CAMP_STAFF_NOTIFY = ['tom@imaimpact.com', 'coachshick@imaimpact.com'];
 const ADMIN_DASHBOARD_URL = 'https://ima-summer-camp.vercel.app/admin.html';
 
 /**
- * Staff notifications: match the parent-email pattern (single `to` string) first — Resend/onboarding
- * often delivers that reliably; `to: [a,b]` can behave differently. Then sequential fallback per address.
+ * Staff notifications: tom@ + coachshick@ — single `to` + `bcc` first, then sequential fallback.
  */
 async function sendResendToStaff(subject, text, html) {
   const recipients = [...CAMP_STAFF_NOTIFY];
   const primary = recipients[0];
   const rest = recipients.slice(1);
-  console.log('[email] sendResendToStaff START', {
+  console.log('[email] ADMIN notify — sendResendToStaff called for tom@imaimpact.com + coachshick@imaimpact.com', {
     primary,
-    alsoNotify: rest,
+    bcc: rest,
+    staffList: recipients,
     subjectPreview: subject ? String(subject).slice(0, 72) : '',
   });
 
@@ -207,9 +207,12 @@ async function sendCheckoutStartedAdminNotifyInner(payload) {
   console.log('[email] checkout-started notify begin', {
     sessionId: sessionId || null,
     batchId: batchId || null,
-    recipients: CAMP_STAFF_NOTIFY,
+    adminEmailsTomAndCoach: CAMP_STAFF_NOTIFY,
     resendApiKeyConfigured: keyPresent,
   });
+  console.log(
+    '[email] checkout-started — calling sendResendToStaff → tom@imaimpact.com & coachshick@imaimpact.com'
+  );
   const subject = '🥊 IMA Camp — Checkout started (payment pending)';
   const lines = [
     'A parent opened Stripe Checkout — payment is not confirmed until Stripe completes the session.',
@@ -404,10 +407,10 @@ async function sendCampPaymentEmails(stripe, session, result) {
   <p><a href="${escapeHtml(ADMIN_DASHBOARD_URL)}">View admin</a></p>`;
   }
 
-  console.log('[email] sendCampPaymentEmails — calling sendResendToStaff (paid booking admin)', {
-    sessionId: sessionForEmail.id,
-    recipients: [...CAMP_STAFF_NOTIFY],
-  });
+  console.log(
+    '[email] paid booking ADMIN notify — sendResendToStaff → tom@imaimpact.com & coachshick@imaimpact.com',
+    { sessionId: sessionForEmail.id, staffList: [...CAMP_STAFF_NOTIFY] }
+  );
   const staffPaidResults = await sendResendToStaff(adminSubject, adminText, adminHtml);
   const staffPaidOk =
     staffPaidResults.length > 0 && staffPaidResults.every((x) => x.ok && !x.skipped);
