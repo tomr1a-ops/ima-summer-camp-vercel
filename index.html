@@ -136,33 +136,38 @@
     text-transform: uppercase;
   }
 
-  .early-bird-banner {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
+  .pricing-hero-box {
+    max-width: 420px;
+    margin: 18px auto 0;
+    padding: 16px 20px 18px;
     background: linear-gradient(135deg, rgba(0,229,204,0.08), rgba(0,229,204,0.04));
     border: 1px solid rgba(0,229,204,0.35);
-    border-radius: 4px;
-    padding: 7px 16px;
-    margin-top: 18px;
+    border-radius: 8px;
+    text-align: center;
+  }
+
+  .pricing-hero-tier + .pricing-hero-tier {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .pricing-hero-tier-kicker {
     font-family: var(--font-cond);
-    font-size: 12px;
-    letter-spacing: 2px;
-    color: var(--cyan);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
+    color: var(--cyan);
+    margin-bottom: 6px;
   }
 
-  .dot {
-    width: 6px; height: 6px;
-    background: var(--cyan);
-    border-radius: 50%;
-    animation: pulse 1.4s ease-in-out infinite;
-    box-shadow: 0 0 6px var(--cyan);
-  }
-
-  @keyframes pulse {
-    0%,100% { opacity:1; transform:scale(1); }
-    50%      { opacity:0.3; transform:scale(0.6); }
+  .pricing-hero-tier-line {
+    font-family: var(--font-display);
+    font-size: 17px;
+    font-weight: 600;
+    color: #fff;
+    line-height: 1.35;
   }
 
   /* LAYOUT */
@@ -403,6 +408,153 @@
   }
 
   .summary-body { padding: 18px; }
+
+  .schedule-overview {
+    margin: -4px 0 16px;
+    padding: 14px 14px 16px;
+    border-radius: 10px;
+    border: 1px solid rgba(0, 229, 204, 0.28);
+    background: rgba(0, 229, 204, 0.06);
+    text-align: left;
+  }
+
+  .schedule-overview-title {
+    font-family: var(--font-cond);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--cyan);
+    margin: 0 0 12px;
+  }
+
+  .schedule-overview-child {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+
+  .schedule-overview-child:first-of-type {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+  }
+
+  .schedule-overview-name {
+    font-family: var(--font-body);
+    font-size: 15px;
+    font-weight: 700;
+    color: #fff;
+    margin: 0 0 8px;
+  }
+
+  .schedule-overview-list {
+    margin: 0;
+    padding: 0 0 0 18px;
+    color: #e0e0e0;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .schedule-overview-list li {
+    margin-bottom: 6px;
+  }
+
+  .schedule-overview-list .sov-week {
+    color: #fff;
+    font-weight: 600;
+  }
+
+  .schedule-overview-list .sov-type {
+    color: var(--muted);
+    font-size: 12px;
+    display: block;
+    margin-top: 2px;
+    margin-left: 0;
+  }
+
+  .schedule-overview-empty {
+    margin: 0;
+    font-size: 12px;
+    color: var(--muted);
+    font-style: italic;
+    line-height: 1.5;
+  }
+
+  .schedule-overview-hint {
+    margin: 12px 0 0;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .schedule-overview-sub {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 14px 0 8px;
+  }
+
+  .schedule-overview-child > .schedule-overview-sub:first-of-type {
+    margin-top: 4px;
+  }
+
+  .schedule-overview-list .sov-type.sov-paid {
+    color: rgba(0, 229, 204, 0.88);
+  }
+
+  .week-kid-cb input:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
+  }
+
+  .credit-by-camper {
+    margin: 0 0 14px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(0, 229, 204, 0.22);
+    background: rgba(0, 229, 204, 0.05);
+    text-align: left;
+  }
+
+  .credit-by-camper-title {
+    font-family: var(--font-cond);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--cyan);
+    margin: 0 0 8px;
+  }
+
+  .credit-by-camper-hint {
+    margin: 0 0 10px;
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--muted);
+  }
+
+  .credit-by-camper-hint a {
+    color: var(--cyan);
+  }
+
+  .credit-by-camper-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    color: #fff;
+    padding: 6px 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .credit-by-camper-row:first-of-type {
+    border-top: none;
+    padding-top: 0;
+  }
 
   .summary-line {
     display: flex;
@@ -682,14 +834,6 @@
     text-decoration: none;
   }
   .btn-secondary:hover { border-color: var(--cyan); color: var(--cyan); }
-  .auth-guest-fallback {
-    font-size: 13px;
-    color: var(--muted);
-    padding-top: 8px;
-    border-top: 1px solid var(--border);
-  }
-  .auth-guest-fallback a { color: var(--cyan); font-weight: 600; }
-  .guest-hint { font-size: 11px; color: #b8b8b8; display: block; margin-top: 4px; }
   .camper-pick-row {
     display: flex;
     flex-direction: column;
@@ -819,23 +963,6 @@
     color: var(--text);
     font-family: var(--font-body);
   }
-  .guest-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-  }
-  @media (max-width: 560px) {
-    .guest-grid { grid-template-columns: 1fr; }
-  }
-  .guest-grid input {
-    padding: 10px 12px;
-    border-radius: 8px;
-    border: 1px solid var(--border2);
-    background: var(--card2);
-    color: var(--text);
-    font-family: var(--font-body);
-    font-size: 14px;
-  }
   .week-block {
     padding: 14px 16px;
     border: 1px solid var(--border2);
@@ -870,6 +997,16 @@
     border-radius: 4px;
     text-transform: uppercase;
   }
+  .full-badge.sold-out-badge {
+    color: #ff3b3b;
+    background: rgba(255, 59, 59, 0.14);
+    border-color: rgba(255, 80, 80, 0.65);
+    font-weight: 700;
+    letter-spacing: 1.5px;
+  }
+  .week-card.full-card .week-kids-ctrl {
+    pointer-events: none;
+  }
   .day-chips {
     display: flex;
     flex-wrap: wrap;
@@ -898,15 +1035,33 @@
     cursor: not-allowed;
   }
 
-  /* Stripe test pricing — only shown when ?test=true */
+  /* Stripe test pricing — ?test=true, ?stripe_test=1, localhost, or localStorage ima_stripe_test_ui=1 */
   .test-price-bar {
     display: none;
     position: fixed;
     bottom: 14px;
     right: 14px;
     z-index: 100;
+    max-width: min(280px, calc(100vw - 28px));
   }
   .test-price-bar.is-visible { display: block; }
+  .test-price-hint {
+    margin: 8px 0 0;
+    font-size: 10px;
+    line-height: 1.35;
+    color: rgba(255, 200, 80, 0.75);
+    max-width: 260px;
+  }
+  .footer-stripe-test {
+    font-size: 11px;
+    color: #666;
+  }
+  .footer-stripe-test a {
+    color: #888;
+  }
+  .footer-stripe-test a:hover {
+    color: var(--cyan);
+  }
   .test-price-btn {
     font-family: var(--font-cond);
     font-size: 11px;
@@ -1083,8 +1238,8 @@
   .week-card.has-kids::before { opacity: 1; }
 
   .week-card.full-card {
-    opacity: 0.5;
-    pointer-events: none;
+    opacity: 0.55;
+    /* Do not use pointer-events: none — it blocked taps on some mobile layouts; inputs use disabled instead */
   }
   .week-card.full-card .week-card-title { color: #555; }
 
@@ -1102,13 +1257,6 @@
     font-size: 18px;
     color: var(--cyan);
     line-height: 1.1;
-  }
-  .week-card-dates {
-    font-family: var(--font-cond);
-    font-size: 11px;
-    color: var(--muted);
-    letter-spacing: 0.5px;
-    margin-top: 4px;
   }
   .week-card-price {
     font-family: var(--font-cond);
@@ -1135,16 +1283,6 @@
     align-items: stretch;
     gap: 4px;
   }
-  .day-chip-meta {
-    font-family: var(--font-cond);
-    font-size: 10px;
-    letter-spacing: 0.5px;
-    color: #555;
-    text-align: center;
-  }
-  .day-chip.on + .day-chip-meta,
-  .day-chip-wrap:has(.day-chip.on) .day-chip-meta { color: #666; }
-
   .day-chip-wrap.daily-perday-col {
     flex: 1 1 100%;
     min-width: 220px;
@@ -1259,23 +1397,61 @@
     color: var(--text);
   }
   .week-kid-cb input {
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
+    min-width: 20px;
+    min-height: 20px;
     accent-color: var(--cyan);
     cursor: pointer;
+    touch-action: manipulation;
   }
-  .reg-fee-member-hint {
-    margin: 12px 0 14px;
-    padding: 12px 14px;
-    border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    background: rgba(255, 255, 255, 0.04);
+  .week-kid-cb--conflict {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    cursor: default;
+  }
+  .week-kid-cb--conflict input {
+    cursor: not-allowed;
+    margin-top: 2px;
+  }
+  .week-kid-cb-conflict {
+    flex-basis: 100%;
+    margin: 0 0 4px 30px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #f0a4a4;
+    font-weight: 500;
+  }
+  .reg-fee-intro {
+    margin: 16px 0 12px;
     font-size: 14px;
     line-height: 1.55;
-    color: #fff;
+    color: #e8e8e8;
   }
-  .reg-fee-member-hint strong { color: #fff; font-weight: 700; }
-  .reg-fee-camper-mount { margin-top: 4px; }
+  .reg-fee-bullets {
+    margin: 0 0 16px;
+    padding-left: 1.15rem;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #c8c8c8;
+  }
+  .reg-fee-bullets li {
+    margin-bottom: 6px;
+  }
+  .reg-fee-camper-mount { margin-top: 8px; }
+  .reg-fee-camper-block {
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border2);
+    background: rgba(0, 0, 0, 0.2);
+  }
+  .reg-fee-camper-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 10px;
+  }
   .reg-fee-camper-row {
     display: flex;
     align-items: flex-start;
@@ -1306,9 +1482,50 @@
     color: #fff;
     white-space: nowrap;
   }
-  /* Checked = IMA member (no registration fee) — hide price */
-  .reg-fee-camper-row:has(> input[type='checkbox']:checked) .reg-fee-amt {
+  /* IMA member checked = waive fee — hide $ (do not use on .reg-fee-shirt-row) */
+  .reg-fee-camper-row:not(.reg-fee-shirt-row):has(> input[type='checkbox']:checked) .reg-fee-amt {
     display: none;
+  }
+  .reg-fee-shirt-row .reg-fee-amt {
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .reg-fee-shirt-row:has(> input[type='checkbox']:checked) .reg-fee-amt {
+    display: inline;
+    color: #fff;
+    font-weight: 600;
+  }
+  .reg-fee-shirt-paid-badge {
+    color: var(--cyan) !important;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .reg-fee-shirt-paid-hint {
+    margin: 6px 0 0;
+    padding: 0 2px;
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--muted);
+  }
+  .reg-fee-shirt-row-paid:not(:has(> input:checked)) .reg-fee-shirt-paid-badge {
+    opacity: 0.75;
+  }
+
+  /* Phones: ~20% larger type and UI (px-based rules scale together). */
+  @media (max-width: 768px) {
+    html {
+      font-size: 120%;
+    }
+  }
+  @media (max-width: 768px) {
+    @supports (zoom: 1) {
+      html {
+        font-size: 100%;
+        zoom: 1.2;
+      }
+    }
   }
 </style>
 </head>
@@ -1319,16 +1536,19 @@
     <a href="#" id="logout-link-header" class="header-logout-btn">Log out</a>
   </div>
   <img class="logo-img" src="/logo.png" alt="Impact Martial Athletics" />
-  <div class="header-eyebrow">Davie, Florida · Ages 5–15 · Mon–Fri</div>
+  <div class="header-eyebrow">Davie, Florida · Ages 5–15</div>
   <div class="header-logo">2026 Summer Camp Registration</div>
   <div class="header-tagline">Strong Mind. Strong Body. Strong Future.</div>
-  <div class="early-bird-banner">
-    <span class="dot"></span>
-    <span id="price-banner-text">Loading pricing…</span>
+  <div class="pricing-hero-box" id="pricing-hero-box" aria-label="Camp pricing">
+    <div class="pricing-hero-tier">
+      <div class="pricing-hero-tier-kicker">Early Registration (Ends April 30)</div>
+      <div class="pricing-hero-tier-line"><span id="hero-rate-early-wk">$375</span>/week or <span id="hero-rate-early-day">$85</span>/day</div>
+    </div>
+    <div class="pricing-hero-tier">
+      <div class="pricing-hero-tier-kicker">Regular Pricing (Starting May 1)</div>
+      <div class="pricing-hero-tier-line"><span id="hero-rate-reg-wk">$425</span>/week or <span id="hero-rate-reg-day">$95</span>/day</div>
+    </div>
   </div>
-  <p class="week-dates-label" id="price-tier-detail" style="margin-top:12px;max-width:640px;margin-left:auto;margin-right:auto;line-height:1.6;color:#c8c8c8">
-    Early bird through Apr 30, 2026: <strong style="color:var(--cyan)">$375</strong>/wk · <strong style="color:var(--cyan)">$85</strong>/day. Starting May 1, 2026: <strong>$425</strong>/wk · <strong>$95</strong>/day.
-  </p>
 </header>
 
 <main class="reg-main" id="reg-main">
@@ -1342,29 +1562,13 @@
       <div class="signin-rail-inner">
         <div id="state-signed-out" class="auth-hero-card">
           <p class="auth-hero-kicker">IMA Summer Camp 2026</p>
-          <h1 class="auth-hero-title">Sign in to register your camper</h1>
-          <p class="auth-hero-sub">Sign in and add your kids, then open <strong>Camp registration</strong> — for each week, check which children are attending (weekly or daily).</p>
+          <h1 class="auth-hero-title">Parent account</h1>
+          <p class="auth-hero-sub">All parent sign-ins use one page. Sign in there, then you’ll come back here to add your children and open <strong>Camp registration</strong>.</p>
           <div class="auth-hero-actions">
-            <a class="btn-primary" href="/login.html?return=/index.html">Sign in</a>
+            <a class="btn-primary" href="/login.html?return=/index.html">Parent sign-in</a>
             <a class="btn-secondary" href="/register.html?return=/index.html">Create account</a>
           </div>
-          <p class="auth-guest-fallback">
-            <a href="#" id="link-guest">Continue as guest</a>
-            <span class="guest-hint">Secondary option — you can create a parent account later with the same email.</span>
-          </p>
-        </div>
-
-        <div id="state-guest" class="auth-hero-card" style="display:none">
-          <p class="auth-hero-kicker">Guest checkout</p>
-          <h2 class="auth-hero-title-sm">Camper &amp; contact</h2>
-          <p class="auth-hero-sub" style="margin-bottom:12px">Enter your child and email, then use <strong>Camp registration</strong> for weekly or daily. Prefer an account? <a href="/login.html?return=/index.html" style="color:var(--cyan)">Sign in</a></p>
-          <div class="guest-grid">
-            <input type="text" id="g-first" placeholder="Child first name" autocomplete="given-name" />
-            <input type="text" id="g-last" placeholder="Child last name" autocomplete="family-name" />
-            <input type="email" id="g-email" placeholder="Your email" autocomplete="email" />
-            <input type="number" id="g-age" placeholder="Age" min="3" max="18" />
-          </div>
-          <p class="auth-inline-links" style="margin-top:14px"><a href="#" id="link-back-signin">← Back to sign in</a></p>
+          <p id="auth-config-err" class="week-dates-label" style="display:none;margin-top:16px;line-height:1.5;color:#ff8888"></p>
         </div>
 
         <div id="state-signed-in" class="auth-hero-card" style="display:none">
@@ -1398,49 +1602,43 @@
 
   <div class="card" id="card-checkout-pricing">
     <div class="card-header">
-      <div class="step-num">1</div>
-      <div class="card-title">Pricing &amp; options</div>
+      <div class="card-title">Registration fee per child</div>
     </div>
     <div class="reg-block">
-      <h3>Pricing</h3>
       <div class="pricing-tiers-box" id="reg-pricing-copy">
-        <strong>Early bird (now – Apr 30, 2026):</strong> $375/week (Mon–Fri) · $85/day.<br />
-        <strong>Regular (May 1, 2026 onward):</strong> $425/week · $95/day.<br />
-        <span style="color:#bdbdbd;font-size:12px">You are charged the rate in effect when you complete checkout. Max 35 kids per week.</span>
+        <div><strong>Early Registration (Ends April 30, 2026)</strong><br /><span id="reg-copy-early-line">$375/week or $85/day</span></div>
+        <div style="margin-top:12px"><strong>Regular Pricing (Starting May 1, 2026)</strong><br /><span id="reg-copy-reg-line">$425/week or $95/day</span></div>
+        <span style="color:#bdbdbd;font-size:12px;display:block;margin-top:12px">Rate is set when you complete checkout. Max 35 kids per week.</span>
       </div>
       <div id="reg-fee-per-child-section" style="display: none">
-        <p class="reg-fee-member-hint" id="reg-fee-member-hint">
-          For each child, <strong>check the box if they are an IMA member</strong> — we will not charge the one-time registration fee for
-          that child. Leave the box unchecked to add the fee at checkout.
+        <p class="reg-fee-intro">
+          A one-time registration fee is charged for each child who is not an IMA member. This fee includes a camp T-shirt and protective
+          gloves, which are required to be worn daily.
         </p>
-        <div id="reg-fee-camper-mount" class="reg-fee-camper-mount" aria-label="IMA member per child"></div>
-        <label class="reg-fee-camper-row" id="guest-reg-fee-row" style="display: none">
-          <input type="checkbox" id="guest-reg-fee-cb" />
-          <span class="reg-fee-lbl">
-            <strong>IMA member</strong> (no registration fee for this child)
-          </span>
-          <span class="reg-fee-amt" id="guest-reg-fee-amt">$65</span>
-        </label>
+        <ul class="reg-fee-bullets">
+          <li>Check if your child is an active IMA member (no registration fee will be charged)</li>
+          <li>If left unchecked, the registration fee will be added at checkout</li>
+        </ul>
+        <div id="reg-fee-camper-mount" class="reg-fee-camper-mount" aria-label="Registration options per child"></div>
       </div>
       <p class="week-dates-label" id="reg-fee-note" style="margin: 10px 0 8px; font-size: 11px; line-height: 1.5">
-        Use the boxes above for each child; camp weeks below show who is attending.
+        Use the options above for each child; camp weeks below show who is attending.
       </p>
     </div>
     <p class="week-dates-label" id="reg-pricing-footnote" style="padding:0 16px 16px;font-size:12px;color:#c4c4c4">
-      Guests: finish child &amp; email on <strong>My kids</strong> first. Parents: add kids there, then for each week check which children attend (weekly or daily).
+      On <strong>My kids</strong>, add your children, then for each camp week check which children attend (weekly or daily).
     </p>
   </div>
 
   <div class="card" id="card-weeks-enroll">
     <div class="card-header">
       <div class="step-num">2</div>
-      <div class="card-title">Weekly or daily — children per week</div>
+      <div class="card-title">Weekly or daily</div>
     </div>
     <div class="schedule-simple-banner" id="schedule-simple-banner" aria-live="polite">
-      <strong style="color:var(--cyan)">Weekly registration</strong> = Mon–Fri, one price per week per child.
-      <strong style="color:var(--cyan)"> Daily registration</strong> = pick days, priced per day per child.
-      <span id="schedule-signedin-hint" style="display:none"> For each week, check which children are in that week, then add the week or tap days.</span>
-      <span id="schedule-guest-hint"> Guest: one child from My kids — use <strong>+</strong> for weekly or pick days.</span>
+      <strong style="color:var(--cyan)">Weekly Registration:</strong> One flat fee per child for Monday–Friday each week.<br />
+      <strong style="color:var(--cyan)">Daily Registration:</strong> Select individual days, priced per child per day.<br />
+      To register, choose a week and assign children, or select specific days for daily enrollment.
     </div>
     <div class="enroll-type-bar">
       <button type="button" class="enroll-type-btn on" id="btn-enroll-full" data-type="full">
@@ -1468,8 +1666,10 @@
       <div class="card-title" style="letter-spacing:1.5px">Order Summary</div>
     </div>
     <div class="summary-body">
+      <div id="schedule-overview" class="schedule-overview" hidden aria-live="polite"></div>
+      <div id="credit-by-camper" class="credit-by-camper" hidden aria-live="polite"></div>
       <div id="empty-state" class="empty-state">
-        Sign in on <strong>My kids</strong>, add children, then choose <strong>weekly</strong> or <strong>daily</strong> and check which children are in each week.
+        Use <a href="/login.html?return=/index.html" style="color:var(--cyan)">parent sign-in</a>, add children on <strong>My kids</strong>, then choose <strong>weekly</strong> or <strong>daily</strong> and check which children are in each week.
       </div>
       <div id="summary-lines" style="display:none"></div>
       <div id="total-row" class="summary-total-row" style="display:none">
@@ -1501,22 +1701,51 @@
 
 <div id="test-price-bar" class="test-price-bar" role="region" aria-label="Stripe test pricing" hidden>
   <button type="button" id="test-price-toggle" class="test-price-btn" aria-pressed="false">Test $1: off</button>
+  <p class="test-price-hint">
+    $1 day, week &amp; registration. Requires <strong>Stripe test</strong> keys on the server (sk_test_…); live keys return an error for test pricing.
+  </p>
+  <button type="button" id="test-price-dismiss" class="test-price-btn" style="margin-top:8px;font-size:10px;padding:6px 10px;opacity:0.85">
+    Hide test tools
+  </button>
 </div>
 
 <footer>
   © 2026 Impact Martial Athletics · 4401 S Flamingo Rd, Davie FL 33330
   &nbsp;·&nbsp; <a href="mailto:info@impactmartialathletics.com">Contact Us</a>
-  &nbsp;·&nbsp; <a href="/login.html">Parent login</a>
+  &nbsp;·&nbsp; <a href="/login.html?return=/index.html">Parent sign-in</a>
   &nbsp;·&nbsp; <a href="/register.html">Register</a>
+  <span class="footer-stripe-test">
+    &nbsp;·&nbsp;
+    <a href="/?test=true#schedule" id="footer-stripe-test-link">Stripe test checkout ($1)</a>
+  </span>
 </footer>
 
 <script>
 (function () {
-  const STRIPE_PK = 'pk_live_51RTV7gJWx3IGJhgTvjwdzh9n9luSbxB3Dp3nZCvQCPmx7mWCpoJFrROegF5WH1Ig4fHSuhZ04nVz0b345IV6wCWI00NxR9jpED';
   const API_CHECKOUT = '/api/create-checkout-session';
   const EARLY = new Date('2026-05-01T00:00:00.000Z');
 
-  const urlTest = new URLSearchParams(window.location.search).get('test') === 'true';
+  const LS_STRIPE_TEST_UI = 'ima_stripe_test_ui';
+  const qsBoot = new URLSearchParams(window.location.search);
+  const host = typeof location !== 'undefined' ? String(location.hostname || '') : '';
+  const isLocalHost =
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host.endsWith('.local') ||
+    host.startsWith('192.168.') ||
+    host.startsWith('10.');
+  let urlTest =
+    qsBoot.get('test') === 'true' ||
+    qsBoot.get('stripe_test') === '1' ||
+    isLocalHost;
+  try {
+    if (!urlTest && localStorage.getItem(LS_STRIPE_TEST_UI) === '1') urlTest = true;
+  } catch (eLs) {}
+  if (qsBoot.get('test') === 'true' || qsBoot.get('stripe_test') === '1') {
+    try {
+      localStorage.setItem(LS_STRIPE_TEST_UI, '1');
+    } catch (eS) {}
+  }
   let testPriceMode = false;
   let weeksPayload = [];
   /** @type {Record<string, Set<string>>} */
@@ -1534,23 +1763,33 @@
   /** Signed-in daily: weekId → dayId → Set of camper ids */
   const dailyPerDayCampers = {};
   const dailyExpandedKeysMain = new Set();
+  /** Ignore checkbox `change` while rebuilding week/day DOM (browsers sometimes fire it and wipe selections when toggling weekly/daily). */
+  let enrollDomApplyLock = false;
   /** @type {{ id: string, first_name: string, last_name: string }[]} */
   let parentCampers = [];
   let enrollmentType = 'full';
   let session = null;
+  /** Confirmed enrollments from GET /api/enrollments — shown after checkout clears local draft. */
+  let confirmedEnrollmentsCache = [];
   let pricingPreview = {
     dayRate: 85,
     weekRate: 375,
     registrationFee: 65,
+    extraCampShirt: 20,
     needsRegistration: true,
     perCamperNeedsReg: {},
+    perCamperExtraShirtPaid: {},
   };
-  let guestMode = false;
-  const REG_FEE_GUEST_KEY = '__guest__';
-  /** include registration line item / total for each camper id (guest uses REG_FEE_GUEST_KEY) */
+  /** include registration line item / total for each camper id */
   let regFeeIncludeByCamper = {};
+  /** camper id -> true = add extra camp T-shirt at checkout */
+  let extraShirtByCamper = {};
+  /** Last order-summary total ($) — compared to server totals on checkout to catch UI vs Stripe mismatches. */
+  let lastSummaryGrandDollars = 0;
   const API_ADD_CAMPER = '/api/add-camper';
   const ENROLL_SS = 'ima_reg_enroll_v1';
+  /** Survives post-checkout enroll draft wipe; value = IMA member checkbox checked (waive fee when still applicable). */
+  const IMA_MEMBER_PREF_SS = 'ima_ima_member_pref_v1';
 
   function dayRateClient() {
     if (testPriceMode) return 1;
@@ -1562,6 +1801,9 @@
   }
   function regFeeClient() {
     return testPriceMode ? 1 : 65;
+  }
+  function extraShirtClient() {
+    return testPriceMode ? 1 : 20;
   }
 
   function fmt(n) {
@@ -1578,6 +1820,17 @@
     return dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   }
 
+  /** Long weekday + short date for full-week vs paid-day conflicts (matches server copy). */
+  function formatBookedConflictDayPhrase(d) {
+    if (!d || !d.date) return 'a day';
+    const p = String(d.date).split('-');
+    const dt = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    if (Number.isNaN(dt.getTime())) return 'a day';
+    const wd = dt.toLocaleDateString('en-US', { weekday: 'long' });
+    const md = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return (wd + ' ' + md).replace(/,\s*/g, ' ').trim();
+  }
+
   /** "June 8–12" from ISO dates */
   function formatWeekRangeForSummary(w) {
     if (!w || !w.start_date || !w.end_date) return '';
@@ -1591,12 +1844,6 @@
     const day1 = d1.getDate();
     if (m0 === m1) return m0 + ' ' + day0 + '–' + day1;
     return m0 + ' ' + day0 + ' – ' + m1 + ' ' + day1;
-  }
-
-  function getGuestCamperName() {
-    const f = document.getElementById('g-first').value.trim();
-    const l = document.getElementById('g-last').value.trim();
-    return (f + ' ' + l).trim();
   }
 
   function getCamperNameById(id) {
@@ -1637,49 +1884,50 @@
     if (!Object.keys(inner).length) delete dailyPerDayCampers[k];
   }
 
+  /** Remove one camper from all daily day-picks for a week (full-week vs daily are mutually exclusive per child/week). */
+  function clearDailyForCamperWeek(weekKey, camperId) {
+    const wk = String(weekKey);
+    const cid = String(camperId);
+    const inner = dailyPerDayCampers[wk];
+    if (!inner) return;
+    Object.keys(inner).forEach(function (dk) {
+      const s = inner[dk];
+      if (s && s.has(cid)) {
+        s.delete(cid);
+        if (!s.size) delete inner[dk];
+      }
+    });
+    pruneEmptyDailyWeekMain(wk);
+  }
+
   function camperSelectionReady() {
-    if (guestMode) {
-      return !!(
-        document.getElementById('g-first').value.trim() &&
-        document.getElementById('g-last').value.trim() &&
-        document.getElementById('g-email').value.trim() &&
-        document.getElementById('g-age').value
-      );
-    }
     return !!(session && parentCampers.length > 0);
   }
 
   function weeksMissingCamperAssignment() {
-    if (guestMode || !session) return false;
+    if (!session) return false;
     return false;
   }
 
   function collectActiveCamperIds() {
     const ids = new Set();
-    if (guestMode || !session) return [];
-    if (enrollmentType === 'full') {
-      weeksPayload.forEach(function (w) {
-        const s = fullWeekCampersByWeek[String(w.id)];
+    if (!session) return [];
+    weeksPayload.forEach(function (w) {
+      const s = fullWeekCampersByWeek[String(w.id)];
+      if (s) s.forEach(function (cid) { ids.add(String(cid)); });
+    });
+    Object.keys(dailyPerDayCampers).forEach(function (wid) {
+      const inner = dailyPerDayCampers[wid];
+      if (!inner) return;
+      Object.keys(inner).forEach(function (dk) {
+        const s = inner[dk];
         if (s) s.forEach(function (cid) { ids.add(String(cid)); });
       });
-    } else {
-      Object.keys(dailyPerDayCampers).forEach(function (wid) {
-        const inner = dailyPerDayCampers[wid];
-        if (!inner) return;
-        Object.keys(inner).forEach(function (dk) {
-          const s = inner[dk];
-          if (s) s.forEach(function (cid) { ids.add(String(cid)); });
-        });
-      });
-    }
+    });
     return Array.from(ids);
   }
 
   function weekChildContextHtml(weekId) {
-    if (guestMode && camperSelectionReady()) {
-      const n = getGuestCamperName();
-      return n ? '<div class="child-context">Camper: ' + escapeHtml(n) + '</div>' : '';
-    }
     if (!session) return '';
     const wk = String(weekId);
     if (enrollmentType === 'full') {
@@ -1720,11 +1968,9 @@
     } else {
       gate.classList.remove('ok');
       wrap.classList.add('gated');
-      if (guestMode) {
+      if (!session) {
         gate.textContent =
-          'Enter your child’s name, email, and age on the My kids tab, then come back to choose weekly or daily camp.';
-      } else if (!session) {
-        gate.textContent = 'Sign in or continue as guest on the My kids tab first.';
+          'Use parent sign-in on the My kids tab first, then add your children.';
       } else if (!parentCampers.length) {
         gate.textContent =
           'Add at least one child on the My kids tab — then check which children are in each camp week below.';
@@ -1737,69 +1983,97 @@
   function updateRegFlowClasses() {
     const main = document.getElementById('reg-main');
     if (!main) return;
-    const simple = !!(session && !guestMode && parentCampers.length > 0);
+    const simple = !!(session && parentCampers.length > 0);
     main.classList.toggle('reg-flow-simple', simple);
-    const sh = document.getElementById('schedule-signedin-hint');
-    const gh = document.getElementById('schedule-guest-hint');
-    if (sh && gh) {
-      sh.style.display = simple ? 'inline' : 'none';
-      gh.style.display = simple ? 'none' : 'inline';
-    }
   }
 
   function applyPricingFromServer(j) {
     const dr = j && j.dayRate != null ? Number(j.dayRate) : dayRateClient();
     const wr = j && j.weekRate != null ? Number(j.weekRate) : weekRateClient();
     const rf = j && j.registrationFee != null ? Number(j.registrationFee) : regFeeClient();
+    const xs = j && j.extraCampShirt != null ? Number(j.extraCampShirt) : extraShirtClient();
     const nr = j && j.needsRegistration === false ? false : true;
-    const pcr =
-      j && j.perCamperNeedsReg && typeof j.perCamperNeedsReg === 'object' ? j.perCamperNeedsReg : {};
-    pricingPreview = { dayRate: dr, weekRate: wr, registrationFee: rf, needsRegistration: nr, perCamperNeedsReg: pcr };
+    const pcr = {};
+    if (j && j.perCamperNeedsReg && typeof j.perCamperNeedsReg === 'object') {
+      Object.keys(j.perCamperNeedsReg).forEach(function (k) {
+        pcr[String(k)] = j.perCamperNeedsReg[k];
+      });
+    }
+    const pes = {};
+    if (j && j.perCamperExtraShirtPaid && typeof j.perCamperExtraShirtPaid === 'object') {
+      Object.keys(j.perCamperExtraShirtPaid).forEach(function (k) {
+        pes[String(k)] = !!j.perCamperExtraShirtPaid[k];
+      });
+    }
+    pricingPreview = {
+      dayRate: dr,
+      weekRate: wr,
+      registrationFee: rf,
+      extraCampShirt: xs,
+      needsRegistration: nr,
+      perCamperNeedsReg: pcr,
+      perCamperExtraShirtPaid: pes,
+    };
+    if (j && j.perCamperNeedsReg && typeof j.perCamperNeedsReg === 'object') {
+      Object.keys(pcr).forEach(function (rk) {
+        if (pcr[rk] === false) {
+          regFeeIncludeByCamper[String(rk)] = false;
+        }
+      });
+    }
+    applyImaMemberPrefsToRegFeeMap();
   }
 
   function defaultRegFeeIncludeForCamper(cid) {
     const m = pricingPreview.perCamperNeedsReg;
+    const k = String(cid);
+    if (m && m[k] === false) return false;
     if (m && m[cid] === false) return false;
     return true;
   }
 
+  /** Server already has registration paid — never show or send that fee again (stale localStorage overrides must not win). */
+  function registrationAlreadyPaidPerPreview(cid) {
+    const k = String(cid);
+    const m = pricingPreview.perCamperNeedsReg;
+    if (!m || typeof m !== 'object') return false;
+    return m[k] === false || m[cid] === false;
+  }
+
   function getRegFeeInclude(cid) {
-    if (guestMode) {
-      if (regFeeIncludeByCamper[REG_FEE_GUEST_KEY] === undefined) return true;
-      return !!regFeeIncludeByCamper[REG_FEE_GUEST_KEY];
+    const k = String(cid);
+    if (registrationAlreadyPaidPerPreview(cid)) {
+      return false;
     }
-    if (regFeeIncludeByCamper[cid] === undefined) return defaultRegFeeIncludeForCamper(cid);
+    if (regFeeIncludeByCamper[k] === undefined && regFeeIncludeByCamper[cid] === undefined) {
+      return defaultRegFeeIncludeForCamper(k);
+    }
+    if (regFeeIncludeByCamper[k] !== undefined) return !!regFeeIncludeByCamper[k];
     return !!regFeeIncludeByCamper[cid];
   }
 
   function registrationFeeAppliesToCamper(cid) {
-    if (guestMode) return getRegFeeInclude(REG_FEE_GUEST_KEY);
     return getRegFeeInclude(cid);
+  }
+
+  function extraShirtAddonAlreadyPaid(cid) {
+    const m = pricingPreview.perCamperExtraShirtPaid;
+    if (!m || typeof m !== 'object') return false;
+    return !!(m[String(cid)] || m[cid]);
+  }
+
+  /** User checked extra shirt and server has not recorded payment yet — bill this checkout. */
+  function extraShirtChargesThisCheckout(cid) {
+    const ck = String(cid);
+    if (!(extraShirtByCamper[ck] || extraShirtByCamper[cid])) return false;
+    return !extraShirtAddonAlreadyPaid(cid);
   }
 
   function renderRegFeeCamperBoxes() {
     const section = document.getElementById('reg-fee-per-child-section');
     const mount = document.getElementById('reg-fee-camper-mount');
-    const guestRow = document.getElementById('guest-reg-fee-row');
-    const guestCb = document.getElementById('guest-reg-fee-cb');
-    if (!section || !mount || !guestRow) return;
+    if (!section || !mount) return;
 
-    if (guestMode) {
-      section.style.display = '';
-      guestRow.style.display = '';
-      mount.innerHTML = '';
-      if (regFeeIncludeByCamper[REG_FEE_GUEST_KEY] === undefined) {
-        regFeeIncludeByCamper[REG_FEE_GUEST_KEY] = true;
-      }
-      const guestAmtEl = document.getElementById('guest-reg-fee-amt');
-      const rfGuest = Number(testPriceMode ? 1 : pricingPreview.registrationFee != null ? pricingPreview.registrationFee : regFeeClient());
-      if (guestAmtEl) guestAmtEl.textContent = fmt(rfGuest);
-      /* Checkbox = IMA member (no fee); internal map still "include fee at checkout" */
-      if (guestCb) guestCb.checked = !regFeeIncludeByCamper[REG_FEE_GUEST_KEY];
-      return;
-    }
-
-    guestRow.style.display = 'none';
     if (!session || !parentCampers.length) {
       section.style.display = 'none';
       return;
@@ -1807,19 +2081,44 @@
 
     section.style.display = '';
     parentCampers.forEach(function (c) {
-      if (regFeeIncludeByCamper[c.id] === undefined) {
-        regFeeIncludeByCamper[c.id] = defaultRegFeeIncludeForCamper(c.id);
+      const ck = String(c.id);
+      if (regFeeIncludeByCamper[ck] === undefined && regFeeIncludeByCamper[c.id] === undefined) {
+        const pref = readImaMemberPrefs()[ck];
+        if (pref === true && !registrationAlreadyPaidPerPreview(c.id)) {
+          regFeeIncludeByCamper[ck] = false;
+        } else if (pref === false && !registrationAlreadyPaidPerPreview(c.id)) {
+          regFeeIncludeByCamper[ck] = true;
+        } else {
+          regFeeIncludeByCamper[ck] = defaultRegFeeIncludeForCamper(ck);
+        }
       }
     });
 
     const rfNum = Number(testPriceMode ? 1 : pricingPreview.registrationFee != null ? pricingPreview.registrationFee : regFeeClient());
+    const shirtNum = Number(
+      testPriceMode ? 1 : pricingPreview.extraCampShirt != null ? pricingPreview.extraCampShirt : extraShirtClient()
+    );
     mount.innerHTML = parentCampers
       .map(function (c) {
         const nm = escapeHtml(String(c.first_name + ' ' + c.last_name).trim());
-        const id = escapeHtml(c.id);
+        const id = escapeHtml(String(c.id));
         const chk = getRegFeeInclude(c.id) ? '' : ' checked';
         const amt = escapeHtml(fmt(rfNum));
+        const shirtChk = extraShirtByCamper[c.id] || extraShirtByCamper[String(c.id)] ? ' checked' : '';
+        const shirtPaid = extraShirtAddonAlreadyPaid(c.id);
+        const shirtRight = shirtPaid
+          ? '<span class="reg-fee-amt reg-fee-shirt-paid-badge">Paid</span>'
+          : '<span class="reg-fee-amt">' + escapeHtml(fmt(shirtNum)) + '</span>';
+        const shirtRowClass =
+          'reg-fee-camper-row reg-fee-shirt-row' + (shirtPaid ? ' reg-fee-shirt-row-paid' : '');
+        const shirtHint = shirtPaid
+          ? '<p class="reg-fee-shirt-paid-hint">Already purchased — we won’t charge again. You can keep this checked; it’s saved with your draft.</p>'
+          : '';
         return (
+          '<div class="reg-fee-camper-block">' +
+          '<div class="reg-fee-camper-name">' +
+          nm +
+          '</div>' +
           '<label class="reg-fee-camper-row" for="reg-fee-cb-' +
           id +
           '">' +
@@ -1830,12 +2129,27 @@
           '"' +
           chk +
           ' />' +
-          '<span class="reg-fee-lbl"><strong>IMA member</strong> — ' +
-          nm +
-          '</span>' +
+          '<span class="reg-fee-lbl">Check if your child is an <strong>active IMA member</strong> (no registration fee will be charged)</span>' +
           '<span class="reg-fee-amt">' +
           amt +
-          '</span></label>'
+          '</span></label>' +
+          '<label class="' +
+          shirtRowClass +
+          '" for="shirt-cb-' +
+          id +
+          '" style="margin-top:8px">' +
+          '<input type="checkbox" id="shirt-cb-' +
+          id +
+          '" data-shirt-camper="' +
+          id +
+          '"' +
+          shirtChk +
+          ' />' +
+          '<span class="reg-fee-lbl"><strong>Extra camp T-shirt</strong> — add another shirt for this child</span>' +
+          shirtRight +
+          '</label>' +
+          shirtHint +
+          '</div>'
         );
       })
       .join('');
@@ -1843,35 +2157,50 @@
     mount.querySelectorAll('input[data-reg-camper]').forEach(function (el) {
       el.addEventListener('change', function () {
         const id = el.getAttribute('data-reg-camper');
-        if (id) regFeeIncludeByCamper[id] = !el.checked;
+        if (id) {
+          regFeeIncludeByCamper[String(id)] = !el.checked;
+          writeImaMemberPref(String(id), el.checked);
+        }
         updateSummary();
+        persistEnrollLocal();
+      });
+    });
+    mount.querySelectorAll('input[data-shirt-camper]').forEach(function (el) {
+      el.addEventListener('change', function () {
+        const id = el.getAttribute('data-shirt-camper');
+        if (id) {
+          if (el.checked) extraShirtByCamper[String(id)] = true;
+          else delete extraShirtByCamper[String(id)];
+        }
+        updateSummary();
+        persistEnrollLocal();
       });
     });
   }
 
   function updatePriceBanner() {
-    const el = document.getElementById('price-banner-text');
-    if (!el) return;
-    const dr = Number(testPriceMode ? 1 : pricingPreview.dayRate != null ? pricingPreview.dayRate : dayRateClient());
-    const wr = Number(testPriceMode ? 1 : pricingPreview.weekRate != null ? pricingPreview.weekRate : weekRateClient());
-    const isEarly = new Date() < EARLY;
-    el.textContent =
-      (isEarly ? 'Early bird: ' : 'Current rate: ') +
-      fmt(wr) +
-      '/wk · ' +
-      fmt(dr) +
-      '/day · Max 35/wk';
-    const detail = document.getElementById('price-tier-detail');
-    if (detail) {
-      detail.innerHTML =
-        'Early bird through Apr 30, 2026: <strong style="color:var(--cyan)">$375</strong>/wk · <strong style="color:var(--cyan)">$85</strong>/day. ' +
-        'Starting May 1, 2026: <strong>$425</strong>/wk · <strong>$95</strong>/day. ' +
-        '<span style="display:block;margin-top:6px;color:#bdbdbd;font-size:12px">Today you pay: <strong style="color:#fff">' +
-        fmt(wr) +
-        '/wk</strong> and <strong style="color:#fff">' +
-        fmt(dr) +
-        '/day</strong> at checkout.</span>';
+    const t = testPriceMode;
+    const ew = document.getElementById('hero-rate-early-wk');
+    const ed = document.getElementById('hero-rate-early-day');
+    const rw = document.getElementById('hero-rate-reg-wk');
+    const rd = document.getElementById('hero-rate-reg-day');
+    const ce = document.getElementById('reg-copy-early-line');
+    const cr = document.getElementById('reg-copy-reg-line');
+    if (t) {
+      if (ew) ew.textContent = '$1';
+      if (ed) ed.textContent = '$1';
+      if (rw) rw.textContent = '$1';
+      if (rd) rd.textContent = '$1';
+      if (ce) ce.textContent = '$1/week or $1/day';
+      if (cr) cr.textContent = '$1/week or $1/day';
+      return;
     }
+    if (ew) ew.textContent = '$375';
+    if (ed) ed.textContent = '$85';
+    if (rw) rw.textContent = '$425';
+    if (rd) rd.textContent = '$95';
+    if (ce) ce.textContent = '$375/week or $85/day';
+    if (cr) cr.textContent = '$425/week or $95/day';
   }
 
   function escapeHtml(s) {
@@ -1883,6 +2212,8 @@
   }
 
   function clearEnrollmentSelections() {
+    regFeeIncludeByCamper = {};
+    extraShirtByCamper = {};
     Object.keys(selectedByWeek).forEach(function (k) {
       delete selectedByWeek[k];
     });
@@ -1903,13 +2234,125 @@
     });
     try {
       var ck = enrollStorageKey();
-      if (ck) sessionStorage.removeItem(ck);
+      if (ck) {
+        sessionStorage.removeItem(ck);
+        try {
+          localStorage.removeItem(ck);
+        } catch (eL) {}
+      }
+      var euid = enrollUserId();
+      if (euid) {
+        var uid = String(euid);
+        var portalKey = 'ima_portal_enroll_v1:' + uid;
+        sessionStorage.removeItem(portalKey);
+        try {
+          localStorage.removeItem(portalKey);
+        } catch (eP) {}
+      }
+    } catch (e) {}
+    applyImaMemberPrefsToRegFeeMap();
+  }
+
+  function imaMemberPrefStorageKey() {
+    var uid = enrollUserId();
+    if (!uid) return null;
+    return IMA_MEMBER_PREF_SS + ':' + uid;
+  }
+
+  function pickImaMemberPrefRaw(sk) {
+    var rS = null;
+    var rL = null;
+    try {
+      rS = sessionStorage.getItem(sk);
+    } catch (e) {}
+    try {
+      rL = localStorage.getItem(sk);
+    } catch (e2) {}
+    if (!rS) return rL;
+    if (!rL) return rS;
+    try {
+      var o1 = JSON.parse(rS);
+      var o2 = JSON.parse(rL);
+      var t1 = Number(o1.updatedAt) || 0;
+      var t2 = Number(o2.updatedAt) || 0;
+      return t2 > t1 ? rL : rS;
+    } catch (eP) {}
+    return rS;
+  }
+
+  /** @returns {Record<string, boolean>} camperId -> true when “active IMA member” is checked */
+  function readImaMemberPrefs() {
+    var sk = imaMemberPrefStorageKey();
+    if (!sk) return {};
+    var raw = pickImaMemberPrefRaw(sk);
+    if (!raw) return {};
+    try {
+      var o = JSON.parse(raw);
+      if (o && typeof o === 'object' && o.byCamper && typeof o.byCamper === 'object') return o.byCamper;
+    } catch (eJ) {}
+    return {};
+  }
+
+  function writeImaMemberPref(camperId, memberChecked) {
+    var sk = imaMemberPrefStorageKey();
+    if (!sk) return;
+    var cid = String(camperId);
+    var all = readImaMemberPrefs();
+    all[cid] = !!memberChecked;
+    var payload = JSON.stringify({ byCamper: all, updatedAt: Date.now() });
+    try {
+      sessionStorage.setItem(sk, payload);
+    } catch (e1) {}
+    try {
+      localStorage.setItem(sk, payload);
+    } catch (e2) {}
+  }
+
+  /** Apply saved “IMA member” checkmarks so they survive checkout draft clear (waived fee has no DB row). */
+  function applyImaMemberPrefsToRegFeeMap() {
+    if (!session || !parentCampers.length) return;
+    var prefs = readImaMemberPrefs();
+    parentCampers.forEach(function (c) {
+      var ck = String(c.id);
+      if (prefs[ck] !== true && prefs[ck] !== false) return;
+      if (registrationAlreadyPaidPerPreview(c.id)) return;
+      regFeeIncludeByCamper[ck] = prefs[ck] ? false : true;
+    });
+  }
+
+  function refreshScheduleUiAfterEnrollStorageChange() {
+    try {
+      renderFullWeeks();
+      renderDailyWeeks();
+      renderRegFeeCamperBoxes();
+      updateEnrollmentGate();
+      updateSummary();
+    } catch (eU) {}
+  }
+
+  /** After successful Stripe payment, success.html sets a flag so checkout drafts clear on index (legacy portal storage key is wiped too). */
+  function applyPostCheckoutEnrollClearIfFlag() {
+    try {
+      if (!session) return;
+      if (!IMA.consumePostCheckoutClearEnrollFlag()) return;
+      clearEnrollmentSelections();
+      refreshScheduleUiAfterEnrollStorageChange();
     } catch (e) {}
   }
 
+  /** Supabase session user id (JWT sub and user.id should match; prefer both for storage key robustness). */
+  function enrollUserId() {
+    if (!session || !session.user) return null;
+    var u = session.user;
+    var id = u.id != null && String(u.id).trim() !== '' ? String(u.id).trim() : '';
+    if (!id && u.sub != null) id = String(u.sub).trim();
+    return id || null;
+  }
+
   function enrollStorageKey() {
-    if (!session || !session.user || !session.user.id) return null;
-    return ENROLL_SS + ':' + String(session.user.id);
+    var uid = enrollUserId();
+    if (!uid) return null;
+    return ENROLL_SS + ':' + uid;
   }
 
   function wipeRegEnrollStorage() {
@@ -1924,7 +2367,7 @@
 
   function persistEnrollLocal() {
     try {
-      if (!session || guestMode) return;
+      if (!session) return;
       var sk = enrollStorageKey();
       if (!sk) return;
       const fw = {};
@@ -1950,31 +2393,54 @@
         fullWeekQty: fullWeekQty,
         dailyKidsByWeek: dailyKidsByWeek,
         regFeeIncludeByCamper: regFeeIncludeByCamper,
+        extraShirtByCamper: extraShirtByCamper,
         enrollmentType: enrollmentType,
+        updatedAt: Date.now(),
       });
+      var okS = false;
+      var okL = false;
       try {
         sessionStorage.setItem(sk, enrollPayload);
+        okS = sessionStorage.getItem(sk) === enrollPayload;
       } catch (e1) {}
       try {
         localStorage.setItem(sk, enrollPayload);
+        okL = localStorage.getItem(sk) === enrollPayload;
       } catch (e2) {}
+      if (!okS && !okL && typeof console !== 'undefined' && console.warn) {
+        console.warn('[IMA camp] Could not save enrollment draft to storage (private mode or full storage). Selections may not persist after refresh.');
+      }
     } catch (e) {}
+  }
+
+  function pickEnrollRaw(sk) {
+    var rSess = null;
+    var rLocal = null;
+    try {
+      rSess = sessionStorage.getItem(sk);
+    } catch (e) {}
+    try {
+      rLocal = localStorage.getItem(sk);
+    } catch (e2) {}
+    if (!rSess) return rLocal;
+    if (!rLocal) return rSess;
+    try {
+      var o1 = JSON.parse(rSess);
+      var o2 = JSON.parse(rLocal);
+      var t1 = Number(o1.updatedAt) || 0;
+      var t2 = Number(o2.updatedAt) || 0;
+      if (t2 > t1) return rLocal;
+      if (t1 > t2) return rSess;
+    } catch (eP) {}
+    return rSess;
   }
 
   function restoreEnrollLocal() {
     try {
-      if (!session || guestMode) return;
+      if (!session) return;
       var sk = enrollStorageKey();
       if (!sk) return;
-      var raw = null;
-      try {
-        raw = sessionStorage.getItem(sk);
-      } catch (e) {}
-      if (!raw) {
-        try {
-          raw = localStorage.getItem(sk);
-        } catch (eLs) {}
-      }
+      var raw = pickEnrollRaw(sk);
       if (!raw) {
         try {
           var legacy = sessionStorage.getItem(ENROLL_SS);
@@ -1987,32 +2453,30 @@
       }
       if (!raw) return;
       const o = JSON.parse(raw);
-      Object.keys(selectedByWeek).forEach(function (k) {
-        delete selectedByWeek[k];
-      });
-      Object.keys(fullWeekCampersByWeek).forEach(function (k) {
-        delete fullWeekCampersByWeek[k];
-      });
-      Object.keys(dailyCampersByWeek).forEach(function (k) {
-        delete dailyCampersByWeek[k];
-      });
-      Object.keys(dailyPerDayCampers).forEach(function (k) {
-        delete dailyPerDayCampers[k];
-      });
+      /* Merge into existing state — never wipe everything first. A wipe + partial snapshot
+         (or stale sessionStorage) was dropping other weeks and looked like “toggle clears cart”. */
       Object.keys(o.fw || {}).forEach(function (wid) {
-        fullWeekCampersByWeek[wid] = new Set((o.fw[wid] || []).map(String));
+        const k = String(wid);
+        const arr = o.fw[wid];
+        if (arr && arr.length) fullWeekCampersByWeek[k] = new Set(arr.map(String));
+        else delete fullWeekCampersByWeek[k];
       });
-      if (o.pdc && typeof o.pdc === 'object' && Object.keys(o.pdc).length) {
-        Object.keys(o.pdc).forEach(function (wid) {
-          const inner = o.pdc[wid];
+      var hasPdcKey = o && Object.prototype.hasOwnProperty.call(o, 'pdc');
+      var pdcObj = hasPdcKey && o.pdc && typeof o.pdc === 'object' ? o.pdc : null;
+      if (pdcObj && Object.keys(pdcObj).length) {
+        Object.keys(pdcObj).forEach(function (wid) {
+          const inner = pdcObj[wid];
+          const wk = String(wid);
+          delete dailyPerDayCampers[wk];
           if (!inner || typeof inner !== 'object') return;
-          const map = ensureDailyPerDayMapMain(wid);
+          const map = ensureDailyPerDayMapMain(wk);
           Object.keys(inner).forEach(function (dk) {
             const arr = inner[dk];
             if (arr && arr.length) map[String(dk)] = new Set(arr.map(String));
           });
+          pruneEmptyDailyWeekMain(wk);
         });
-      } else {
+      } else if (!hasPdcKey) {
         Object.keys(o.sw || {}).forEach(function (wid) {
           const days = o.sw[wid];
           const kids = (o.dw && o.dw[wid]) || [];
@@ -2034,22 +2498,25 @@
         });
       }
       if (o.regFeeIncludeByCamper && typeof o.regFeeIncludeByCamper === 'object') {
-        Object.keys(regFeeIncludeByCamper).forEach(function (k) {
-          delete regFeeIncludeByCamper[k];
-        });
         Object.keys(o.regFeeIncludeByCamper).forEach(function (k) {
-          regFeeIncludeByCamper[k] = o.regFeeIncludeByCamper[k];
+          var kk = String(k);
+          regFeeIncludeByCamper[kk] = o.regFeeIncludeByCamper[k];
+          writeImaMemberPref(kk, !regFeeIncludeByCamper[kk]);
+        });
+      }
+      if (o.extraShirtByCamper && typeof o.extraShirtByCamper === 'object') {
+        extraShirtByCamper = {};
+        Object.keys(o.extraShirtByCamper).forEach(function (k) {
+          if (o.extraShirtByCamper[k]) extraShirtByCamper[String(k)] = true;
         });
       }
       const et = o.enrollmentType === 'daily' ? 'daily' : 'full';
-      setEnrollmentType(et, { skipClear: true });
+      setEnrollmentType(et);
     } catch (e) {}
   }
 
-  function setEnrollmentType(type, opts) {
+  function setEnrollmentType(type) {
     if (type !== 'full' && type !== 'daily') return;
-    const skipClear = opts && opts.skipClear;
-    if (!skipClear && enrollmentType !== type) clearEnrollmentSelections();
     enrollmentType = type;
     document.getElementById('btn-enroll-full').classList.toggle('on', type === 'full');
     document.getElementById('btn-enroll-daily').classList.toggle('on', type === 'daily');
@@ -2062,56 +2529,632 @@
   }
 
   function getDailyKids(wid) {
-    if (guestMode || !session) {
-      const v = dailyKidsByWeek[wid];
-      return v == null ? 1 : v;
-    }
+    if (!session) return 0;
     return parentCampers.length > 0 ? 1 : 0;
+  }
+
+  /** True if this enrollment row is a full Mon–Fri week for `w`. */
+  function enrollmentCoversFullWeek(row, w) {
+    if (!w || !(w.days && w.days.length === 5)) return false;
+    const ids = (row.day_ids || []).map(String);
+    const weekDayIds = (w.days || []).map(function (d) {
+      return String(d.id);
+    });
+    return (
+      ids.length === 5 &&
+      weekDayIds.every(function (id) {
+        return ids.indexOf(id) !== -1;
+      })
+    );
+  }
+
+  /** True if this confirmed row is reflected by current week/day checkboxes (sidebar follows the form). */
+  function paidEnrollmentMatchesPicker(row, cid) {
+    const w = weeksPayload.find(function (x) {
+      return String(x.id) === String(row.week_id);
+    });
+    if (!w) return false;
+    const wk = String(w.id);
+    const camperId = String(cid);
+    const onFullWeek = !!(fullWeekCampersByWeek[wk] && fullWeekCampersByWeek[wk].has(camperId));
+    if (enrollmentCoversFullWeek(row, w)) {
+      return onFullWeek;
+    }
+    if (onFullWeek) return true;
+    const dayIds = (row.day_ids || []).map(String).filter(Boolean);
+    if (!dayIds.length) return false;
+    return dayIds.every(function (did) {
+      const s = getDayCamperSetMain(wk, did);
+      return s && s.has(camperId);
+    });
+  }
+
+  function daysCoveredByConfirmedForCamperWeek(weekId, camperId) {
+    const covered = new Set();
+    const w = weeksPayload.find(function (x) {
+      return String(x.id) === String(weekId);
+    });
+    if (!w) return covered;
+    (confirmedEnrollmentsCache || []).forEach(function (row) {
+      if (String(row.camper_id) !== String(camperId)) return;
+      if (String(row.week_id) !== String(weekId)) return;
+      if (enrollmentCoversFullWeek(row, w)) {
+        (w.days || []).forEach(function (d) {
+          covered.add(String(d.id));
+        });
+      } else {
+        (row.day_ids || []).forEach(function (id) {
+          covered.add(String(id));
+        });
+      }
+    });
+    return covered;
+  }
+
+  function camperWeekHasConfirmedFullWeek(weekId, camperId) {
+    const w = weeksPayload.find(function (x) {
+      return String(x.id) === String(weekId);
+    });
+    if (!w) return false;
+    return (confirmedEnrollmentsCache || []).some(function (row) {
+      if (String(row.camper_id) !== String(camperId)) return false;
+      if (String(row.week_id) !== String(weekId)) return false;
+      return enrollmentCoversFullWeek(row, w);
+    });
+  }
+
+  /** Earliest already-paid day in week order (for messaging). */
+  function firstPaidDayObjForFullWeekConflict(weekId, camperId) {
+    if (camperWeekHasConfirmedFullWeek(weekId, camperId)) return null;
+    const covered = daysCoveredByConfirmedForCamperWeek(weekId, camperId);
+    if (!covered.size) return null;
+    const w = weeksPayload.find(function (x) {
+      return String(x.id) === String(weekId);
+    });
+    if (!w || !(w.days || []).length) return null;
+    const ordered = (w.days || []).slice().sort(function (a, b) {
+      return String(a.date).localeCompare(String(b.date));
+    });
+    for (var i = 0; i < ordered.length; i++) {
+      if (covered.has(String(ordered[i].id))) return ordered[i];
+    }
+    return null;
+  }
+
+  function fullWeekPaidDayConflictMessage(weekId, camperId) {
+    const dayObj = firstPaidDayObjForFullWeekConflict(weekId, camperId);
+    if (!dayObj) return '';
+    const c = parentCampers.find(function (x) {
+      return String(x.id) === String(camperId);
+    });
+    const first = c && c.first_name ? String(c.first_name).trim() : '';
+    const phrase = formatBookedConflictDayPhrase(dayObj);
+    return (
+      (first || 'This child') +
+      ' already has ' +
+      phrase +
+      ' booked. Remove that day or choose individual days instead.'
+    );
+  }
+
+  function getFullWeekPaidDayConflictMessages() {
+    const out = [];
+    if (!session) return out;
+    weeksPayload.forEach(function (w) {
+      const wk = String(w.id);
+      const fw = fullWeekCampersByWeek[wk];
+      if (!fw || !fw.size) return;
+      fw.forEach(function (cid) {
+        const m = fullWeekPaidDayConflictMessage(w.id, cid);
+        if (m) out.push(m);
+      });
+    });
+    return out;
+  }
+
+  /** Drop impossible full-week picks (paid partial days in same week). */
+  function pruneConflictingFullWeekSelections() {
+    if (!session) return;
+    var changed = false;
+    weeksPayload.forEach(function (w) {
+      var wk = String(w.id);
+      var fw = fullWeekCampersByWeek[wk];
+      if (!fw || !fw.size) return;
+      Array.from(fw).forEach(function (cid) {
+        if (fullWeekPaidDayConflictMessage(w.id, cid)) {
+          fw.delete(cid);
+          changed = true;
+        }
+      });
+      if (!fw.size) delete fullWeekCampersByWeek[wk];
+    });
+    if (changed) {
+      try {
+        persistEnrollLocal();
+      } catch (ePr) {}
+    }
+  }
+
+  /** Group confirmed rows by camper + week (UUIDs have no `|`). */
+  function groupConfirmedRowsByCamperWeek(rows) {
+    const groups = {};
+    (rows || []).forEach(function (row) {
+      if (!row || row.camper_id == null || row.week_id == null) return;
+      const w = weeksPayload.find(function (x) {
+        return String(x.id) === String(row.week_id);
+      });
+      if (!w) return;
+      const key = String(row.camper_id) + '|' + String(row.week_id);
+      if (!groups[key]) groups[key] = { w: w, wk: String(row.week_id), cid: String(row.camper_id), rows: [] };
+      groups[key].rows.push(row);
+    });
+    return groups;
+  }
+
+  /**
+   * If the DB has both a full-week and a stray partial-day row for the same child/week,
+   * treat as one full week (partial must not clear full-week picker state).
+   */
+  function hydrateSelectionFromConfirmedEnrollments() {
+    if (!session) return;
+    const groups = groupConfirmedRowsByCamperWeek(confirmedEnrollmentsCache);
+    Object.keys(groups).forEach(function (key) {
+      const g = groups[key];
+      const w = g.w;
+      const wk = g.wk;
+      const cid = g.cid;
+      const hasFull = g.rows.some(function (r) {
+        return enrollmentCoversFullWeek(r, w);
+      });
+      if (hasFull) {
+        if (!fullWeekCampersByWeek[wk]) fullWeekCampersByWeek[wk] = new Set();
+        fullWeekCampersByWeek[wk].add(cid);
+        clearDailyForCamperWeek(wk, cid);
+      } else {
+        const fws = fullWeekCampersByWeek[wk];
+        if (fws && fws.has(cid)) {
+          fws.delete(cid);
+          if (!fws.size) delete fullWeekCampersByWeek[wk];
+        }
+        const daySet = new Set();
+        g.rows.forEach(function (r) {
+          (r.day_ids || []).forEach(function (d) {
+            daySet.add(String(d));
+          });
+        });
+        daySet.forEach(function (did) {
+          ensureDayCamperSetMain(wk, did).add(cid);
+        });
+        pruneEmptyDailyWeekMain(wk);
+      }
+    });
+    try {
+      persistEnrollLocal();
+    } catch (eH) {}
+  }
+
+  /** One sidebar line per camper per week; full week wins over redundant partial rows. */
+  function coalesceEnrollmentRowsForSidebar(rows) {
+    if (!rows || !rows.length) return rows;
+    const byWeek = {};
+    rows.forEach(function (row) {
+      const wid = String(row.week_id);
+      if (!byWeek[wid]) byWeek[wid] = [];
+      byWeek[wid].push(row);
+    });
+    const weekIds = Object.keys(byWeek).sort(function (a, b) {
+      const wa = weeksPayload.find(function (w) {
+        return String(w.id) === a;
+      });
+      const wb = weeksPayload.find(function (w) {
+        return String(w.id) === b;
+      });
+      return (Number(wa && wa.week_number) || 0) - (Number(wb && wb.week_number) || 0);
+    });
+    const out = [];
+    weekIds.forEach(function (wid) {
+      const group = byWeek[wid];
+      const w = weeksPayload.find(function (x) {
+        return String(x.id) === wid;
+      });
+      if (!w) {
+        for (var gi = 0; gi < group.length; gi++) out.push(group[gi]);
+        return;
+      }
+      const fullRow = group.find(function (r) {
+        return enrollmentCoversFullWeek(r, w);
+      });
+      if (fullRow) {
+        out.push(fullRow);
+        return;
+      }
+      var daySet = new Set();
+      group.forEach(function (r) {
+        (r.day_ids || []).forEach(function (d) {
+          daySet.add(String(d));
+        });
+      });
+      var base = group[0];
+      out.push(Object.assign({}, base, { day_ids: Array.from(daySet) }));
+    });
+    return out;
   }
 
   function collectBookings() {
     const out = [];
-    if (enrollmentType === 'full') {
-      weeksPayload.forEach(function (w) {
-        const ids = (w.days || []).map(function (d) {
+    /** @type {Set<string>} signed-in: camperId:weekId already covered by full week */
+    const fullWeekKey = new Set();
+
+    if (!session) return out;
+
+    weeksPayload.forEach(function (w) {
+      const ids = (w.days || []).map(function (d) {
+        return d.id;
+      });
+      if (ids.length !== 5) return;
+      const cset = fullWeekCampersByWeek[String(w.id)];
+      if (!cset || !cset.size) return;
+      cset.forEach(function (cid) {
+        if (camperWeekHasConfirmedFullWeek(w.id, cid)) return;
+        if (daysCoveredByConfirmedForCamperWeek(w.id, cid).size > 0) return;
+        const k = String(cid) + ':' + String(w.id);
+        fullWeekKey.add(k);
+        out.push({ weekId: w.id, dayIds: ids, pricingMode: 'full_week', camperId: cid });
+      });
+    });
+
+    weeksPayload.forEach(function (w) {
+      const wk = String(w.id);
+      const inner = dailyPerDayCampers[wk];
+      if (!inner) return;
+      const camperIds = new Set();
+      Object.keys(inner).forEach(function (dk) {
+        const s = inner[dk];
+        if (!s || !s.size) return;
+        s.forEach(function (cid) {
+          camperIds.add(String(cid));
+        });
+      });
+      camperIds.forEach(function (cid) {
+        const ck = String(cid) + ':' + wk;
+        if (fullWeekKey.has(ck)) return;
+        const covered = daysCoveredByConfirmedForCamperWeek(w.id, cid);
+        const newDayIds = [];
+        Object.keys(inner).forEach(function (dk) {
+          const s = inner[dk];
+          if (!s || !s.has(cid)) return;
+          if (covered.has(String(dk))) return;
+          newDayIds.push(dk);
+        });
+        if (!newDayIds.length) return;
+        const dayObjs = (w.days || []).filter(function (d) {
+          return newDayIds.indexOf(String(d.id)) !== -1;
+        });
+        dayObjs.sort(function (a, b) {
+          return String(a.date).localeCompare(String(b.date));
+        });
+        const orderedIds = dayObjs.map(function (d) {
           return d.id;
         });
-        if (ids.length !== 5) return;
-        if (guestMode || !session) {
-          if ((fullWeekQty[w.id] || 0) < 1) return;
-          out.push({ weekId: w.id, dayIds: ids, pricingMode: 'full_week' });
-        } else {
-          const cset = fullWeekCampersByWeek[String(w.id)];
-          if (!cset || !cset.size) return;
-          cset.forEach(function (cid) {
-            out.push({ weekId: w.id, dayIds: ids, pricingMode: 'full_week', camperId: cid });
-          });
-        }
+        out.push({ weekId: w.id, dayIds: orderedIds, pricingMode: 'daily', camperId: cid });
       });
-    } else {
-      if (guestMode || !session) {
-        Object.keys(selectedByWeek).forEach(function (wid) {
-          const set = selectedByWeek[wid];
-          if (!set || !set.size) return;
-          if (getDailyKids(wid) < 1) return;
-          out.push({ weekId: wid, dayIds: Array.from(set), pricingMode: 'daily' });
+    });
+    return out;
+  }
+
+  /** Same camper + week + same days can exist as multiple DB rows from past checkouts; show one line (newest). */
+  function dedupeConfirmedEnrollmentsForDisplay(rows) {
+    const map = {};
+    (rows || []).forEach(function (r) {
+      if (!r || !r.camper_id || !r.week_id) return;
+      const dayKey = (r.day_ids || [])
+        .map(String)
+        .filter(Boolean)
+        .sort()
+        .join(',');
+      const key = String(r.camper_id) + '|' + String(r.week_id) + '|' + dayKey;
+      const t = r.created_at ? new Date(r.created_at).getTime() : 0;
+      const prev = map[key];
+      if (!prev || t >= prev.t) map[key] = { row: r, t: t };
+    });
+    return Object.keys(map)
+      .map(function (k) {
+        return map[k].row;
+      })
+      .sort(function (a, b) {
+        const wa = weeksPayload.find(function (w) {
+          return String(w.id) === String(a.week_id);
         });
-      } else {
-        weeksPayload.forEach(function (w) {
-          const wk = String(w.id);
-          const inner = dailyPerDayCampers[wk];
-          if (!inner) return;
-          Object.keys(inner).forEach(function (dk) {
-            const s = inner[dk];
-            if (!s || !s.size) return;
-            s.forEach(function (cid) {
-              out.push({ weekId: w.id, dayIds: [dk], pricingMode: 'daily', camperId: String(cid) });
-            });
-          });
+        const wb = weeksPayload.find(function (w) {
+          return String(w.id) === String(b.week_id);
+        });
+        const cmp = (Number(wa && wa.week_number) || 0) - (Number(wb && wb.week_number) || 0);
+        if (cmp !== 0) return cmp;
+        return String(a.camper_id).localeCompare(String(b.camper_id));
+      });
+  }
+
+  async function refreshConfirmedEnrollmentsFromServer() {
+    confirmedEnrollmentsCache = [];
+    if (!session || !session.access_token) return;
+    try {
+      const res = await fetch('/api/enrollments', {
+        headers: { Authorization: 'Bearer ' + session.access_token },
+      });
+      if (!res.ok) return;
+      const j = await res.json();
+      const rows = j.enrollments || [];
+      const confirmed = rows.filter(function (r) {
+        return r && r.status === 'confirmed';
+      });
+      confirmedEnrollmentsCache = dedupeConfirmedEnrollmentsForDisplay(confirmed);
+    } catch (e) {
+      confirmedEnrollmentsCache = [];
+    }
+  }
+
+  function enrollmentRowToScheduleLi(row) {
+    const w = weeksPayload.find(function (x) {
+      return String(x.id) === String(row.week_id);
+    });
+    if (!w) return '';
+    const wl = escapeHtml(String(w.label || 'Week'));
+    const range = formatWeekRangeForSummary(w);
+    const rangeHtml = range ? ' · ' + escapeHtml(range) : '';
+    const ids = (row.day_ids || []).map(String);
+    if (enrollmentCoversFullWeek(row, w)) {
+      return (
+        '<li><span class="sov-week">' +
+        wl +
+        rangeHtml +
+        '</span><span class="sov-type sov-paid">Full week Mon–Fri (paid)</span></li>'
+      );
+    }
+    const dayObjs = (w.days || []).filter(function (d) {
+      return ids.indexOf(String(d.id)) !== -1;
+    });
+    dayObjs.sort(function (a, b) {
+      return String(a.date).localeCompare(String(b.date));
+    });
+    const dTxt = dayObjs
+      .map(function (d) {
+        return formatDayLabel(d);
+      })
+      .join(', ');
+    return (
+      '<li><span class="sov-week">' +
+      wl +
+      rangeHtml +
+      '</span><span class="sov-type sov-paid">Daily (paid): ' +
+      escapeHtml(dTxt) +
+      '</span></li>'
+    );
+  }
+
+  function coalescedConfirmedRowsForCamper(cid) {
+    const paidRows = (confirmedEnrollmentsCache || []).filter(function (row) {
+      return row && String(row.camper_id) === String(cid);
+    });
+    return coalesceEnrollmentRowsForSidebar(paidRows);
+  }
+
+  /** Paid weeks/days that are NOT checked below = unused credit on file for this child. */
+  function unusedPaidWeekDayCountsForCamper(cid) {
+    var weeks = 0;
+    var days = 0;
+    coalescedConfirmedRowsForCamper(cid).forEach(function (r) {
+      if (paidEnrollmentMatchesPicker(r, cid)) return;
+      var w = weeksPayload.find(function (x) {
+        return String(x.id) === String(r.week_id);
+      });
+      if (!w) return;
+      if (enrollmentCoversFullWeek(r, w)) {
+        weeks += 1;
+        return;
+      }
+      var dayIds = (r.day_ids || []).map(String).filter(Boolean);
+      days += dayIds.length;
+    });
+    return { weeks: weeks, days: days };
+  }
+
+  function formatWeekDayCreditLabel(weeks, days) {
+    var parts = [];
+    if (weeks > 0) {
+      parts.push(weeks + ' week' + (weeks === 1 ? '' : 's'));
+    }
+    if (days > 0) {
+      parts.push(days + ' day' + (days === 1 ? '' : 's'));
+    }
+    return parts.join(' · ');
+  }
+
+  /** “In this checkout” lines = only what collectBookings would charge (excludes paid days). */
+  function draftScheduleLinesFromNewBookingsOnly(cid, sortedWeeks) {
+    const rows = [];
+    const mine = collectBookings().filter(function (b) {
+      return String(b.camperId) === String(cid);
+    });
+    const byWeek = {};
+    mine.forEach(function (b) {
+      const wk = String(b.weekId);
+      if (!byWeek[wk]) byWeek[wk] = { full: false, dayIdSet: new Set() };
+      if (b.pricingMode === 'full_week') byWeek[wk].full = true;
+      else (b.dayIds || []).forEach(function (d) {
+        byWeek[wk].dayIdSet.add(String(d));
+      });
+    });
+    sortedWeeks.forEach(function (w) {
+      const wk = String(w.id);
+      const agg = byWeek[wk];
+      if (!agg) return;
+      const wl = escapeHtml(String(w.label || 'Week'));
+      const range = formatWeekRangeForSummary(w);
+      const rangeHtml = range ? ' · ' + escapeHtml(range) : '';
+      if (agg.full) {
+        rows.push(
+          '<li><span class="sov-week">' +
+            wl +
+            rangeHtml +
+            '</span><span class="sov-type">Full week Mon–Fri</span></li>'
+        );
+        return;
+      }
+      if (!agg.dayIdSet.size) return;
+      const dayObjs = (w.days || []).filter(function (d) {
+        return agg.dayIdSet.has(String(d.id));
+      });
+      dayObjs.sort(function (a, b) {
+        return String(a.date).localeCompare(String(b.date));
+      });
+      const dTxt = dayObjs
+        .map(function (d) {
+          return formatDayLabel(d);
+        })
+        .join(', ');
+      rows.push(
+        '<li><span class="sov-week">' +
+          wl +
+          rangeHtml +
+          '</span><span class="sov-type">Daily: ' +
+          escapeHtml(dTxt) +
+          '</span></li>'
+      );
+    });
+    return rows;
+  }
+
+  function renderScheduleOverview() {
+    const el = document.getElementById('schedule-overview');
+    if (!el) return;
+    if (!session || !parentCampers.length) {
+      el.hidden = true;
+      el.innerHTML = '';
+      return;
+    }
+    el.hidden = false;
+    const sortedWeeks = weeksPayload.slice().sort(function (a, b) {
+      return (Number(a.week_number) || 0) - (Number(b.week_number) || 0);
+    });
+    var anyDraft = false;
+    var html = '<div class="schedule-overview-title">Your camp schedule</div>';
+
+    const paidByCamperRows = {};
+    (confirmedEnrollmentsCache || []).forEach(function (row) {
+      if (!row || !row.camper_id) return;
+      const cid = String(row.camper_id);
+      if (!paidByCamperRows[cid]) paidByCamperRows[cid] = [];
+      paidByCamperRows[cid].push(row);
+    });
+    Object.keys(paidByCamperRows).forEach(function (cid) {
+      paidByCamperRows[cid].sort(function (a, b) {
+        const wa = weeksPayload.find(function (w) {
+          return String(w.id) === String(a.week_id);
+        });
+        const wb = weeksPayload.find(function (w) {
+          return String(w.id) === String(b.week_id);
+        });
+        return (Number(wa && wa.week_number) || 0) - (Number(wb && wb.week_number) || 0);
+      });
+    });
+
+    parentCampers.forEach(function (camper) {
+      const cid = String(camper.id);
+      const name = escapeHtml(String((camper.first_name + ' ' + camper.last_name).trim()));
+      const paidRows = paidByCamperRows[cid] || [];
+      const coalescedPaid = coalesceEnrollmentRowsForSidebar(paidRows);
+      const paidOffpage = coalescedPaid.filter(function (r) {
+        return !paidEnrollmentMatchesPicker(r, cid);
+      });
+      const paidSelectedLis = coalescedPaid
+        .filter(function (r) {
+          return paidEnrollmentMatchesPicker(r, cid);
+        })
+        .map(enrollmentRowToScheduleLi)
+        .filter(Boolean);
+      const draftRows = draftScheduleLinesFromNewBookingsOnly(cid, sortedWeeks);
+      const shirtInCheckout = extraShirtChargesThisCheckout(camper.id);
+      if (draftRows.length) anyDraft = true;
+      if (shirtInCheckout) anyDraft = true;
+
+      html += '<div class="schedule-overview-child">';
+      html += '<div class="schedule-overview-name">' + name + '</div>';
+
+      if (paidSelectedLis.length) {
+        html += '<div class="schedule-overview-sub">Registered &amp; paid</div>';
+        html += '<ul class="schedule-overview-list">' + paidSelectedLis.join('') + '</ul>';
+      }
+
+      if (draftRows.length || shirtInCheckout) {
+        html += '<div class="schedule-overview-sub">In this checkout</div>';
+        html += '<ul class="schedule-overview-list">';
+        html += draftRows.join('');
+        if (shirtInCheckout) {
+          html +=
+            '<li><span class="sov-week">Extra camp T-shirt</span><span class="sov-type">Add-on</span></li>';
+        }
+        html += '</ul>';
+      }
+
+      if (!paidSelectedLis.length && !draftRows.length && !shirtInCheckout) {
+        if (paidOffpage.length) {
+          html +=
+            '<p class="schedule-overview-empty">Nothing selected below. Paid weeks you unchecked stay on file — check weeks again here to re-apply, or contact IMA if you need to cancel a booking.</p>';
+        } else {
+          html +=
+            '<p class="schedule-overview-empty">No registrations yet. Select weeks on the left to add them to checkout.</p>';
+        }
+      }
+
+      html += '</div>';
+    });
+
+    const anyPaid = (confirmedEnrollmentsCache || []).length > 0;
+    if (!anyPaid && !anyDraft) {
+      html +=
+        '<p class="schedule-overview-hint">Use <strong>Weekly registration</strong> or <strong>Daily registration</strong> on the left, then check each child for the weeks they will attend.</p>';
+    }
+    el.innerHTML = html;
+  }
+
+  /** Week/day counts for paid enrollments not selected below (unused credit). */
+  function renderCreditByCamperBlock() {
+    var el = document.getElementById('credit-by-camper');
+    if (!el) return;
+    if (!session || !parentCampers.length) {
+      el.hidden = true;
+      el.innerHTML = '';
+      return;
+    }
+    var lines = [];
+    parentCampers.forEach(function (c) {
+      var cnt = unusedPaidWeekDayCountsForCamper(String(c.id));
+      if (cnt.weeks > 0 || cnt.days > 0) {
+        lines.push({
+          name: (c.first_name + ' ' + c.last_name).trim(),
+          weeks: cnt.weeks,
+          days: cnt.days,
         });
       }
+    });
+    if (!lines.length) {
+      el.hidden = true;
+      el.innerHTML = '';
+      return;
     }
-    return out;
+    el.hidden = false;
+    var html =
+      '<div class="credit-by-camper-title">Unused paid credit (weeks &amp; days)</div>' +
+      '<p class="credit-by-camper-hint">Counts paid camp time you are <strong>not</strong> showing as checked below — check a week to apply it; uncheck to move it back here. To cancel a paid booking, contact IMA staff.</p>';
+    lines.forEach(function (L) {
+      html +=
+        '<div class="credit-by-camper-row"><span>' +
+        escapeHtml(L.name) +
+        '</span><span>' +
+        escapeHtml(formatWeekDayCreditLabel(L.weeks, L.days)) +
+        '</span></div>';
+    });
+    el.innerHTML = html;
   }
 
   async function refreshPricingPreview() {
@@ -2119,38 +3162,55 @@
     if (session && session.access_token) headers['Authorization'] = 'Bearer ' + session.access_token;
     const params = new URLSearchParams();
     if (testPriceMode) params.set('test', 'true');
-    const activeIds = collectActiveCamperIds();
-    if (activeIds.length && session) params.set('camperIds', activeIds.join(','));
+    var previewIdSet = new Set(collectActiveCamperIds());
+    if (session && parentCampers.length) {
+      parentCampers.forEach(function (c) {
+        previewIdSet.add(String(c.id));
+      });
+    }
+    const previewIds = Array.from(previewIdSet);
+    if (previewIds.length && session) params.set('camperIds', previewIds.join(','));
     const q = params.toString();
     const url = '/api/preview-pricing' + (q ? '?' + q : '');
     try {
-      const res = await fetch(url, { headers });
-      if (res.ok) {
-        const j = await res.json();
-        applyPricingFromServer(j);
-      } else {
+      try {
+        const res = await fetch(url, { headers });
+        if (res.ok) {
+          const j = await res.json();
+          applyPricingFromServer(j);
+        } else {
+          applyPricingFromServer(null);
+        }
+      } catch (e) {
         applyPricingFromServer(null);
       }
+      if (testPriceMode) {
+        pricingPreview.dayRate = 1;
+        pricingPreview.weekRate = 1;
+        pricingPreview.registrationFee = 1;
+        pricingPreview.extraCampShirt = 1;
+        pricingPreview.perCamperNeedsReg = {};
+        pricingPreview.perCamperExtraShirtPaid = {};
+      }
+      updatePriceBanner();
+      renderRegFeeCamperBoxes();
+      renderFullWeeks();
+      renderDailyWeeks();
+      updateEnrollmentGate();
+      updateRegFlowClasses();
     } catch (e) {
-      applyPricingFromServer(null);
+      try {
+        console.error(e);
+      } catch (e2) {}
+    } finally {
+      updateSummary();
     }
-    if (testPriceMode) {
-      pricingPreview.dayRate = 1;
-      pricingPreview.weekRate = 1;
-      pricingPreview.registrationFee = 1;
-      pricingPreview.perCamperNeedsReg = {};
-    }
-    updatePriceBanner();
-    renderRegFeeCamperBoxes();
-    renderFullWeeks();
-    renderDailyWeeks();
-    updateEnrollmentGate();
-    updateRegFlowClasses();
-    updateSummary();
   }
 
   function updateSummary() {
     updateEnrollmentGate();
+    renderScheduleOverview();
+    renderCreditByCamperBlock();
     const empty = document.getElementById('empty-state');
     const lines = document.getElementById('summary-lines');
     const totalRow = document.getElementById('total-row');
@@ -2161,18 +3221,36 @@
     const dr = Number(testPriceMode ? 1 : pricingPreview.dayRate != null ? pricingPreview.dayRate : dayRateClient());
     const wr = Number(testPriceMode ? 1 : pricingPreview.weekRate != null ? pricingPreview.weekRate : weekRateClient());
     const bookings = collectBookings();
+    const fwConflictMsgs = getFullWeekPaidDayConflictMessages();
     const camperOk = camperSelectionReady();
 
+    const shirtUnit = Number(
+      testPriceMode ? 1 : pricingPreview.extraCampShirt != null ? pricingPreview.extraCampShirt : extraShirtClient()
+    );
+    let shirtTotal = 0;
+    var shirtBillCamperIds = [];
+    if (session && parentCampers.length) {
+      parentCampers.forEach(function (c) {
+        if (extraShirtChargesThisCheckout(c.id)) shirtBillCamperIds.push(String(c.id));
+      });
+    } else {
+      var idsForShirt = [...new Set(bookings.map(function (b) { return b.camperId; }).filter(Boolean))];
+      idsForShirt.forEach(function (cid) {
+        if (extraShirtChargesThisCheckout(cid)) shirtBillCamperIds.push(String(cid));
+      });
+    }
+    shirtBillCamperIds = [...new Set(shirtBillCamperIds)];
+    shirtBillCamperIds.forEach(function () {
+      shirtTotal += shirtUnit;
+    });
+
     if (!camperOk) {
-      if (guestMode) {
-        empty.textContent =
-          'Finish your child’s name, email, and age on My kids, then choose weekly or daily camp and add weeks here.';
-      } else if (session && !parentCampers.length) {
+      if (session && !parentCampers.length) {
         empty.textContent =
           'Add at least one child on My kids — then open Camp registration and check which children are in each week.';
       } else {
         empty.textContent =
-          'Sign in or continue as guest on My kids, then use Camp registration for weekly or daily picks.';
+          'Use parent sign-in on My kids, add your children, then use Camp registration for weekly or daily picks.';
       }
       empty.style.display = '';
       lines.style.display = 'none';
@@ -2193,12 +3271,19 @@
       return;
     }
 
-    if (!bookings.length) {
-      const hint = guestMode ? getGuestCamperName() || 'your camper' : 'your selections';
-      empty.textContent = 'Choose at least one full week or individual days for ' + hint + '.';
+    if (!bookings.length && shirtTotal <= 0) {
+      empty.textContent = fwConflictMsgs.length
+        ? fwConflictMsgs[0]
+        : confirmedEnrollmentsCache && confirmedEnrollmentsCache.length
+          ? 'Your paid registrations are in Your camp schedule above. Add more weeks or days below, then checkout.'
+          : 'Choose at least one full week or individual days for your selections — or select an extra T-shirt above.';
       empty.style.display = '';
       lines.style.display = 'none';
       totalRow.style.display = 'none';
+      if (fwConflictMsgs.length) {
+        msg.className = 'msg error';
+        msg.textContent = fwConflictMsgs[0];
+      }
       btn.disabled = true;
       persistEnrollLocal();
       return;
@@ -2211,15 +3296,11 @@
     });
 
     const rf = Number(testPriceMode ? 1 : pricingPreview.registrationFee != null ? pricingPreview.registrationFee : regFeeClient());
-    const regCamperIds = guestMode ? [''] : [...new Set(bookings.map(function (b) { return b.camperId; }).filter(Boolean))];
+    const regCamperIds = [...new Set(bookings.map(function (b) { return b.camperId; }).filter(Boolean))];
     let reg = 0;
-    if (guestMode) {
-      if (registrationFeeAppliesToCamper('')) reg += rf;
-    } else {
-      regCamperIds.forEach(function (cid) {
-        if (registrationFeeAppliesToCamper(cid)) reg += rf;
-      });
-    }
+    regCamperIds.forEach(function (cid) {
+      if (registrationFeeAppliesToCamper(cid)) reg += rf;
+    });
 
     empty.style.display = 'none';
     lines.style.display = '';
@@ -2231,7 +3312,7 @@
         return x.id === b.weekId;
       });
       const range = w ? formatWeekRangeForSummary(w) : '';
-      const childName = guestMode ? getGuestCamperName() : getCamperNameById(b.camperId);
+      const childName = getCamperNameById(b.camperId);
       const headLine = w ? w.label + (range ? ' (' + range + ')' : '') + ' — ' + childName : 'Camp — ' + childName;
       if (b.pricingMode === 'full_week') {
         html +=
@@ -2270,37 +3351,50 @@
       }
     });
     if (reg > 0) {
-      if (guestMode && registrationFeeAppliesToCamper('')) {
+      regCamperIds.forEach(function (cid) {
+        if (!registrationFeeAppliesToCamper(cid)) return;
+        const nm = getCamperNameById(cid);
         html +=
           '<div class="summary-line"><span class="label">Registration — ' +
-          escapeHtml(getGuestCamperName()) +
+          escapeHtml(nm) +
           ' <small class="summary-line-detail">(one-time, first IMA camp if applicable)</small></span><span class="val">' +
           fmt(rf) +
           '</span></div>';
-      } else if (!guestMode) {
-        regCamperIds.forEach(function (cid) {
-          if (!registrationFeeAppliesToCamper(cid)) return;
-          const nm = getCamperNameById(cid);
-          html +=
-            '<div class="summary-line"><span class="label">Registration — ' +
-            escapeHtml(nm) +
-            ' <small class="summary-line-detail">(one-time, first IMA camp if applicable)</small></span><span class="val">' +
-            fmt(rf) +
-            '</span></div>';
-        });
-      }
+      });
+    }
+    if (shirtTotal > 0) {
+      shirtBillCamperIds.forEach(function (cid) {
+        const nm = getCamperNameById(cid);
+        html +=
+          '<div class="summary-line"><span class="label">Extra camp T-shirt — ' +
+          escapeHtml(nm) +
+          '</span><span class="val">' +
+          fmt(shirtUnit) +
+          '</span></div>';
+      });
     }
     lines.innerHTML = html;
-    const grand = Number(campTotal) + Number(reg);
+    const grand = Number(campTotal) + Number(reg) + Number(shirtTotal);
+    lastSummaryGrandDollars = grand;
     document.getElementById('total-amount').textContent = fmt(grand);
-    btn.disabled = false;
+    if (fwConflictMsgs.length) {
+      msg.className = 'msg error';
+      msg.textContent = fwConflictMsgs[0];
+      btn.disabled = true;
+    } else {
+      btn.disabled = false;
+    }
     persistEnrollLocal();
   }
 
   function buildWeekCamperCheckboxes(weekId, mode) {
     const wrap = document.createElement('div');
     wrap.className = 'week-camper-row week-kids-checkboxes';
-    if (guestMode || !session || !parentCampers.length) return wrap;
+    if (!session || !parentCampers.length) return wrap;
+    const wObj = weeksPayload.find(function (x) {
+      return String(x.id) === String(weekId);
+    });
+    const weekBlocked = !!(wObj && (wObj.disabled || wObj.is_full));
     const lab = document.createElement('span');
     lab.className = 'wkc-label';
     lab.textContent = mode === 'full' ? 'Children in this week (full week)' : 'Children for these days';
@@ -2313,13 +3407,42 @@
       row.className = 'week-kid-cb';
       const cb = document.createElement('input');
       cb.type = 'checkbox';
-      const st = map[wk];
-      cb.checked = !!(st && st.has(cid));
+      let st = map[wk];
+      const conflictMsg = mode === 'full' ? fullWeekPaidDayConflictMessage(weekId, cid) : '';
+      if (mode === 'full' && conflictMsg) {
+        if (st && st.has(cid)) {
+          st.delete(cid);
+          if (!st.size) delete map[wk];
+          st = map[wk];
+        }
+        row.classList.add('week-kid-cb--conflict');
+        cb.disabled = true;
+        cb.checked = false;
+        row.title = conflictMsg;
+      } else {
+        cb.checked = !!(st && st.has(cid));
+        cb.disabled = weekBlocked;
+        row.title = '';
+      }
       cb.addEventListener('change', function () {
+        if (enrollDomApplyLock || weekBlocked) return;
+        if (mode === 'full' && fullWeekPaidDayConflictMessage(weekId, cid)) {
+          cb.checked = false;
+          const msgEl = document.getElementById('msg');
+          if (msgEl) {
+            msgEl.className = 'msg error';
+            msgEl.textContent = fullWeekPaidDayConflictMessage(weekId, cid);
+          }
+          return;
+        }
         if (!map[wk]) map[wk] = new Set();
         const s = map[wk];
-        if (cb.checked) s.add(cid);
-        else s.delete(cid);
+        if (cb.checked) {
+          s.add(cid);
+          if (mode === 'full') clearDailyForCamperWeek(wk, cid);
+        } else {
+          s.delete(cid);
+        }
         if (!s.size) {
           delete map[wk];
           if (mode === 'daily') delete selectedByWeek[wk];
@@ -2334,20 +3457,23 @@
       sp.textContent = c.first_name + ' ' + c.last_name;
       row.appendChild(cb);
       row.appendChild(sp);
+      if (mode === 'full' && conflictMsg) {
+        const hint = document.createElement('small');
+        hint.className = 'week-kid-cb-conflict';
+        hint.textContent = conflictMsg;
+        row.appendChild(hint);
+      }
       wrap.appendChild(row);
     });
     return wrap;
   }
 
   function adjustFullWeek(wid, delta) {
-    if (session && !guestMode) return;
+    if (session) return;
     const w = weeksPayload.find(function (x) {
-      return x.id === wid;
+      return String(x.id) === String(wid);
     });
     if (!w || w.disabled || w.is_full) return;
-    if (delta > 0 && !guestMode && session) {
-      if (!parentCampers.length || !camperIdByWeek[wid]) return;
-    }
     const cur = fullWeekQty[wid] || 0;
     const next = Math.max(0, Math.min(1, cur + delta));
     fullWeekQty[wid] = next;
@@ -2356,11 +3482,12 @@
   }
 
   function adjustDailyKids(wid, delta) {
-    if (session && !guestMode) return;
+    if (session) return;
+    const w = weeksPayload.find(function (x) {
+      return String(x.id) === String(wid);
+    });
+    if (w && (w.disabled || w.is_full)) return;
     const cur = getDailyKids(wid);
-    if (delta > 0 && !guestMode && session) {
-      if (!parentCampers.length || !camperIdByWeek[wid]) return;
-    }
     const next = Math.max(0, Math.min(1, cur + delta));
     dailyKidsByWeek[wid] = next;
     if (next < 1) delete selectedByWeek[wid];
@@ -2387,6 +3514,7 @@
   }
 
   function renderFullWeeks() {
+    pruneConflictingFullWeekSelections();
     const mount = document.getElementById('weeks-mount-full');
     const loadEl = document.getElementById('weeks-loading-full');
     if (!mount) return;
@@ -2395,11 +3523,13 @@
       mount.innerHTML = '<p class="empty-state">No weeks available.</p>';
       return;
     }
+    enrollDomApplyLock = true;
+    try {
     mount.innerHTML = '';
     const grid = document.createElement('div');
     grid.className = 'week-cards-grid';
     const wr = testPriceMode ? 1 : pricingPreview.weekRate || weekRateClient();
-    const signedInParent = !!(session && !guestMode && parentCampers.length > 0);
+    const signedInParent = !!(session && parentCampers.length > 0);
     weeksPayload.forEach(function (w) {
       const wk = String(w.id);
       const full = w.disabled || w.is_full;
@@ -2418,17 +3548,13 @@
       left.innerHTML =
         '<div class="week-card-title">' +
         escapeHtml(w.label) +
-        '</div><div class="week-card-dates">' +
-        escapeHtml(String(w.start_date)) +
-        ' – ' +
-        escapeHtml(String(w.end_date)) +
         '</div>' +
         weekChildContextHtml(w.id);
       head.appendChild(left);
       if (full) {
         const b = document.createElement('span');
-        b.className = 'full-badge';
-        b.textContent = 'FULL';
+        b.className = 'full-badge sold-out-badge';
+        b.textContent = 'Sold out';
         head.appendChild(b);
       }
       card.appendChild(head);
@@ -2483,6 +3609,9 @@
       grid.appendChild(card);
     });
     mount.appendChild(grid);
+    } finally {
+      enrollDomApplyLock = false;
+    }
   }
 
   function renderDailyWeeks() {
@@ -2494,9 +3623,11 @@
       mount.innerHTML = '<p class="empty-state">No weeks available.</p>';
       return;
     }
+    enrollDomApplyLock = true;
+    try {
     mount.innerHTML = '';
     const dr = testPriceMode ? 1 : pricingPreview.dayRate || dayRateClient();
-    const signedInParent = !!(session && !guestMode && parentCampers.length > 0);
+    const signedInParent = !!(session && parentCampers.length > 0);
     weeksPayload.forEach(function (w) {
       const wk = String(w.id);
       const weekFull = w.disabled || w.is_full;
@@ -2509,18 +3640,14 @@
         '<div><div class="wn">' +
         escapeHtml(w.label) +
         '</div><div class="week-dates-label">' +
-        escapeHtml(String(w.start_date)) +
-        ' – ' +
-        escapeHtml(String(w.end_date)) +
-        ' · ' +
         fmt(dr) +
         '/day</div>' +
         weekChildContextHtml(w.id) +
         '</div>';
       if (weekFull) {
         const b = document.createElement('span');
-        b.className = 'full-badge';
-        b.textContent = 'FULL';
+        b.className = 'full-badge sold-out-badge';
+        b.textContent = 'Sold out';
         head.appendChild(b);
       }
       block.appendChild(head);
@@ -2623,13 +3750,23 @@
             cb.type = 'checkbox';
             const st0 = getDayCamperSetMain(wk, d.id);
             cb.checked = !!(st0 && st0.has(cid));
+            cb.disabled = dayBlocked;
             cb.addEventListener('click', function (ev) {
               ev.stopPropagation();
             });
             cb.addEventListener('change', function () {
+              if (enrollDomApplyLock) return;
               const set = ensureDayCamperSetMain(wk, d.id);
-              if (cb.checked) set.add(cid);
-              else set.delete(cid);
+              if (cb.checked) {
+                set.add(cid);
+                const fws = fullWeekCampersByWeek[wk];
+                if (fws && fws.has(cid)) {
+                  fws.delete(cid);
+                  if (!fws.size) delete fullWeekCampersByWeek[wk];
+                }
+              } else {
+                set.delete(cid);
+              }
               if (!set.size) {
                 const map = ensureDailyPerDayMapMain(wk);
                 delete map[String(d.id)];
@@ -2637,6 +3774,7 @@
               }
               refreshMainDayBtn();
               persistEnrollLocal();
+              updateSummary();
               refreshPricingPreview();
             });
             const sp = document.createElement('span');
@@ -2645,13 +3783,8 @@
             row.appendChild(sp);
             panel.appendChild(row);
           });
-          const meta = document.createElement('div');
-          meta.className = 'day-chip-meta';
-          meta.style.textAlign = 'left';
-          meta.textContent = enrolled + '/' + cap + (atCap ? ' FULL' : '');
           col.appendChild(btn);
           col.appendChild(panel);
-          col.appendChild(meta);
           chips.appendChild(col);
         });
       } else {
@@ -2672,17 +3805,16 @@
           });
           const sel = selectedByWeek[wk];
           if (sel && sel.has(String(d.id))) btn.classList.add('on');
-          const meta = document.createElement('div');
-          meta.className = 'day-chip-meta';
-          meta.textContent = enrolled + '/' + cap;
           col.appendChild(btn);
-          col.appendChild(meta);
           chips.appendChild(col);
         });
       }
       block.appendChild(chips);
       mount.appendChild(block);
     });
+    } finally {
+      enrollDomApplyLock = false;
+    }
   }
 
   async function loadWeeks() {
@@ -2708,22 +3840,23 @@
 
   function showAuthPanels() {
     const out = document.getElementById('state-signed-out');
-    const g = document.getElementById('state-guest');
     const inEl = document.getElementById('state-signed-in');
     const headerBar = document.getElementById('header-auth-bar');
-    if (!out || !g || !inEl) return;
+    if (!out || !inEl) return;
     out.style.display = 'none';
-    g.style.display = 'none';
     inEl.style.display = 'none';
-    if (guestMode) {
-      g.style.display = 'block';
-    } else if (session) {
+    if (session) {
       inEl.style.display = 'block';
+      const errBanner = document.getElementById('auth-config-err');
+      if (errBanner) {
+        errBanner.style.display = 'none';
+        errBanner.textContent = '';
+      }
     } else {
       out.style.display = 'block';
     }
     if (headerBar) {
-      headerBar.hidden = !(session && !guestMode);
+      headerBar.hidden = !session;
     }
   }
 
@@ -2770,18 +3903,44 @@
       await IMA.getSupabase();
       session = (await IMA.getSession()) || null;
     } catch (e) {
-      guestMode = true;
       session = null;
+      confirmedEnrollmentsCache = [];
+      try {
+        localStorage.removeItem('ima_post_checkout_clear_enroll');
+        sessionStorage.removeItem('ima_post_checkout_clear_enroll');
+      } catch (eClr) {}
       wipeRegEnrollStorage();
+      const errBanner = document.getElementById('auth-config-err');
+      if (errBanner) {
+        errBanner.textContent =
+          e.message || 'Could not load sign-in. Check your connection and refresh the page.';
+        errBanner.style.display = 'block';
+      }
       showAuthPanels();
-      wireGuestInputs();
       refreshPricingPreview();
+      applyScheduleTabFromUrl();
       return;
     }
-    guestMode = false;
+    {
+      const errBanner = document.getElementById('auth-config-err');
+      if (errBanner) {
+        errBanner.style.display = 'none';
+        errBanner.textContent = '';
+      }
+    }
     if (session) {
       await loadParentCampers();
+      await refreshConfirmedEnrollmentsFromServer();
+      applyPostCheckoutEnrollClearIfFlag();
+      restoreEnrollLocal();
+      hydrateSelectionFromConfirmedEnrollments();
+      refreshScheduleUiAfterEnrollStorageChange();
     } else {
+      confirmedEnrollmentsCache = [];
+      try {
+        localStorage.removeItem('ima_post_checkout_clear_enroll');
+        sessionStorage.removeItem('ima_post_checkout_clear_enroll');
+      } catch (eClr2) {}
       wipeRegEnrollStorage();
       showAuthPanels();
     }
@@ -2792,22 +3951,6 @@
     document.getElementById('logout-link-top').addEventListener('click', onLogoutClick);
     const logoutHeader = document.getElementById('logout-link-header');
     if (logoutHeader) logoutHeader.addEventListener('click', onLogoutClick);
-    document.getElementById('link-guest').addEventListener('click', function (ev) {
-      ev.preventDefault();
-      guestMode = true;
-      clearEnrollmentSelections();
-      showAuthPanels();
-      wireGuestInputs();
-      refreshPricingPreview();
-      updateRegFlowClasses();
-    });
-    document.getElementById('link-back-signin').addEventListener('click', function (ev) {
-      ev.preventDefault();
-      guestMode = false;
-      showAuthPanels();
-      refreshPricingPreview();
-      updateRegFlowClasses();
-    });
     document.getElementById('btn-toggle-add-camper').addEventListener('click', function () {
       const p = document.getElementById('add-camper-panel');
       const open = !p.classList.contains('is-open');
@@ -2854,22 +3997,8 @@
       }
     });
     showAuthPanels();
-    if (guestMode) wireGuestInputs();
     updateRegFlowClasses();
-    if (session && parentCampers.length > 0 && location.hash !== '#account') {
-      setRegTab('schedule');
-    }
-  }
-
-  function wireGuestInputs() {
-    ['g-first', 'g-last', 'g-email', 'g-age'].forEach(function (id) {
-      const el = document.getElementById(id);
-      if (!el || el.dataset.wired === '1') return;
-      el.dataset.wired = '1';
-      el.addEventListener('input', function () {
-        refreshPricingPreview();
-      });
-    });
+    applyScheduleTabFromUrl();
   }
 
   async function startCheckout() {
@@ -2888,44 +4017,69 @@
       updateSummary();
     }
 
-    if (STRIPE_PK.indexOf('REPLACE') !== -1) {
+    let stripePk = '';
+    try {
+      stripePk = await IMA.getStripePublishableKey();
+    } catch (eCfg) {
+      showCheckoutErr('Could not load site configuration.');
+      return;
+    }
+    if (!stripePk) {
       if (msg) {
         msg.className = 'msg warning';
-        msg.textContent = 'Configure Stripe publishable key.';
+        msg.textContent =
+          'Set STRIPE_PUBLISHABLE_KEY (or NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY) in Vercel with your Stripe publishable key, then redeploy.';
       }
       return;
     }
+    if (session && session.access_token) {
+      await refreshPricingPreview();
+    }
+    if (session) pruneConflictingFullWeekSelections();
     const bookings = collectBookings();
-    if (!bookings.length) return;
+    var fwBlock = getFullWeekPaidDayConflictMessages();
+    if (fwBlock.length) {
+      showCheckoutErr(fwBlock[0]);
+      return;
+    }
+    var hasShirtCheckout =
+      session &&
+      parentCampers.length &&
+      parentCampers.some(function (c) {
+        return extraShirtChargesThisCheckout(c.id);
+      });
+    if (!bookings.length && !hasShirtCheckout) return;
 
     const headers = { 'Content-Type': 'application/json' };
     if (session && session.access_token) headers['Authorization'] = 'Bearer ' + session.access_token;
 
+    const ids = [...new Set(bookings.map(function (b) { return b.camperId; }).filter(Boolean))];
+    const regMap = {};
+    const shirtMap = {};
+    ids.forEach(function (cid) {
+      const ck = String(cid);
+      regMap[ck] = registrationFeeAppliesToCamper(cid);
+    });
+    if (session && parentCampers.length) {
+      parentCampers.forEach(function (c) {
+        const ck = String(c.id);
+        shirtMap[ck] = !!(extraShirtByCamper[ck] || extraShirtByCamper[c.id]);
+      });
+    } else {
+      ids.forEach(function (cid) {
+        const ck = String(cid);
+        shirtMap[ck] = !!(extraShirtByCamper[ck] || extraShirtByCamper[cid]);
+      });
+    }
     const body = {
       bookings: bookings,
       testPricing: testPriceMode,
-    };
-    if (guestMode) {
-      body.guest = {
-        email: document.getElementById('g-email').value.trim(),
-        firstName: document.getElementById('g-first').value.trim(),
-        lastName: document.getElementById('g-last').value.trim(),
-        age: document.getElementById('g-age').value,
-      };
-      const guestIsMember = !!document.getElementById('guest-reg-fee-cb').checked;
-      body.guestRegistrationFee = !guestIsMember;
-      body.imaMember = guestIsMember;
-    } else {
-      const ids = [...new Set(bookings.map(function (b) { return b.camperId; }).filter(Boolean))];
-      const regMap = {};
-      ids.forEach(function (cid) {
-        regMap[cid] = registrationFeeAppliesToCamper(cid);
-      });
-      body.registrationFeeForCamper = regMap;
-      body.imaMember = ids.some(function (cid) {
+      registrationFeeForCamper: regMap,
+      extraShirtByCamper: shirtMap,
+      imaMember: ids.some(function (cid) {
         return !registrationFeeAppliesToCamper(cid);
-      });
-    }
+      }),
+    };
 
     if (btn) {
       btn.classList.add('loading');
@@ -2933,36 +4087,90 @@
     }
     if (msg) msg.className = 'msg';
 
-    let stripe;
-    try {
-      stripe = window.Stripe(STRIPE_PK);
-    } catch (e) {
-      showCheckoutErr(e.message);
+    if (typeof window.Stripe !== 'function') {
       clearCheckoutLoading();
+      showCheckoutErr(
+        'Stripe could not load (js.stripe.com blocked or failed). Turn off ad blockers for this page, check your network, refresh, and try again.'
+      );
       return;
     }
 
+    let stripe;
+    try {
+      stripe = window.Stripe(stripePk);
+    } catch (e) {
+      clearCheckoutLoading();
+      showCheckoutErr(e.message);
+      return;
+    }
+
+    const checkoutFetchMs = 120000;
+    const ac = new AbortController();
+    const fetchTid = setTimeout(function () {
+      ac.abort();
+    }, checkoutFetchMs);
     try {
       const res = await fetch(API_CHECKOUT, {
         method: 'POST',
         headers: headers,
         body: JSON.stringify(body),
+        signal: ac.signal,
       });
       const data = await res.json().catch(function () {
         return {};
       });
       if (!res.ok) throw new Error(data.error || 'Server error ' + res.status);
+      if (!data.sessionId || typeof data.sessionId !== 'string') {
+        throw new Error(
+          'Checkout started but no Stripe session was returned. Open DevTools → Network, find create-checkout-session, and check the response (or contact IMA).'
+        );
+      }
+      if (data.totals != null && data.totals.total != null) {
+        const serverT = Number(data.totals.total);
+        const clientT = Number(lastSummaryGrandDollars);
+        if (Number.isFinite(serverT) && Number.isFinite(clientT) && Math.abs(serverT - clientT) > 0.02) {
+          await refreshPricingPreview();
+          throw new Error(
+            'Your order total was updated to match what you will pay in Stripe ($' +
+              serverT.toFixed(2) +
+              '). The summary has been refreshed — please review and tap checkout again.'
+          );
+        }
+      }
+      const hosted = data.checkoutUrl && /^https:\/\//i.test(String(data.checkoutUrl));
+      if (hosted) {
+        window.location.assign(String(data.checkoutUrl));
+        return;
+      }
       const out = await stripe.redirectToCheckout({ sessionId: data.sessionId });
       if (out.error) throw new Error(out.error.message);
     } catch (err) {
-      showCheckoutErr(err.message || String(err));
       clearCheckoutLoading();
+      var errText =
+        err && err.name === 'AbortError'
+          ? 'Checkout timed out waiting for the server. Check your connection and try again. If this keeps happening, contact IMA.'
+          : err.message || String(err);
+      showCheckoutErr(errText);
+    } finally {
+      clearTimeout(fetchTid);
     }
   }
 
   function initTestBar() {
     const bar = document.getElementById('test-price-bar');
     const btn = document.getElementById('test-price-toggle');
+    const dismiss = document.getElementById('test-price-dismiss');
+    const footLink = document.getElementById('footer-stripe-test-link');
+    if (footLink && typeof location !== 'undefined') {
+      try {
+        const u = new URL(location.pathname || '/', location.origin);
+        u.searchParams.set('test', 'true');
+        u.hash = 'schedule';
+        footLink.href = u.pathname + u.search + u.hash;
+      } catch (eU) {
+        footLink.href = '/?test=true#schedule';
+      }
+    }
     if (!urlTest || !bar || !btn) return;
     bar.hidden = false;
     bar.classList.add('is-visible');
@@ -2972,6 +4180,21 @@
       btn.textContent = testPriceMode ? 'Test $1: on' : 'Test $1: off';
       refreshPricingPreview();
     });
+    if (dismiss) {
+      dismiss.addEventListener('click', function () {
+        try {
+          localStorage.removeItem(LS_STRIPE_TEST_UI);
+        } catch (eR) {}
+        bar.hidden = true;
+        bar.classList.remove('is-visible');
+        try {
+          const u = new URL(location.href);
+          u.searchParams.delete('test');
+          u.searchParams.delete('stripe_test');
+          history.replaceState(null, '', u.pathname + u.search + u.hash);
+        } catch (eH) {}
+      });
+    }
   }
 
   document.getElementById('btn-enroll-full').addEventListener('click', function () {
@@ -2980,11 +4203,12 @@
   document.getElementById('btn-enroll-daily').addEventListener('click', function () {
     setEnrollmentType('daily');
   });
-  document.getElementById('guest-reg-fee-cb').addEventListener('change', function () {
-    regFeeIncludeByCamper[REG_FEE_GUEST_KEY] = !this.checked;
-    updateSummary();
-  });
   document.getElementById('checkout-btn').addEventListener('click', startCheckout);
+
+  /** Camp registration tab / #schedule only after sign-in + ≥1 child. */
+  function canUseCampScheduleTab() {
+    return !!(session && parentCampers.length > 0);
+  }
 
   function setRegTab(which) {
     var account = document.getElementById('panel-account');
@@ -2993,6 +4217,9 @@
     var t2 = document.getElementById('tab-schedule');
     if (!account || !schedule || !t1 || !t2) return;
     var isSchedule = which === 'schedule';
+    if (isSchedule && !canUseCampScheduleTab()) {
+      isSchedule = false;
+    }
     if (which === 'account') {
       persistEnrollLocal();
     }
@@ -3001,7 +4228,9 @@
     t1.setAttribute('aria-selected', String(!isSchedule));
     t2.setAttribute('aria-selected', String(isSchedule));
     if (isSchedule) {
-      restoreEnrollLocal();
+      /* Do not restore here: restore wipes memory then reapplies storage; stale/partial
+         sessionStorage (e.g. vs localStorage) made weekly picks disappear when toggling
+         tabs or modes. Draft is loaded once after bootAuth; persist keeps it in sync. */
       updateEnrollmentGate();
       updateSummary();
       refreshPricingPreview();
@@ -3023,6 +4252,24 @@
     } catch (eH) {}
   }
 
+  /**
+   * #schedule in the URL must not open camp registration before auth (shared links on mobile).
+   * Signed-in parents with no children stay on My kids until they add a camper.
+   */
+  function applyScheduleTabFromUrl() {
+    if (location.hash === '#schedule') {
+      if (!canUseCampScheduleTab()) {
+        setRegTab('account');
+        return;
+      }
+      setRegTab('schedule');
+      return;
+    }
+    if (session && parentCampers.length > 0 && location.hash !== '#account') {
+      setRegTab('schedule');
+    }
+  }
+
   function initRegTabs() {
     var t1 = document.getElementById('tab-account');
     var t2 = document.getElementById('tab-schedule');
@@ -3036,23 +4283,60 @@
         setRegTab('schedule');
       });
     }
-    if (location.hash === '#schedule') {
-      setRegTab('schedule');
-    }
     window.addEventListener('hashchange', function () {
-      if (location.hash === '#schedule') setRegTab('schedule');
-      else if (location.hash === '#account' || location.hash === '') setRegTab('account');
+      if (location.hash === '#schedule') {
+        if (!canUseCampScheduleTab()) {
+          setRegTab('account');
+          return;
+        }
+        setRegTab('schedule');
+      } else if (location.hash === '#account' || location.hash === '') {
+        setRegTab('account');
+      }
     });
   }
 
   initRegTabs();
+
+  var pricingRefreshDebounce = null;
+  function schedulePricingRefreshFromNav() {
+    clearTimeout(pricingRefreshDebounce);
+    pricingRefreshDebounce = setTimeout(function () {
+      if (session && session.access_token) refreshPricingPreview();
+    }, 400);
+  }
+  window.addEventListener('pageshow', function () {
+    applyPostCheckoutEnrollClearIfFlag();
+    schedulePricingRefreshFromNav();
+    if (session && session.access_token) {
+      refreshConfirmedEnrollmentsFromServer().then(function () {
+        hydrateSelectionFromConfirmedEnrollments();
+        try {
+          refreshScheduleUiAfterEnrollStorageChange();
+        } catch (ePs) {}
+      });
+    }
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') {
+      try {
+        persistEnrollLocal();
+      } catch (eP) {}
+    } else if (document.visibilityState === 'visible') {
+      schedulePricingRefreshFromNav();
+    }
+  });
+  window.addEventListener('pagehide', function () {
+    try {
+      persistEnrollLocal();
+    } catch (eH) {}
+  });
 
   loadWeeks()
     .then(function () {
       return bootAuth();
     })
     .then(function () {
-      restoreEnrollLocal();
       return refreshPricingPreview();
     });
   initTestBar();

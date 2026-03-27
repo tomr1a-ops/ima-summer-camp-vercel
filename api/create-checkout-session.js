@@ -5,6 +5,7 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY, { apiVersion: ST
 const { serviceClient } = require('./lib/supabase');
 const { getUserFromRequest, upsertParentProfile } = require('./lib/auth');
 const { dayRate, weekRate, registrationFee, extraCampShirt } = require('./lib/pricing');
+/** Full-week bookings that overlap a camper's already-confirmed days fail here with a specific message (see validateBooking in ./lib/capacity). */
 const { validateBooking } = require('./lib/capacity');
 const { sendCheckoutStartedAdminNotify } = require('./lib/email');
 const { formatMoney } = require('./lib/booking-email-summary');

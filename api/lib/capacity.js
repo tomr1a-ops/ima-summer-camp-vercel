@@ -40,11 +40,22 @@ async function camperHasEnrollmentInWeek(sb, weekId, camperId, excludeEnrollment
   return (data || []).length > 0;
 }
 
+/** e.g. "Monday Jun 8" from ISO date (YYYY-MM-DD). */
+function formatConflictDayFromIso(dateStr) {
+  if (!dateStr) return 'a day';
+  const p = String(dateStr).split('-');
+  const dt = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  if (Number.isNaN(dt.getTime())) return 'a day';
+  const wd = dt.toLocaleDateString('en-US', { weekday: 'long' });
+  const md = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `${wd} ${md}`.replace(/,\s*/g, ' ').trim();
+}
+
 /**
- * True if any proposed day is already covered by a confirmed enrollment for this camper/week
- * (excluding one row when editing via PUT).
+ * First camp day (chronological) that is both proposed and already confirmed for this camper/week.
+ * Used for full-week vs partial-paid messaging.
  */
-async function proposedOverlapsConfirmedDays(sb, weekId, camperId, proposedDayIds, excludeEnrollmentId) {
+async function firstConfirmedOverlapDay(sb, weekId, camperId, proposedDayIds, excludeEnrollmentId) {
   let q = sb
     .from('enrollments')
     .select('id,day_ids')
@@ -55,12 +66,27 @@ async function proposedOverlapsConfirmedDays(sb, weekId, camperId, proposedDayId
   const { data, error } = await q;
   if (error) throw error;
   const proposed = new Set((proposedDayIds || []).map((id) => String(id)));
+  const confirmedDayIds = new Set();
   for (const r of data || []) {
     for (const d of r.day_ids || []) {
-      if (proposed.has(String(d))) return true;
+      confirmedDayIds.add(String(d));
     }
   }
-  return false;
+  const allDays = await loadOrderedDaysForWeek(sb, weekId);
+  for (const d of allDays) {
+    const id = String(d.id);
+    if (proposed.has(id) && confirmedDayIds.has(id)) return d;
+  }
+  return null;
+}
+
+/**
+ * True if any proposed day is already covered by a confirmed enrollment for this camper/week
+ * (excluding one row when editing via PUT).
+ */
+async function proposedOverlapsConfirmedDays(sb, weekId, camperId, proposedDayIds, excludeEnrollmentId) {
+  const d = await firstConfirmedOverlapDay(sb, weekId, camperId, proposedDayIds, excludeEnrollmentId);
+  return d != null;
 }
 
 async function loadOrderedDaysForWeek(sb, weekId) {
@@ -137,11 +163,23 @@ async function validateBooking(sb, { weekId, dayIds, camperId, excludeEnrollment
     }
   }
 
-  const overlapsConfirmed = await proposedOverlapsConfirmedDays(sb, weekId, camperId, ids, excludeEnrollmentId);
-  if (overlapsConfirmed) {
-    const err = new Error(
-      'This child is already registered for one or more of these days this week. Uncheck days you already paid for, or contact IMA to change a registration.'
-    );
+  const overlapDay = await firstConfirmedOverlapDay(sb, weekId, camperId, ids, excludeEnrollmentId);
+  if (overlapDay) {
+    let message =
+      'This child is already registered for one or more of these days this week. Uncheck days you already paid for, or contact IMA to change a registration.';
+    if (pricingMode === 'full_week') {
+      const { data: camper, error: camperErr } = await sb
+        .from('campers')
+        .select('first_name')
+        .eq('id', camperId)
+        .maybeSingle();
+      const fn =
+        !camperErr && camper && camper.first_name && String(camper.first_name).trim()
+          ? String(camper.first_name).trim()
+          : 'This child';
+      message = `${fn} already has ${formatConflictDayFromIso(overlapDay.date)} booked. Remove that day or choose individual days instead.`;
+    }
+    const err = new Error(message);
     err.statusCode = 400;
     throw err;
   }
@@ -213,6 +251,7 @@ module.exports = {
   countDistinctCampersInWeek,
   camperHasEnrollmentInWeek,
   proposedOverlapsConfirmedDays,
+  firstConfirmedOverlapDay,
   validateBooking,
   validateAddedDaysOnly,
   syncConfirmedDayCounts,
