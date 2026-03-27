@@ -1,7 +1,7 @@
 const getRawBody = require('raw-body');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { confirmStripeSession } = require('./lib/confirm-stripe-session');
-const { sendResend } = require('./lib/email');
+const { sendCampPaymentEmails } = require('./lib/email');
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
@@ -33,26 +33,9 @@ module.exports = async (req, res) => {
     const session = event.data.object;
     try {
       const result = await confirmStripeSession(stripe, session);
-      if (result.ok && !result.already) {
-        const email = result.email || session.customer_email || '';
-        const notify = ['tom@imaimpact.com', 'coachshick@imaimpact.com'];
-        if (email) {
-          await sendResend({
-            to: email,
-            subject: 'IMA Summer Camp — payment received',
-            text:
-              'Thank you! Your summer camp payment went through.\n\n' +
-              'If you checked out as a guest, create a parent account with the same email to manage bookings:\n' +
-              (process.env.BASE_URL || '').replace(/\/$/, '') +
-              '/register.html\n\n' +
-              '— Impact Martial Athletics',
-          });
-        }
-        await sendResend({
-          to: notify,
-          subject: 'IMA — new camp registration (paid)',
-          text: `Checkout completed.\nCustomer email: ${email || 'n/a'}\nSession: ${session.id}`,
-        });
+      if (result.ok) {
+        /** Receipt + staff notify: loads enrollments by stripe_session_id + Stripe metadata (see lib/email.js). */
+        await sendCampPaymentEmails(stripe, session, result);
       }
     } catch (e) {
       console.error('confirmStripeSession', e);
