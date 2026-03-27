@@ -155,10 +155,9 @@ async function sendCampPaymentEmails(stripe, session, result) {
     }
   }
 
-  const staffSubject = `${subject} [Staff · ${customerEmail || 'no email'}]`;
   const staffText =
-    `Customer: ${customerEmail || 'n/a'}\nSession: ${session.id || 'n/a'}\n\n` + textBody;
-  const staffResults = await sendResendToStaff(staffSubject, staffText, htmlBody);
+    `Customer: ${customerEmail || 'n/a'}\nStripe session: ${session.id || 'n/a'}\n\n` + textBody;
+  const staffResults = await sendResendToStaff(subject, staffText, htmlBody);
   const staffOk = staffResults.length > 0 && staffResults.every((x) => x.ok && !x.skipped);
 
   if (customerOk && staffOk) {
