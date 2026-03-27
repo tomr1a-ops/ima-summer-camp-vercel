@@ -6,11 +6,22 @@ const RESEND_FETCH_TIMEOUT_MS = 15000;
 /** Default From when RESEND_FROM is unset (Resend onboarding domain). */
 const DEFAULT_RESEND_FROM = 'IMA Summer Camp <onboarding@resend.dev>';
 
+/**
+ * Single place to read the secret (trim whitespace/newlines from Vercel paste mistakes).
+ * Only RESEND_API_KEY is supported — do not use public env vars for API keys.
+ */
+function resolveResendApiKey() {
+  const raw = process.env.RESEND_API_KEY;
+  if (raw == null || raw === '') return '';
+  const k = String(raw).trim();
+  return k;
+}
+
 async function sendResend({ to, subject, text, html }) {
-  const key = process.env.RESEND_API_KEY;
+  const key = resolveResendApiKey();
   if (!key) {
     console.error(
-      '[email] RESEND_API_KEY is not set — no emails will send. Add it in Vercel → Project → Settings → Environment Variables (Production), then redeploy.'
+      '[email] RESEND_API_KEY is not set or empty after trim — no emails will send. Add RESEND_API_KEY in Vercel → Project → Environment Variables (Production), then redeploy.'
     );
     return { skipped: true, reason: 'missing_key' };
   }
@@ -46,7 +57,9 @@ async function sendResend({ to, subject, text, html }) {
       console.error('[email] Resend request timed out after', RESEND_FETCH_TIMEOUT_MS, 'ms');
       return { ok: false, error: 'Resend request timed out', status: 0 };
     }
-    throw e;
+    const msg = e && e.message ? String(e.message) : String(e);
+    console.error('[email] Resend fetch failed (network/runtime):', msg);
+    return { ok: false, error: msg, status: 0 };
   } finally {
     clearTimeout(tid);
   }
@@ -70,19 +83,20 @@ const CAMP_STAFF_NOTIFY = ['tom@imaimpact.com', 'coachshick@imaimpact.com'];
 const ADMIN_DASHBOARD_URL = 'https://ima-summer-camp.vercel.app/admin.html';
 
 /**
- * Staff notifications: one API call per address so one bad recipient does not hide the other,
- * and Resend errors are logged per inbox.
+ * Staff notifications: parallel sends so both inboxes get mail quickly; failures are isolated per recipient.
  */
 async function sendResendToStaff(subject, text, html) {
-  const out = [];
-  for (const to of CAMP_STAFF_NOTIFY) {
-    const r = await sendResend({ to, subject, text, html });
-    out.push({ to, ...r });
-    if (!r.ok && !r.skipped) {
-      console.error('[email] staff notify failed for', to, r.error || r.status);
-    }
-  }
-  return out;
+  const results = await Promise.all(
+    CAMP_STAFF_NOTIFY.map(async function (to) {
+      const r = await sendResend({ to, subject, text, html });
+      const row = { to, ...r };
+      if (!r.ok && !r.skipped) {
+        console.error('[email] staff notify failed for', to, r.error || r.status);
+      }
+      return row;
+    })
+  );
+  return results;
 }
 
 const META_SENT = 'camp_payment_emails_sent';
@@ -111,9 +125,19 @@ async function markCampPaymentEmailsSent(stripe, sessionId) {
 
 /**
  * When a parent opens Checkout (before payment): notify staff only.
- * Fire-and-forget from create-checkout-session.
+ * Callers should await this inside try/catch so serverless runtimes finish the HTTP work before freeze.
  */
 async function sendCheckoutStartedAdminNotify(payload) {
+  try {
+    return await sendCheckoutStartedAdminNotifyInner(payload);
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    console.error('[email] sendCheckoutStartedAdminNotify unexpected error:', msg, e && e.stack ? e.stack : '');
+    return [{ to: 'all', ok: false, error: msg }];
+  }
+}
+
+async function sendCheckoutStartedAdminNotifyInner(payload) {
   const {
     parentName,
     parentEmail,
@@ -123,6 +147,13 @@ async function sendCheckoutStartedAdminNotify(payload) {
     intendedTotal,
     registrationIncluded,
   } = payload;
+  const keyPresent = !!resolveResendApiKey();
+  console.log('[email] checkout-started notify begin', {
+    sessionId: sessionId || null,
+    batchId: batchId || null,
+    recipients: CAMP_STAFF_NOTIFY,
+    resendApiKeyConfigured: keyPresent,
+  });
   const subject = '🥊 IMA Camp — Checkout started (payment pending)';
   const lines = [
     'A parent opened Stripe Checkout — payment is not confirmed until Stripe completes the session.',
@@ -157,7 +188,32 @@ async function sendCheckoutStartedAdminNotify(payload) {
   <p><a href="${escapeHtml(ADMIN_DASHBOARD_URL)}" style="color:#0d9488">View in admin</a></p>
 </div>`;
 
-  return sendResendToStaff(subject, text, html);
+  const results = await sendResendToStaff(subject, text, html);
+  const okCount = results.filter(function (r) {
+    return r.ok && !r.skipped;
+  }).length;
+  const skipped = results.some(function (r) {
+    return r.skipped;
+  });
+  if (skipped) {
+    console.error('[email] checkout-started notify finished: SKIPPED (missing RESEND_API_KEY)', { sessionId });
+  } else if (okCount === results.length) {
+    console.log('[email] checkout-started notify success', {
+      sessionId,
+      sent: okCount,
+      resendIds: results.map(function (r) {
+        return r.id || null;
+      }),
+    });
+  } else {
+    console.error('[email] checkout-started notify partial or full failure', {
+      sessionId,
+      results: results.map(function (r) {
+        return { to: r.to, ok: r.ok, skipped: r.skipped, error: r.error || null };
+      }),
+    });
+  }
+  return results;
 }
 
 /**
@@ -258,6 +314,7 @@ module.exports = {
   sendCampPaymentEmails,
   sendResendToStaff,
   sendCheckoutStartedAdminNotify,
+  resolveResendApiKey,
   CAMP_STAFF_NOTIFY,
   DEFAULT_RESEND_FROM,
 };

@@ -558,18 +558,27 @@ module.exports = async (req, res) => {
     }
 
     const totalCents = campCentsTotal + regCentsTotal + shirtCentsTotal;
-    /** Do not await — Resend can stall; the browser must get session JSON immediately. */
-    void sendCheckoutStartedAdminNotify({
-      parentName: (profile && profile.full_name && String(profile.full_name).trim()) || '',
-      parentEmail: emailForStripe || 'n/a',
-      sessionId: session.id,
-      batchId,
-      cartLines: checkoutCartLines,
-      intendedTotal: totalCents / 100,
-      registrationIncluded: regCentsTotal > 0,
-    }).catch(function (notifyErr) {
-      console.warn('[email] checkout started notify:', notifyErr && notifyErr.message ? notifyErr.message : notifyErr);
-    });
+    /**
+     * Await staff email so Vercel/serverless does not freeze the isolate before Resend completes.
+     * Failures are swallowed — checkout response still returns 200.
+     */
+    try {
+      await sendCheckoutStartedAdminNotify({
+        parentName: (profile && profile.full_name && String(profile.full_name).trim()) || '',
+        parentEmail: emailForStripe || 'n/a',
+        sessionId: session.id,
+        batchId,
+        cartLines: checkoutCartLines,
+        intendedTotal: totalCents / 100,
+        registrationIncluded: regCentsTotal > 0,
+      });
+      console.log('[create-checkout-session] checkout-started admin notify completed after session', session.id);
+    } catch (notifyErr) {
+      console.error(
+        '[create-checkout-session] checkout-started admin notify error (non-fatal):',
+        notifyErr && notifyErr.message ? notifyErr.message : notifyErr
+      );
+    }
     const checkoutUrl = session.url || null;
     if (!checkoutUrl) {
       console.warn('create-checkout-session: Stripe session missing url; client will use redirectToCheckout only');
