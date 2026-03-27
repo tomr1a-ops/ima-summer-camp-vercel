@@ -1482,8 +1482,15 @@
     color: #fff;
     white-space: nowrap;
   }
-  /* IMA member checked = waive fee — hide $ (do not use on .reg-fee-shirt-row) */
-  .reg-fee-camper-row:not(.reg-fee-shirt-row):has(> input[type='checkbox']:checked) .reg-fee-amt {
+  .reg-fee-waived-badge {
+    color: var(--cyan);
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  /* Legacy: hide duplicate price if present when member checked */
+  .reg-fee-camper-row:not(.reg-fee-shirt-row):has(> input[type='checkbox']:checked) .reg-fee-amt.reg-fee-dollar-only {
     display: none;
   }
   .reg-fee-shirt-row .reg-fee-amt {
@@ -1616,8 +1623,13 @@
           gloves, which are required to be worn daily.
         </p>
         <ul class="reg-fee-bullets">
-          <li>Check if your child is an active IMA member (no registration fee will be charged)</li>
-          <li>If left unchecked, the registration fee will be added at checkout</li>
+          <li>
+            Each child is charged a <strong>one-time $65 registration fee</strong> by default (shirt and gloves bundle).
+          </li>
+          <li>
+            Check <strong>IMA Member (no registration fee)</strong> for any child who is an active IMA member — that removes the fee for them.
+          </li>
+          <li>Leave the box unchecked for children who are not IMA members; the fee is added at checkout.</li>
         </ul>
         <div id="reg-fee-camper-mount" class="reg-fee-camper-mount" aria-label="Registration options per child"></div>
       </div>
@@ -2102,8 +2114,11 @@
       .map(function (c) {
         const nm = escapeHtml(String(c.first_name + ' ' + c.last_name).trim());
         const id = escapeHtml(String(c.id));
-        const chk = getRegFeeInclude(c.id) ? '' : ' checked';
-        const amt = escapeHtml(fmt(rfNum));
+        const feeApplies = getRegFeeInclude(c.id);
+        const chk = feeApplies ? '' : ' checked';
+        const feeRight = feeApplies
+          ? '<span class="reg-fee-amt">' + escapeHtml(fmt(rfNum)) + '</span>'
+          : '<span class="reg-fee-amt reg-fee-waived-badge">No charge</span>';
         const shirtChk = extraShirtByCamper[c.id] || extraShirtByCamper[String(c.id)] ? ' checked' : '';
         const shirtPaid = extraShirtAddonAlreadyPaid(c.id);
         const shirtRight = shirtPaid
@@ -2129,10 +2144,9 @@
           '"' +
           chk +
           ' />' +
-          '<span class="reg-fee-lbl">Check if your child is an <strong>active IMA member</strong> (no registration fee will be charged)</span>' +
-          '<span class="reg-fee-amt">' +
-          amt +
-          '</span></label>' +
+          '<span class="reg-fee-lbl"><strong>IMA Member</strong> (no registration fee)</span>' +
+          feeRight +
+          '</label>' +
           '<label class="' +
           shirtRowClass +
           '" for="shirt-cb-' +
@@ -3355,9 +3369,9 @@
         if (!registrationFeeAppliesToCamper(cid)) return;
         const nm = getCamperNameById(cid);
         html +=
-          '<div class="summary-line"><span class="label">Registration — ' +
+          '<div class="summary-line"><span class="label">Registration fee — ' +
           escapeHtml(nm) +
-          ' <small class="summary-line-detail">(one-time, first IMA camp if applicable)</small></span><span class="val">' +
+          ' <small class="summary-line-detail">(one-time; waived for IMA members)</small></span><span class="val">' +
           fmt(rf) +
           '</span></div>';
       });

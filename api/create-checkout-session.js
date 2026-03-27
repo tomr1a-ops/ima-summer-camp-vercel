@@ -25,6 +25,39 @@ function failCheckout(res, httpStatus, code, message, logDetail) {
   res.end(JSON.stringify({ error: message, code: code || 'ERROR' }));
 }
 
+/** Stable camper id key for maps (UUID casing differs between client and DB). */
+function normCamperKey(id) {
+  if (id == null) return '';
+  const s = String(id).trim();
+  return s ? s.toLowerCase() : '';
+}
+
+/**
+ * Stripe requires absolute success/cancel URLs. Prefer BASE_URL, then VERCEL_URL, then request Host.
+ */
+function publicSiteBaseUrl(req) {
+  const raw = (process.env.BASE_URL || '').trim().replace(/\/$/, '');
+  if (raw) {
+    if (/^https?:\/\//i.test(raw)) return raw;
+    return `https://${raw}`;
+  }
+  const vercel = (process.env.VERCEL_URL || '').trim().replace(/\/$/, '');
+  if (vercel) {
+    if (/^https?:\/\//i.test(vercel)) return vercel;
+    return `https://${vercel}`;
+  }
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '')
+    .split(',')[0]
+    .trim();
+  const proto = String(req.headers['x-forwarded-proto'] || 'https')
+    .split(',')[0]
+    .trim()
+    .replace(/:$/, '');
+  const p = proto === 'http' || proto === 'https' ? proto : 'https';
+  if (host) return `${p}://${host}`;
+  return '';
+}
+
 /**
  * index.html uses camelCase; older clients may send snake_case. Coerce dayIds if sent as object map.
  */
@@ -54,14 +87,15 @@ function normalizeIncomingBookings(rawBookings) {
     const pricingMode =
       pm === 'full_week' || pm === 'weekly' || pm === 'full' || pm === 'fullWeek' ? 'full_week' : 'daily';
 
-    if (weekId == null || String(weekId).trim() === '' || camperId == null || String(camperId).trim() === '') {
+    const ck = normCamperKey(camperId);
+    if (weekId == null || String(weekId).trim() === '' || !ck) {
       console.warn('[create-checkout-session] BOOKING_SKIP index=%s missing weekId/camperId keys=%j', i, Object.keys(b));
       continue;
     }
     const idList = [...new Set(dayIds.map((id) => String(id).trim()).filter(Boolean))];
     out.push({
       weekId: String(weekId).trim(),
-      camperId: String(camperId).trim(),
+      camperId: ck,
       dayIds: idList,
       pricingMode,
     });
@@ -86,7 +120,8 @@ function normalizeRegFeeChoice(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const out = {};
   Object.keys(raw).forEach((k) => {
-    out[String(k)] = raw[k];
+    const nk = normCamperKey(k);
+    if (nk) out[nk] = raw[k];
   });
   return out;
 }
@@ -97,16 +132,25 @@ function normalizeExtraShirtChoice(raw) {
   const out = {};
   Object.keys(raw).forEach((k) => {
     const v = raw[k];
-    if (v === true || v === 1 || v === 'true' || v === '1') out[String(k)] = true;
+    const nk = normCamperKey(k);
+    if (nk && (v === true || v === 1 || v === 'true' || v === '1')) out[nk] = true;
   });
   return out;
 }
 
-/** True = parent chose "IMA member" / waive fee for this camper (must match client: false = waive, true/omit = charge if not already paid). */
+/**
+ * Client sends registrationFeeForCamper[camperId]:
+ *   true  = charge $65 registration if not already paid (non–IMA member)
+ *   false = IMA member — waive registration for this checkout
+ * Missing key defaults to charge (same as true).
+ */
 function regFeeWaivedByParentChoice(regFeeChoice, camperId) {
   if (!regFeeChoice) return false;
-  const v = regFeeChoice[String(camperId)];
-  return v === false;
+  const v = regFeeChoice[normCamperKey(camperId)];
+  if (v == null) return false;
+  if (v === false || v === 0) return true;
+  if (typeof v === 'string' && (v.toLowerCase() === 'false' || v === '0')) return true;
+  return false;
 }
 
 async function readJsonBody(req) {
@@ -142,6 +186,12 @@ module.exports = async (req, res) => {
     body = await readJsonBody(req);
   } catch (parseErr) {
     return failCheckout(res, 400, 'INVALID_JSON', 'Invalid JSON', parseErr && parseErr.message ? parseErr.message : '');
+  }
+
+  try {
+    console.log('[create-checkout-session] incoming body', JSON.stringify(body));
+  } catch (logErr) {
+    console.log('[create-checkout-session] incoming body (could not stringify)', typeof body);
   }
 
   const { testPricing, imaMember, registrationFeeForCamper, extraShirtByCamper } = body;
@@ -319,7 +369,7 @@ module.exports = async (req, res) => {
     const n = (b.dayIds || []).length;
     const { data: week } = await sb.from('weeks').select('label').eq('id', b.weekId).single();
     const wlabel = week ? week.label : 'Week';
-    const crow = (camperShirtRows || []).find((r) => String(r.id) === String(b.camperId));
+    const crow = (camperShirtRows || []).find((r) => normCamperKey(r.id) === normCamperKey(b.camperId));
     const cname = crow
       ? `${crow.first_name || ''} ${crow.last_name || ''}`.trim() || 'Camper'
       : 'Camper';
@@ -376,7 +426,7 @@ module.exports = async (req, res) => {
   let shirtCentsTotal = 0;
   const shirtCamperIds = [];
   for (const cidStr of shirtIdsRequested) {
-    const row = (camperShirtRows || []).find((r) => String(r.id) === String(cidStr));
+    const row = (camperShirtRows || []).find((r) => normCamperKey(r.id) === normCamperKey(cidStr));
     if (!row || String(row.parent_id) !== String(user.id)) {
       return failCheckout(res, 403, 'SHIRT_FORBIDDEN', 'Invalid extra shirt selection', { camperId: cidStr });
     }
@@ -402,20 +452,34 @@ module.exports = async (req, res) => {
     checkoutCartLines.push(`Extra camp T-shirt — ${label2} — ${formatMoney(shirtDollars)}`);
   }
 
+  const baseUrl = publicSiteBaseUrl(req);
+  if (!baseUrl) {
+    return failCheckout(
+      res,
+      500,
+      'MISSING_BASE_URL',
+      'Server configuration error: could not determine the public site URL for Stripe redirects. Set BASE_URL in Vercel (e.g. https://ima-summer-camp.vercel.app).',
+    );
+  }
+
   for (const cid of uniqueCampers) {
     if (regFeeChoice && regFeeWaivedByParentChoice(regFeeChoice, cid)) continue;
     const paid = await hasRegistrationFeePaid(sb, cid);
     if (paid) continue;
-    if (!registrationCamperIds.includes(String(cid))) {
+    const cNorm = normCamperKey(cid);
+    if (!registrationCamperIds.some((x) => normCamperKey(x) === cNorm)) {
       console.error('[checkout] registration fee missing for camper', {
         cid: String(cid),
+        cNorm,
         registrationCamperIds,
         regFeeChoice,
       });
-      return json(res, 500, {
-        error:
-          'The registration fee could not be added to this checkout (server mismatch). Refresh the page and try again, or contact IMA if this persists.',
-      });
+      return failCheckout(
+        res,
+        500,
+        'REG_FEE_MISMATCH',
+        'The registration fee could not be added to this checkout (server mismatch). Refresh the page and try again, or contact IMA if this persists.',
+      );
     }
   }
 
@@ -432,7 +496,13 @@ module.exports = async (req, res) => {
       status: 'pending',
       checkout_batch_id: batchId,
     });
-    if (ie) return json(res, 500, { error: ie.message });
+    if (ie) {
+      console.error('[create-checkout-session] enrollment insert failed', ie);
+      return failCheckout(res, 500, 'ENROLLMENT_INSERT', ie.message || 'Could not create enrollment', {
+        code: ie.code,
+        details: ie.details,
+      });
+    }
   }
 
   if (!line_items.length) {
@@ -445,7 +515,6 @@ module.exports = async (req, res) => {
     );
   }
 
-  const baseUrl = (process.env.BASE_URL || '').replace(/\/$/, '');
   const emailForStripe = (profile && profile.email) || null;
   try {
     const sessionParams = {
@@ -517,8 +586,12 @@ module.exports = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('Stripe error:', err.message);
-    await sb.from('enrollments').delete().eq('checkout_batch_id', batchId);
-    return json(res, 500, { error: err.message });
+    console.error('[create-checkout-session] Stripe error:', err && err.message, err && err.stack);
+    try {
+      await sb.from('enrollments').delete().eq('checkout_batch_id', batchId);
+    } catch (delErr) {
+      console.error('[create-checkout-session] rollback delete failed', delErr);
+    }
+    return failCheckout(res, 500, 'STRIPE_ERROR', err && err.message ? err.message : String(err));
   }
 };
