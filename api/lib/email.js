@@ -17,7 +17,7 @@ function resolveResendApiKey() {
   return k;
 }
 
-async function sendResend({ to, subject, text, html }) {
+async function sendResend({ to, subject, text, html, bcc, cc }) {
   const key = resolveResendApiKey();
   if (!key) {
     console.error(
@@ -29,6 +29,24 @@ async function sendResend({ to, subject, text, html }) {
   if (!warnedDefaultFrom && !process.env.RESEND_FROM) {
     warnedDefaultFrom = true;
     console.warn('[email] RESEND_FROM not set — using', DEFAULT_RESEND_FROM);
+  }
+  const toList = Array.isArray(to) ? to : [to];
+  const payload = {
+    from,
+    to: toList,
+    subject,
+    text,
+  };
+  if (html) payload.html = html;
+  if (bcc != null && bcc !== '') {
+    const b = Array.isArray(bcc) ? bcc : [bcc];
+    const bf = b.map(String).map((s) => s.trim()).filter(Boolean);
+    if (bf.length) payload.bcc = bf;
+  }
+  if (cc != null && cc !== '') {
+    const c = Array.isArray(cc) ? cc : [cc];
+    const cf = c.map(String).map((s) => s.trim()).filter(Boolean);
+    if (cf.length) payload.cc = cf;
   }
   const ac = new AbortController();
   const tid = setTimeout(function () {
@@ -43,13 +61,7 @@ async function sendResend({ to, subject, text, html }) {
         Authorization: `Bearer ${key}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        from,
-        to: Array.isArray(to) ? to : [to],
-        subject,
-        text,
-        html: html || undefined,
-      }),
+      body: JSON.stringify(payload),
     });
   } catch (e) {
     const name = e && e.name;
@@ -83,50 +95,62 @@ const CAMP_STAFF_NOTIFY = ['tom@imaimpact.com', 'coachshick@imaimpact.com'];
 const ADMIN_DASHBOARD_URL = 'https://ima-summer-camp.vercel.app/admin.html';
 
 /**
- * Staff notifications: one Resend API call with both addresses (reliable on serverless vs parallel in-flight).
- * If the batch request fails, retries each address separately and logs each outcome.
+ * Staff notifications: match the parent-email pattern (single `to` string) first — Resend/onboarding
+ * often delivers that reliably; `to: [a,b]` can behave differently. Then sequential fallback per address.
  */
 async function sendResendToStaff(subject, text, html) {
   const recipients = [...CAMP_STAFF_NOTIFY];
+  const primary = recipients[0];
+  const rest = recipients.slice(1);
   console.log('[email] sendResendToStaff START', {
-    recipients,
+    primary,
+    alsoNotify: rest,
     subjectPreview: subject ? String(subject).slice(0, 72) : '',
   });
 
-  const batch = await sendResend({ to: recipients, subject, text, html });
-  if (batch.ok && !batch.skipped) {
-    console.log('[email] sendResendToStaff SUCCESS (one Resend email, multiple to:)', {
-      resendId: batch.id,
-      recipients,
+  if (primary && rest.length) {
+    const combined = await sendResend({
+      to: primary,
+      bcc: rest,
+      subject,
+      text,
+      html,
     });
-    return recipients.map(function (to) {
-      return { to, ok: true, id: batch.id };
-    });
-  }
-  if (batch.skipped) {
-    console.error('[email] sendResendToStaff SKIPPED (no RESEND_API_KEY)', { recipients });
-    return recipients.map(function (to) {
-      return { to, skipped: true, reason: batch.reason };
+    if (combined.ok && !combined.skipped) {
+      console.log('[email] sendResendToStaff SUCCESS (to + bcc, one API call)', {
+        resendId: combined.id,
+        to: primary,
+        bcc: rest,
+      });
+      return recipients.map(function (addr) {
+        return { to: addr, ok: true, id: combined.id };
+      });
+    }
+    if (combined.skipped) {
+      console.error('[email] sendResendToStaff SKIPPED (no RESEND_API_KEY)', { recipients });
+      return recipients.map(function (to) {
+        return { to, skipped: true, reason: combined.reason };
+      });
+    }
+    console.warn('[email] sendResendToStaff to+bcc failed — sequential fallback', {
+      status: combined.status,
+      error: combined.error,
     });
   }
 
-  console.warn('[email] sendResendToStaff batch failed — retrying per address', {
-    status: batch.status,
-    error: batch.error,
-    recipients,
-  });
-  const results = await Promise.all(
-    recipients.map(async function (to) {
-      const r = await sendResend({ to, subject, text, html });
-      const row = { to, ...r };
-      if (r.ok && !r.skipped) {
-        console.log('[email] sendResendToStaff per-address OK', to, r.id || '');
-      } else if (!r.skipped) {
-        console.error('[email] sendResendToStaff per-address FAIL', to, r.error || r.status);
-      }
-      return row;
-    })
-  );
+  const results = [];
+  for (let i = 0; i < recipients.length; i++) {
+    const addr = recipients[i];
+    console.log('[email] sendResendToStaff sequential', `${i + 1}/${recipients.length}`, addr);
+    const r = await sendResend({ to: addr, subject, text, html });
+    const row = { to: addr, ...r };
+    results.push(row);
+    if (r.ok && !r.skipped) {
+      console.log('[email] sendResendToStaff OK', addr, r.id || '');
+    } else if (!r.skipped) {
+      console.error('[email] sendResendToStaff FAIL', addr, r.status, r.error);
+    }
+  }
   return results;
 }
 
