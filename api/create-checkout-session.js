@@ -15,6 +15,59 @@ function json(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 
+/** Log + JSON error body (code helps client / support). */
+function failCheckout(res, httpStatus, code, message, logDetail) {
+  const detail = logDetail !== undefined ? logDetail : '';
+  console.error('[create-checkout-session]', code || 'ERROR', message, detail);
+  res.statusCode = httpStatus;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify({ error: message, code: code || 'ERROR' }));
+}
+
+/**
+ * index.html uses camelCase; older clients may send snake_case. Coerce dayIds if sent as object map.
+ */
+function normalizeIncomingBookings(rawBookings) {
+  if (!Array.isArray(rawBookings)) return [];
+  const out = [];
+  for (let i = 0; i < rawBookings.length; i++) {
+    const b = rawBookings[i];
+    if (!b || typeof b !== 'object') {
+      console.warn('[create-checkout-session] BOOKING_SKIP index=%s (not an object)', i);
+      continue;
+    }
+    const weekId = b.weekId != null ? b.weekId : b.week_id;
+    const camperId = b.camperId != null ? b.camperId : b.camper_id;
+    let dayIds = b.dayIds != null ? b.dayIds : b.day_ids;
+    if (!Array.isArray(dayIds)) {
+      if (dayIds && typeof dayIds === 'object') {
+        dayIds = Object.keys(dayIds)
+          .filter((k) => /^\d+$/.test(String(k)))
+          .sort((a, b) => Number(a) - Number(b))
+          .map((k) => dayIds[k]);
+      } else {
+        dayIds = [];
+      }
+    }
+    const pm = b.pricingMode != null ? b.pricingMode : b.pricing_mode;
+    const pricingMode =
+      pm === 'full_week' || pm === 'weekly' || pm === 'full' || pm === 'fullWeek' ? 'full_week' : 'daily';
+
+    if (weekId == null || String(weekId).trim() === '' || camperId == null || String(camperId).trim() === '') {
+      console.warn('[create-checkout-session] BOOKING_SKIP index=%s missing weekId/camperId keys=%j', i, Object.keys(b));
+      continue;
+    }
+    const idList = [...new Set(dayIds.map((id) => String(id).trim()).filter(Boolean))];
+    out.push({
+      weekId: String(weekId).trim(),
+      camperId: String(camperId).trim(),
+      dayIds: idList,
+      pricingMode,
+    });
+  }
+  return out;
+}
+
 async function hasRegistrationFeePaid(sb, camperId) {
   const { data, error } = await sb
     .from('enrollments')
@@ -42,7 +95,8 @@ function normalizeExtraShirtChoice(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const out = {};
   Object.keys(raw).forEach((k) => {
-    if (raw[k] === true) out[String(k)] = true;
+    const v = raw[k];
+    if (v === true || v === 1 || v === 'true' || v === '1') out[String(k)] = true;
   });
   return out;
 }
@@ -57,29 +111,25 @@ function regFeeWaivedByParentChoice(regFeeChoice, camperId) {
 async function readJsonBody(req) {
   if (req.body !== undefined && req.body !== null) {
     if (Buffer.isBuffer(req.body)) {
-      try {
-        return JSON.parse(req.body.toString('utf8') || '{}');
-      } catch {
-        return {};
-      }
+      const s = req.body.toString('utf8');
+      if (!s || !String(s).trim()) return {};
+      return JSON.parse(s);
     }
     if (typeof req.body === 'string') {
-      try {
-        return JSON.parse(req.body || '{}');
-      } catch {
-        return {};
-      }
+      const s = req.body || '';
+      if (!String(s).trim()) return {};
+      return JSON.parse(s);
     }
     if (typeof req.body === 'object') return req.body;
   }
   const chunks = [];
   try {
     for await (const chunk of req) chunks.push(chunk);
-  } catch {
-    return {};
+  } catch (streamErr) {
+    throw streamErr;
   }
   const raw = Buffer.concat(chunks).toString('utf8');
-  if (!raw) return {};
+  if (!String(raw).trim()) return {};
   return JSON.parse(raw);
 }
 
@@ -89,19 +139,27 @@ module.exports = async (req, res) => {
   let body = {};
   try {
     body = await readJsonBody(req);
-  } catch {
-    return json(res, 400, { error: 'Invalid JSON' });
+  } catch (parseErr) {
+    return failCheckout(res, 400, 'INVALID_JSON', 'Invalid JSON', parseErr && parseErr.message ? parseErr.message : '');
   }
 
   const { testPricing, imaMember, registrationFeeForCamper, extraShirtByCamper } = body;
-  const bookingsArray = Array.isArray(body.bookings) ? body.bookings : [];
+  const rawBookings = Array.isArray(body.bookings) ? body.bookings : [];
+  let bookingsArray = normalizeIncomingBookings(rawBookings);
+  if (rawBookings.length > 0 && bookingsArray.length === 0) {
+    return failCheckout(
+      res,
+      400,
+      'BOOKING_SHAPE',
+      'Could not read week selections. Each booking needs weekId (or week_id), camperId (or camper_id), and dayIds (or day_ids array).',
+      { sampleKeys: rawBookings[0] ? Object.keys(rawBookings[0]) : [] }
+    );
+  }
   const shirtChoice = normalizeExtraShirtChoice(extraShirtByCamper);
   const shirtIdsRequested = Object.keys(shirtChoice).filter((k) => shirtChoice[k] === true);
   const guest = body.guest;
   if (guest && typeof guest === 'object' && (guest.email || guest.firstName || guest.lastName || guest.age != null)) {
-    return json(res, 400, {
-      error: 'Guest checkout is not available. Sign in with a parent account to complete registration.',
-    });
+    return failCheckout(res, 400, 'GUEST_NOT_ALLOWED', 'Guest checkout is not available. Sign in with a parent account to complete registration.');
   }
   const secret = process.env.STRIPE_SECRET_KEY || '';
   const isStripeTestKey = secret.startsWith('sk_test_');
@@ -112,7 +170,13 @@ module.exports = async (req, res) => {
   }
 
   if (!bookingsArray.length && !shirtIdsRequested.length) {
-    return json(res, 400, { error: 'Add camp weeks or an extra T-shirt to checkout.' });
+    return failCheckout(
+      res,
+      400,
+      'EMPTY_CART',
+      'Add camp weeks or an extra T-shirt to checkout.',
+      { hadBookingsKey: Object.prototype.hasOwnProperty.call(body, 'bookings'), bookingsType: typeof body.bookings }
+    );
   }
 
   const { user, token } = await getUserFromRequest(req);
@@ -142,7 +206,7 @@ module.exports = async (req, res) => {
   if (bookingsArray.length) {
     for (const b of bookingsArray) {
       if (!b.camperId) {
-        return json(res, 400, { error: 'Each week needs a child selected (camperId on each booking).' });
+        return failCheckout(res, 400, 'MISSING_CAMPER', 'Each week needs a child selected (camperId on each booking).');
       }
     }
     const seen = new Set();
@@ -151,14 +215,22 @@ module.exports = async (req, res) => {
       if (seen.has(cid)) continue;
       seen.add(cid);
       const { data: camper, error: ce } = await sb.from('campers').select('id, parent_id').eq('id', cid).single();
-      if (ce || !camper) return json(res, 400, { error: 'Camper not found' });
-      if (camper.parent_id !== user.id) return json(res, 403, { error: 'Not your camper' });
+      if (ce || !camper) {
+        return failCheckout(res, 400, 'CAMPER_NOT_FOUND', 'Camper not found', { camperId: cid, supabase: ce && ce.message });
+      }
+      if (String(camper.parent_id) !== String(user.id)) {
+        return failCheckout(res, 403, 'CAMPER_FORBIDDEN', 'Not your camper', { camperId: cid });
+      }
     }
   } else {
     for (const cid of shirtIdsRequested) {
       const { data: camper, error: ce } = await sb.from('campers').select('id, parent_id').eq('id', cid).single();
-      if (ce || !camper) return json(res, 400, { error: 'Camper not found' });
-      if (camper.parent_id !== user.id) return json(res, 403, { error: 'Not your camper' });
+      if (ce || !camper) {
+        return failCheckout(res, 400, 'CAMPER_NOT_FOUND', 'Camper not found', { camperId: cid });
+      }
+      if (String(camper.parent_id) !== String(user.id)) {
+        return failCheckout(res, 403, 'CAMPER_FORBIDDEN', 'Not your camper', { camperId: cid });
+      }
     }
   }
 
@@ -184,7 +256,12 @@ module.exports = async (req, res) => {
           pricingMode,
         });
       } catch (e) {
-        return json(res, e.statusCode || 400, { error: e.message });
+        return failCheckout(res, e.statusCode || 400, 'VALIDATE_BOOKING', e.message || String(e), {
+          weekId,
+          camperId: cid,
+          pricingMode,
+          dayCount: (dayIds || []).length,
+        });
       }
       bookingModes.push(pricingMode);
     }
@@ -299,8 +376,8 @@ module.exports = async (req, res) => {
   const shirtCamperIds = [];
   for (const cidStr of shirtIdsRequested) {
     const row = (camperShirtRows || []).find((r) => String(r.id) === String(cidStr));
-    if (!row || row.parent_id !== user.id) {
-      return json(res, 403, { error: 'Invalid extra shirt selection' });
+    if (!row || String(row.parent_id) !== String(user.id)) {
+      return failCheckout(res, 403, 'SHIRT_FORBIDDEN', 'Invalid extra shirt selection', { camperId: cidStr });
     }
     if (shirtAddonPaidByCamper[String(cidStr)]) continue;
     const cents = Math.round(shirtDollars * 100);
@@ -358,9 +435,13 @@ module.exports = async (req, res) => {
   }
 
   if (!line_items.length) {
-    return json(res, 400, {
-      error: 'Nothing to pay for in this checkout. Extra shirt may already be purchased — refresh the page.',
-    });
+    return failCheckout(
+      res,
+      400,
+      'NOTHING_TO_CHARGE',
+      'Nothing to pay for in this checkout. Extra shirt may already be purchased — refresh the page.',
+      { shirtRequested: shirtIdsRequested.length, shirtCharged: shirtCamperIds.length }
+    );
   }
 
   const baseUrl = (process.env.BASE_URL || '').replace(/\/$/, '');

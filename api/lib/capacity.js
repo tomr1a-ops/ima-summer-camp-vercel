@@ -2,6 +2,12 @@
  * Shared week/day capacity checks for checkout and enrollment updates.
  */
 
+/** Case-insensitive UUID/string compare (client may send different casing than Postgres). */
+function normUuid(v) {
+  if (v == null) return '';
+  return String(v).trim().toLowerCase();
+}
+
 async function countDistinctCampersInWeek(sb, weekId, excludeEnrollmentId) {
   const { data: rpcData, error: rpcErr } = await sb.rpc('week_distinct_camper_count', {
     p_week_id: weekId,
@@ -69,7 +75,8 @@ async function loadOrderedDaysForWeek(sb, weekId) {
  * @param {'full_week'|'daily'} [opts.pricingMode='daily'] — full_week requires all Mon–Fri days for the week.
  */
 async function validateBooking(sb, { weekId, dayIds, camperId, excludeEnrollmentId, pricingMode = 'daily' }) {
-  const ids = Array.isArray(dayIds) ? dayIds : [];
+  const raw = Array.isArray(dayIds) ? dayIds : [];
+  const ids = [...new Set(raw.map((id) => String(id).trim()).filter(Boolean))];
   if (!weekId || !ids.length) {
     const err = new Error('Week and at least one day required');
     err.statusCode = 400;
@@ -100,8 +107,8 @@ async function validateBooking(sb, { weekId, dayIds, camperId, excludeEnrollment
       err.statusCode = 400;
       throw err;
     }
-    const expectedIds = allDays.map((d) => d.id).sort().join(',');
-    const gotIds = [...ids].sort().join(',');
+    const expectedIds = allDays.map((d) => normUuid(d.id)).sort().join(',');
+    const gotIds = [...ids].map(normUuid).sort().join(',');
     if (expectedIds !== gotIds) {
       const err = new Error('Full week must include all Mon–Fri days for this week');
       err.statusCode = 400;
@@ -118,7 +125,7 @@ async function validateBooking(sb, { weekId, dayIds, camperId, excludeEnrollment
 
   const max = week.max_capacity || 35;
   for (const d of dayRows) {
-    if (d.week_id !== weekId) {
+    if (normUuid(d.week_id) !== normUuid(weekId)) {
       const err = new Error('Day does not belong to selected week');
       err.statusCode = 400;
       throw err;
