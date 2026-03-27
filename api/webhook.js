@@ -34,13 +34,20 @@ module.exports = async (req, res) => {
     try {
       const result = await confirmStripeSession(stripe, session);
       if (result.ok) {
-        /** Receipt + staff notify: loads enrollments by stripe_session_id + Stripe metadata (see lib/email.js). */
-        await sendCampPaymentEmails(stripe, session, result);
+        try {
+          /** Parent confirmation + staff paid-booking emails (Resend). Failures are logged; we still 200 Stripe. */
+          await sendCampPaymentEmails(stripe, session, result);
+        } catch (emailErr) {
+          console.error('[webhook] sendCampPaymentEmails failed:', emailErr && emailErr.message ? emailErr.message : emailErr);
+        }
+      } else {
+        console.warn('[webhook] confirmStripeSession not ok:', result.reason || JSON.stringify(result));
       }
     } catch (e) {
-      console.error('confirmStripeSession', e);
+      console.error('[webhook] confirmStripeSession failed:', e && e.message ? e.message : e);
       res.statusCode = 500;
-      return res.end('handler error');
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({ error: 'confirm failed' }));
     }
   }
 

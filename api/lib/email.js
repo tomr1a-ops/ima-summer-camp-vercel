@@ -3,6 +3,9 @@ let warnedDefaultFrom = false;
 /** Avoid hanging serverless handlers if Resend is slow or the connection stalls. */
 const RESEND_FETCH_TIMEOUT_MS = 15000;
 
+/** Default From when RESEND_FROM is unset (Resend onboarding domain). */
+const DEFAULT_RESEND_FROM = 'IMA Summer Camp <onboarding@resend.dev>';
+
 async function sendResend({ to, subject, text, html }) {
   const key = process.env.RESEND_API_KEY;
   if (!key) {
@@ -11,13 +14,11 @@ async function sendResend({ to, subject, text, html }) {
     );
     return { skipped: true, reason: 'missing_key' };
   }
+  const from = (process.env.RESEND_FROM && String(process.env.RESEND_FROM).trim()) || DEFAULT_RESEND_FROM;
   if (!warnedDefaultFrom && !process.env.RESEND_FROM) {
     warnedDefaultFrom = true;
-    console.warn(
-      '[email] RESEND_FROM not set — using onboarding@resend.dev. Resend only delivers to your account signup email until you verify a domain and set RESEND_FROM (e.g. Camp <mail@yourdomain.com>). Staff/customer addresses may be rejected with 403.'
-    );
+    console.warn('[email] RESEND_FROM not set — using', DEFAULT_RESEND_FROM);
   }
-  const from = process.env.RESEND_FROM || 'IMA Summer Camp <onboarding@resend.dev>';
   const ac = new AbortController();
   const tid = setTimeout(function () {
     ac.abort();
@@ -66,6 +67,7 @@ async function sendResend({ to, subject, text, html }) {
 }
 
 const CAMP_STAFF_NOTIFY = ['tom@imaimpact.com', 'coachshick@imaimpact.com'];
+const ADMIN_DASHBOARD_URL = 'https://ima-summer-camp.vercel.app/admin.html';
 
 /**
  * Staff notifications: one API call per address so one bad recipient does not hide the other,
@@ -90,6 +92,11 @@ const {
   buildBookingEmailSummary,
   buildPlainTextBody,
   buildHtmlBody,
+  buildAdminPaidNotificationText,
+  buildAdminPaidNotificationHtml,
+  buildAdminPaidSubject,
+  formatMoney,
+  escapeHtml,
 } = require('./booking-email-summary');
 
 /** Parent-facing “manage bookings” link (portal path redirects to main camp registration). */
@@ -103,9 +110,59 @@ async function markCampPaymentEmailsSent(stripe, sessionId) {
 }
 
 /**
- * Customer receipt + staff alert after paid checkout is confirmed in our DB.
+ * When a parent opens Checkout (before payment): notify staff only.
+ * Fire-and-forget from create-checkout-session.
+ */
+async function sendCheckoutStartedAdminNotify(payload) {
+  const {
+    parentName,
+    parentEmail,
+    sessionId,
+    batchId,
+    cartLines,
+    intendedTotal,
+    registrationIncluded,
+  } = payload;
+  const subject = '🥊 IMA Camp — Checkout started (payment pending)';
+  const lines = [
+    'A parent opened Stripe Checkout — payment is not confirmed until Stripe completes the session.',
+    '',
+    `Parent: ${parentName || '—'} <${parentEmail || 'n/a'}>`,
+    `Stripe Checkout session: ${sessionId}`,
+    `Batch (pending enrollments): ${batchId}`,
+    '',
+    'Items in cart:',
+  ];
+  (cartLines && cartLines.length ? cartLines : ['(none)']).forEach(function (l) {
+    lines.push(`• ${l}`);
+  });
+  lines.push('');
+  lines.push(`Cart total if paid as shown: ${formatMoney(intendedTotal)}`);
+  lines.push(registrationIncluded ? 'Registration fee is included in this cart.' : 'No registration fee line in this cart.');
+  lines.push('');
+  lines.push(`View in admin: ${ADMIN_DASHBOARD_URL}`);
+  const text = lines.join('\n');
+
+  const listItems = (cartLines && cartLines.length ? cartLines : ['(none)'])
+    .map((l) => `<li>${escapeHtml(l)}</li>`)
+    .join('');
+  const html = `<div style="font-family:system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.5;color:#111">
+  <p><strong>Checkout started</strong> — payment still pending.</p>
+  <p><strong>Parent:</strong> ${escapeHtml(parentName || '—')} &lt;${escapeHtml(parentEmail || 'n/a')}&gt;</p>
+  <p><strong>Session:</strong> ${escapeHtml(sessionId)}<br/><strong>Batch:</strong> ${escapeHtml(batchId)}</p>
+  <p><strong>Cart:</strong></p>
+  <ul style="margin:8px 0;padding-left:20px">${listItems}</ul>
+  <p><strong>Total if paid:</strong> ${escapeHtml(formatMoney(intendedTotal))}</p>
+  <p>${registrationIncluded ? 'Registration fee included.' : 'No registration fee in cart.'}</p>
+  <p><a href="${escapeHtml(ADMIN_DASHBOARD_URL)}" style="color:#0d9488">View in admin</a></p>
+</div>`;
+
+  return sendResendToStaff(subject, text, html);
+}
+
+/**
+ * Customer receipt + staff paid-booking alerts after checkout is confirmed in our DB.
  * Runs whenever result.ok (including already-confirmed) unless Stripe metadata says we already sent.
- * That way: if the webhook confirmed first but Resend failed, the success-page confirm-checkout can retry.
  */
 async function sendCampPaymentEmails(stripe, session, result) {
   if (!result || !result.ok) return;
@@ -121,13 +178,14 @@ async function sendCampPaymentEmails(stripe, session, result) {
     session.customer_email ||
     '';
 
-  const subject = '🥊 IMA Summer Camp — Booking Confirmed!';
+  const parentSubject = '🥊 IMA Summer Camp — Booking Confirmed!';
 
   let textBody;
   let htmlBody;
+  let summary = null;
   try {
     const sb = serviceClient();
-    const summary = await buildBookingEmailSummary(sb, session, result);
+    summary = await buildBookingEmailSummary(sb, session, result);
     textBody = buildPlainTextBody(summary, MANAGE_BOOKINGS_URL);
     htmlBody = buildHtmlBody(summary, MANAGE_BOOKINGS_URL);
   } catch (e) {
@@ -141,26 +199,45 @@ async function sendCampPaymentEmails(stripe, session, result) {
     htmlBody = undefined;
   }
 
-  let customerOk = !customerEmail;
+  let parentOk = !customerEmail;
   if (customerEmail) {
     const r = await sendResend({
       to: customerEmail,
-      subject,
+      subject: parentSubject,
       text: textBody,
       html: htmlBody,
     });
-    customerOk = !!(r.ok && !r.skipped);
-    if (!customerOk) {
-      console.error('[email] customer receipt Resend failure', customerEmail, r.error || r.reason || r.status);
+    parentOk = !!(r.ok && !r.skipped);
+    if (!parentOk) {
+      console.error('[email] parent confirmation Resend failure', customerEmail, r.error || r.reason || r.status);
     }
   }
 
-  const staffText =
-    `Customer: ${customerEmail || 'n/a'}\nStripe session: ${session.id || 'n/a'}\n\n` + textBody;
-  const staffResults = await sendResendToStaff(subject, staffText, htmlBody);
-  const staffOk = staffResults.length > 0 && staffResults.every((x) => x.ok && !x.skipped);
+  let adminText;
+  let adminHtml;
+  let adminSubject;
+  if (summary) {
+    adminSubject = buildAdminPaidSubject(summary);
+    adminText = buildAdminPaidNotificationText(summary, customerEmail, session.id);
+    adminHtml = buildAdminPaidNotificationHtml(summary, customerEmail, session.id);
+  } else {
+    adminSubject = '🥊 New IMA Camp Booking — (summary unavailable)';
+    adminText = [
+      'New booking received (full summary could not be built).',
+      `Parent email: ${customerEmail || 'n/a'}`,
+      `Stripe session: ${session.id}`,
+      `View in admin: ${ADMIN_DASHBOARD_URL}`,
+    ].join('\n');
+    adminHtml = `<p>Paid checkout — see <a href="${escapeHtml(ADMIN_DASHBOARD_URL)}">admin</a>. Session ${escapeHtml(
+      session.id
+    )}</p>`;
+  }
 
-  if (customerOk && staffOk) {
+  const staffPaidResults = await sendResendToStaff(adminSubject, adminText, adminHtml);
+  const staffPaidOk =
+    staffPaidResults.length > 0 && staffPaidResults.every((x) => x.ok && !x.skipped);
+
+  if (parentOk && staffPaidOk) {
     try {
       await markCampPaymentEmailsSent(stripe, session.id);
       console.log('[email] camp payment emails complete; marked', META_SENT, 'on', session.id);
@@ -169,11 +246,18 @@ async function sendCampPaymentEmails(stripe, session, result) {
     }
   } else {
     console.error(
-      '[email] camp payment emails incomplete — not marking sent (customerOk=%s staffOk=%s). Fix Resend/domain or check logs.',
-      customerOk,
-      staffOk
+      '[email] camp payment emails incomplete — not marking sent (parentOk=%s staffPaidOk=%s). Fix Resend/domain or check logs.',
+      parentOk,
+      staffPaidOk
     );
   }
 }
 
-module.exports = { sendResend, sendCampPaymentEmails, sendResendToStaff, CAMP_STAFF_NOTIFY };
+module.exports = {
+  sendResend,
+  sendCampPaymentEmails,
+  sendResendToStaff,
+  sendCheckoutStartedAdminNotify,
+  CAMP_STAFF_NOTIFY,
+  DEFAULT_RESEND_FROM,
+};

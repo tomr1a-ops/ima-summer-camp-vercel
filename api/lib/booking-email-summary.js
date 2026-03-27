@@ -148,14 +148,18 @@ async function buildBookingEmailSummary(sb, session, result) {
   }
 
   let parentFirst = 'there';
+  let parentFullName = '';
   if (parentId) {
     const { data: prof, error: perr } = await sb.from('profiles').select('full_name').eq('id', parentId).maybeSingle();
     if (perr) throw perr;
-    const fn = (prof && prof.full_name && prof.full_name.trim().split(/\s+/)[0]) || '';
+    parentFullName = (prof && prof.full_name && prof.full_name.trim()) || '';
+    const fn = parentFullName.split(/\s+/)[0] || '';
     if (fn) parentFirst = fn;
   }
   if (parentFirst === 'there' && session.customer_details && session.customer_details.name) {
-    const fn = String(session.customer_details.name).trim().split(/\s+/)[0];
+    const full = String(session.customer_details.name).trim();
+    if (full && !parentFullName) parentFullName = full;
+    const fn = full.split(/\s+/)[0];
     if (fn) parentFirst = fn;
   }
 
@@ -163,6 +167,7 @@ async function buildBookingEmailSummary(sb, session, result) {
 
   return {
     parentFirst,
+    parentFullName: parentFullName || parentFirst,
     tableRows,
     campSubtotal,
     regTotal,
@@ -173,9 +178,74 @@ async function buildBookingEmailSummary(sb, session, result) {
   };
 }
 
+const ADMIN_DASHBOARD_URL = 'https://ima-summer-camp.vercel.app/admin.html';
+
+function buildAdminPaidNotificationText(summary, customerEmail, stripeSessionId) {
+  const uniqueChildren = [...new Set(summary.tableRows.map((r) => r.childName))];
+  const bookingLines = summary.tableRows.length
+    ? summary.tableRows.map((r) => {
+        if (r.kind === 'shirt') {
+          return `• ${r.childName} — Extra T-shirt — ${formatMoney(r.amount)}`;
+        }
+        return `• ${r.childName} — ${r.weekCol} — ${r.schedule} — ${formatMoney(r.amount)}`;
+      })
+    : ['• (No line items parsed — check Stripe dashboard or admin enrollments.)'];
+
+  const lines = [];
+  lines.push('New booking received!');
+  lines.push('');
+  lines.push(`Parent: ${summary.parentFullName} <${customerEmail || 'n/a'}>`);
+  lines.push(`Child: ${uniqueChildren.length ? uniqueChildren.join(', ') : '—'}`);
+  lines.push('');
+  lines.push('Weeks / days booked:');
+  bookingLines.forEach(function (line) {
+    lines.push(line);
+  });
+  lines.push('');
+  lines.push(`Amount paid: ${formatMoney(summary.grandTotal)}`);
+  lines.push(`Registration fee: ${summary.regTotal > 0 ? 'Yes' : 'No'}`);
+  lines.push('');
+  lines.push(`Stripe session: ${stripeSessionId || 'n/a'}`);
+  lines.push(`View in admin: ${ADMIN_DASHBOARD_URL}`);
+  return lines.join('\n');
+}
+
+function buildAdminPaidNotificationHtml(summary, customerEmail, stripeSessionId) {
+  const uniqueChildren = [...new Set(summary.tableRows.map((r) => r.childName))];
+  const rows = summary.tableRows
+    .map((r) => {
+      if (r.kind === 'shirt') {
+        return `<li>${escapeHtml(r.childName)} — <strong>Extra T-shirt</strong> — ${escapeHtml(formatMoney(r.amount))}</li>`;
+      }
+      return `<li>${escapeHtml(r.childName)} — ${escapeHtml(r.weekCol)} — ${escapeHtml(r.schedule)} — ${escapeHtml(
+        formatMoney(r.amount)
+      )}</li>`;
+    })
+    .join('');
+  const listBlock = summary.tableRows.length
+    ? `<ul style="margin:8px 0;padding-left:20px">${rows}</ul>`
+    : '<p style="color:#666">No line items parsed.</p>';
+
+  return `<div style="font-family:system-ui,sans-serif;font-size:15px;line-height:1.5;color:#111">
+  <p><strong>New booking received!</strong></p>
+  <p><strong>Parent:</strong> ${escapeHtml(summary.parentFullName)} &lt;${escapeHtml(customerEmail || 'n/a')}&gt;</p>
+  <p><strong>Child:</strong> ${escapeHtml(uniqueChildren.length ? uniqueChildren.join(', ') : '—')}</p>
+  <p><strong>Weeks / days booked:</strong></p>
+  ${listBlock}
+  <p><strong>Amount paid:</strong> ${escapeHtml(formatMoney(summary.grandTotal))}</p>
+  <p><strong>Registration fee:</strong> ${summary.regTotal > 0 ? 'Yes' : 'No'}</p>
+  <p><strong>Stripe session:</strong> ${escapeHtml(stripeSessionId || 'n/a')}</p>
+  <p><a href="${escapeHtml(ADMIN_DASHBOARD_URL)}" style="color:#0d9488">View in admin</a></p>
+</div>`;
+}
+
+function buildAdminPaidSubject(summary) {
+  return `🥊 New IMA Camp Booking — ${formatMoney(summary.grandTotal)}`;
+}
+
 function buildPlainTextBody(summary, manageUrl) {
   const lines = [];
-  lines.push(`Hi ${summary.parentFirst},`);
+  lines.push(`Hi ${summary.parentFullName || summary.parentFirst},`);
   lines.push('');
   lines.push('Your booking is confirmed! Here\'s your summary:');
   lines.push('');
@@ -256,7 +326,7 @@ function buildHtmlBody(summary, manageUrl) {
       : '<p style="color:#666">No camp weeks in this order — see your Stripe receipt for details.</p>';
 
   return `<div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px;line-height:1.5;color:#111">
-  <p>Hi ${escapeHtml(summary.parentFirst)},</p>
+  <p>Hi ${escapeHtml(summary.parentFullName || summary.parentFirst)},</p>
   <p>Your booking is confirmed! Here&rsquo;s your summary:</p>
   ${tableBlock}
   <div style="margin-top:20px;padding-top:16px;border-top:1px solid #ddd">
@@ -280,6 +350,9 @@ module.exports = {
   buildBookingEmailSummary,
   buildPlainTextBody,
   buildHtmlBody,
+  buildAdminPaidNotificationText,
+  buildAdminPaidNotificationHtml,
+  buildAdminPaidSubject,
   formatMoney,
   escapeHtml,
 };
