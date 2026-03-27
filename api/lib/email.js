@@ -83,15 +83,46 @@ const CAMP_STAFF_NOTIFY = ['tom@imaimpact.com', 'coachshick@imaimpact.com'];
 const ADMIN_DASHBOARD_URL = 'https://ima-summer-camp.vercel.app/admin.html';
 
 /**
- * Staff notifications: parallel sends so both inboxes get mail quickly; failures are isolated per recipient.
+ * Staff notifications: one Resend API call with both addresses (reliable on serverless vs parallel in-flight).
+ * If the batch request fails, retries each address separately and logs each outcome.
  */
 async function sendResendToStaff(subject, text, html) {
+  const recipients = [...CAMP_STAFF_NOTIFY];
+  console.log('[email] sendResendToStaff START', {
+    recipients,
+    subjectPreview: subject ? String(subject).slice(0, 72) : '',
+  });
+
+  const batch = await sendResend({ to: recipients, subject, text, html });
+  if (batch.ok && !batch.skipped) {
+    console.log('[email] sendResendToStaff SUCCESS (one Resend email, multiple to:)', {
+      resendId: batch.id,
+      recipients,
+    });
+    return recipients.map(function (to) {
+      return { to, ok: true, id: batch.id };
+    });
+  }
+  if (batch.skipped) {
+    console.error('[email] sendResendToStaff SKIPPED (no RESEND_API_KEY)', { recipients });
+    return recipients.map(function (to) {
+      return { to, skipped: true, reason: batch.reason };
+    });
+  }
+
+  console.warn('[email] sendResendToStaff batch failed — retrying per address', {
+    status: batch.status,
+    error: batch.error,
+    recipients,
+  });
   const results = await Promise.all(
-    CAMP_STAFF_NOTIFY.map(async function (to) {
+    recipients.map(async function (to) {
       const r = await sendResend({ to, subject, text, html });
       const row = { to, ...r };
-      if (!r.ok && !r.skipped) {
-        console.error('[email] staff notify failed for', to, r.error || r.status);
+      if (r.ok && !r.skipped) {
+        console.log('[email] sendResendToStaff per-address OK', to, r.id || '');
+      } else if (!r.skipped) {
+        console.error('[email] sendResendToStaff per-address FAIL', to, r.error || r.status);
       }
       return row;
     })
@@ -349,6 +380,10 @@ async function sendCampPaymentEmails(stripe, session, result) {
   <p><a href="${escapeHtml(ADMIN_DASHBOARD_URL)}">View admin</a></p>`;
   }
 
+  console.log('[email] sendCampPaymentEmails — calling sendResendToStaff (paid booking admin)', {
+    sessionId: sessionForEmail.id,
+    recipients: [...CAMP_STAFF_NOTIFY],
+  });
   const staffPaidResults = await sendResendToStaff(adminSubject, adminText, adminHtml);
   const staffPaidOk =
     staffPaidResults.length > 0 && staffPaidResults.every((x) => x.ok && !x.skipped);

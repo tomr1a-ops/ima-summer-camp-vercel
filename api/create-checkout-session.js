@@ -7,7 +7,11 @@ const { getUserFromRequest, upsertParentProfile } = require('./lib/auth');
 const { dayRate, weekRate, registrationFee, extraCampShirt } = require('./lib/pricing');
 /** Full-week bookings that overlap a camper's already-confirmed days fail here with a specific message (see validateBooking in ./lib/capacity). */
 const { validateBooking } = require('./lib/capacity');
-const { sendCheckoutStartedAdminNotify, sendCampPaymentEmails } = require('./lib/email');
+const {
+  sendCheckoutStartedAdminNotify,
+  sendCampPaymentEmails,
+  CAMP_STAFF_NOTIFY,
+} = require('./lib/email');
 const { formatMoney } = require('./lib/booking-email-summary');
 
 function json(res, code, obj) {
@@ -563,6 +567,11 @@ module.exports = async (req, res) => {
      * Failures are swallowed — checkout response still returns 200.
      */
     try {
+      console.log('[create-checkout-session] calling sendCheckoutStartedAdminNotify', {
+        sessionId: session.id,
+        batchId,
+        staffRecipients: CAMP_STAFF_NOTIFY,
+      });
       await sendCheckoutStartedAdminNotify({
         parentName: (profile && profile.full_name && String(profile.full_name).trim()) || '',
         parentEmail: emailForStripe || 'n/a',
@@ -572,7 +581,7 @@ module.exports = async (req, res) => {
         intendedTotal: totalCents / 100,
         registrationIncluded: regCentsTotal > 0,
       });
-      console.log('[create-checkout-session] checkout-started admin notify completed after session', session.id);
+      console.log('[create-checkout-session] sendCheckoutStartedAdminNotify finished', session.id);
     } catch (notifyErr) {
       console.error(
         '[create-checkout-session] checkout-started admin notify error (non-fatal):',
