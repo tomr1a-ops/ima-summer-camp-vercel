@@ -181,61 +181,68 @@ async function buildBookingEmailSummary(sb, session, result) {
 const ADMIN_DASHBOARD_URL = 'https://ima-summer-camp.vercel.app/admin.html';
 
 function buildAdminPaidNotificationText(summary, customerEmail, stripeSessionId) {
-  const uniqueChildren = [...new Set(summary.tableRows.map((r) => r.childName))];
-  const bookingLines = summary.tableRows.length
-    ? summary.tableRows.map((r) => {
-        if (r.kind === 'shirt') {
-          return `• ${r.childName} — Extra T-shirt — ${formatMoney(r.amount)}`;
-        }
-        return `• ${r.childName} — ${r.weekCol} — ${r.schedule} — ${formatMoney(r.amount)}`;
-      })
-    : ['• (No line items parsed — check Stripe dashboard or admin enrollments.)'];
-
   const lines = [];
   lines.push('New booking received!');
   lines.push('');
-  lines.push(`Parent: ${summary.parentFullName} <${customerEmail || 'n/a'}>`);
-  lines.push(`Child: ${uniqueChildren.length ? uniqueChildren.join(', ') : '—'}`);
+  lines.push(`Parent: ${summary.parentFullName} (${customerEmail || 'n/a'})`);
   lines.push('');
-  lines.push('Weeks / days booked:');
-  bookingLines.forEach(function (line) {
-    lines.push(line);
-  });
+  lines.push('Children booked:');
+  if (summary.tableRows.length) {
+    summary.tableRows.forEach(function (r) {
+      if (r.kind === 'shirt') {
+        lines.push(`  • ${r.childName}: Extra camp T-shirt — ${formatMoney(r.amount)}`);
+      } else {
+        lines.push(
+          `  • ${r.childName || 'Camper'}: ${r.weekCol} — ${r.schedule} — ${formatMoney(r.amount)}`
+        );
+      }
+    });
+  } else {
+    lines.push('  • (See Stripe receipt or admin — line items could not be parsed.)');
+  }
   lines.push('');
-  lines.push(`Amount paid: ${formatMoney(summary.grandTotal)}`);
-  lines.push(`Registration fee: ${summary.regTotal > 0 ? 'Yes' : 'No'}`);
+  lines.push(
+    summary.regTotal > 0
+      ? `Registration fee: ${formatMoney(summary.regTotal)}`
+      : 'Registration fee: Waived (IMA member or already paid)'
+  );
+  lines.push(`TOTAL: ${formatMoney(summary.grandTotal)}`);
   lines.push('');
   lines.push(`Stripe session: ${stripeSessionId || 'n/a'}`);
-  lines.push(`View in admin: ${ADMIN_DASHBOARD_URL}`);
+  lines.push(`View admin: ${ADMIN_DASHBOARD_URL}`);
   return lines.join('\n');
 }
 
 function buildAdminPaidNotificationHtml(summary, customerEmail, stripeSessionId) {
-  const uniqueChildren = [...new Set(summary.tableRows.map((r) => r.childName))];
   const rows = summary.tableRows
     .map((r) => {
       if (r.kind === 'shirt') {
-        return `<li>${escapeHtml(r.childName)} — <strong>Extra T-shirt</strong> — ${escapeHtml(formatMoney(r.amount))}</li>`;
+        return `<li>${escapeHtml(r.childName)}: <strong>Extra camp T-shirt</strong> — ${escapeHtml(
+          formatMoney(r.amount)
+        )}</li>`;
       }
-      return `<li>${escapeHtml(r.childName)} — ${escapeHtml(r.weekCol)} — ${escapeHtml(r.schedule)} — ${escapeHtml(
-        formatMoney(r.amount)
-      )}</li>`;
+      return `<li>${escapeHtml(r.childName || 'Camper')}: ${escapeHtml(r.weekCol)} — ${escapeHtml(
+        r.schedule
+      )} — ${escapeHtml(formatMoney(r.amount))}</li>`;
     })
     .join('');
   const listBlock = summary.tableRows.length
     ? `<ul style="margin:8px 0;padding-left:20px">${rows}</ul>`
-    : '<p style="color:#666">No line items parsed.</p>';
+    : '<p style="color:#666">See Stripe receipt or admin — line items could not be parsed.</p>';
+  const regLine =
+    summary.regTotal > 0
+      ? `Registration fee: ${escapeHtml(formatMoney(summary.regTotal))}`
+      : 'Registration fee: <strong>Waived (IMA member or already paid)</strong>';
 
   return `<div style="font-family:system-ui,sans-serif;font-size:15px;line-height:1.5;color:#111">
   <p><strong>New booking received!</strong></p>
-  <p><strong>Parent:</strong> ${escapeHtml(summary.parentFullName)} &lt;${escapeHtml(customerEmail || 'n/a')}&gt;</p>
-  <p><strong>Child:</strong> ${escapeHtml(uniqueChildren.length ? uniqueChildren.join(', ') : '—')}</p>
-  <p><strong>Weeks / days booked:</strong></p>
+  <p><strong>Parent:</strong> ${escapeHtml(summary.parentFullName)} (${escapeHtml(customerEmail || 'n/a')})</p>
+  <p><strong>Children booked:</strong></p>
   ${listBlock}
-  <p><strong>Amount paid:</strong> ${escapeHtml(formatMoney(summary.grandTotal))}</p>
-  <p><strong>Registration fee:</strong> ${summary.regTotal > 0 ? 'Yes' : 'No'}</p>
-  <p><strong>Stripe session:</strong> ${escapeHtml(stripeSessionId || 'n/a')}</p>
-  <p><a href="${escapeHtml(ADMIN_DASHBOARD_URL)}" style="color:#0d9488">View in admin</a></p>
+  <p style="margin-top:12px">${regLine}</p>
+  <p style="font-size:17px;margin-top:12px"><strong>TOTAL:</strong> ${escapeHtml(formatMoney(summary.grandTotal))}</p>
+  <p style="margin-top:12px"><strong>Stripe session:</strong> ${escapeHtml(stripeSessionId || 'n/a')}</p>
+  <p><a href="${escapeHtml(ADMIN_DASHBOARD_URL)}" style="color:#0d9488">View admin</a></p>
 </div>`;
 }
 
@@ -243,9 +250,85 @@ function buildAdminPaidSubject(summary) {
   return `🥊 New IMA Camp Booking — ${formatMoney(summary.grandTotal)}`;
 }
 
+/**
+ * When DB-backed summary fails, build rows from Stripe Checkout line items + session metadata.
+ * @param {object} session Checkout Session (use expand: ['line_items', 'customer_details'] on retrieve)
+ */
+function buildFallbackSummaryFromStripeSession(session, result) {
+  const meta = session.metadata || {};
+  const regCents = Number(meta.registration_fee_cents || 0) || 0;
+  const shirtCents = Number(meta.extra_shirt_cents || 0) || 0;
+  const regTotal = regCents / 100;
+  const shirtTotal = shirtCents / 100;
+  const grandTotal = (session.amount_total != null ? Number(session.amount_total) : 0) / 100;
+
+  let parentFirst = 'there';
+  let parentFullName = '';
+  const cd = session.customer_details;
+  if (cd && cd.name) {
+    const full = String(cd.name).trim();
+    if (full) {
+      parentFullName = full;
+      parentFirst = full.split(/\s+/)[0] || 'there';
+    }
+  }
+
+  const tableRows = [];
+  const lines =
+    session.line_items && session.line_items.data && session.line_items.data.length
+      ? session.line_items.data
+      : [];
+  lines.forEach(function (li) {
+    const desc =
+      (li.description && String(li.description).trim()) ||
+      (li.price && li.price.nickname && String(li.price.nickname)) ||
+      'Camp item';
+    const amt = ((li.amount_total != null ? Number(li.amount_total) : 0) || 0) / 100;
+    const lower = desc.toLowerCase();
+    const kind = lower.includes('t-shirt') || lower.includes('tshirt') ? 'shirt' : 'camp';
+    let schedule = '—';
+    if (lower.includes('full week') || lower.includes('mon–fri') || lower.includes('mon-fri')) {
+      schedule = 'Mon–Fri';
+    } else if (lower.includes('day')) {
+      schedule = 'Daily';
+    }
+    tableRows.push({
+      childName: 'Camper',
+      weekCol: desc,
+      schedule,
+      amount: amt,
+      kind,
+    });
+  });
+
+  if (!tableRows.length && grandTotal > 0) {
+    tableRows.push({
+      childName: 'Your family',
+      weekCol: 'IMA Summer Camp purchase',
+      schedule: 'See Stripe receipt',
+      amount: grandTotal,
+      kind: 'camp',
+    });
+  }
+
+  const campSubtotal = Math.max(0, grandTotal - regTotal - shirtTotal);
+
+  return {
+    parentFirst,
+    parentFullName: parentFullName || parentFirst,
+    tableRows,
+    campSubtotal,
+    regTotal,
+    shirtTotal,
+    grandTotal,
+    hasEnrollments: tableRows.length > 0,
+    shirtOnly: !!(result && result.shirtOnly),
+  };
+}
+
 function buildPlainTextBody(summary, manageUrl) {
   const lines = [];
-  lines.push(`Hi ${summary.parentFullName || summary.parentFirst},`);
+  lines.push(`Hi ${summary.parentFirst},`);
   lines.push('');
   lines.push('Your booking is confirmed! Here\'s your summary:');
   lines.push('');
@@ -268,11 +351,11 @@ function buildPlainTextBody(summary, manageUrl) {
   }
   lines.push(`TOTAL PAID: ${formatMoney(summary.grandTotal)}`);
   lines.push('');
-  lines.push('CAMP DETAILS');
-  lines.push('Location: Impact Martial Athletics, 4401 S Flamingo Rd, Davie FL 33330');
-  lines.push('Time: Monday – Friday, check in at 9:00 AM');
-  lines.push('What to bring: Water bottle, athletic clothes, closed-toe shoes');
-  lines.push('Questions? Contact us at tom@imaimpact.com');
+  lines.push('CAMP INFO');
+  lines.push('4401 S Flamingo Rd, Davie FL 33330');
+  lines.push('Mon–Fri, 9:00 AM');
+  lines.push('What to bring: water bottle, athletic clothes, closed-toe shoes');
+  lines.push('Questions? tom@imaimpact.com');
   lines.push('');
   lines.push(`Manage your bookings at: ${manageUrl}`);
   lines.push('');
@@ -326,7 +409,7 @@ function buildHtmlBody(summary, manageUrl) {
       : '<p style="color:#666">No camp weeks in this order — see your Stripe receipt for details.</p>';
 
   return `<div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px;line-height:1.5;color:#111">
-  <p>Hi ${escapeHtml(summary.parentFullName || summary.parentFirst)},</p>
+  <p>Hi ${escapeHtml(summary.parentFirst)},</p>
   <p>Your booking is confirmed! Here&rsquo;s your summary:</p>
   ${tableBlock}
   <div style="margin-top:20px;padding-top:16px;border-top:1px solid #ddd">
@@ -334,11 +417,11 @@ function buildHtmlBody(summary, manageUrl) {
     ${totals.join('')}
   </div>
   <div style="margin-top:24px;padding-top:16px;border-top:1px solid #ddd">
-    <h2 style="font-size:16px;margin:0 0 12px">Camp details</h2>
-    <p style="margin:8px 0"><strong>Location:</strong> Impact Martial Athletics, 4401 S Flamingo Rd, Davie FL 33330</p>
-    <p style="margin:8px 0"><strong>Time:</strong> Monday &ndash; Friday, check in at 9:00 AM</p>
-    <p style="margin:8px 0"><strong>What to bring:</strong> Water bottle, athletic clothes, closed-toe shoes</p>
-    <p style="margin:8px 0"><strong>Questions?</strong> Contact us at <a href="mailto:tom@imaimpact.com">tom@imaimpact.com</a></p>
+    <h2 style="font-size:16px;margin:0 0 12px">Camp info</h2>
+    <p style="margin:8px 0">4401 S Flamingo Rd, Davie FL 33330</p>
+    <p style="margin:8px 0">Mon&ndash;Fri, 9:00 AM</p>
+    <p style="margin:8px 0"><strong>What to bring:</strong> water bottle, athletic clothes, closed-toe shoes</p>
+    <p style="margin:8px 0"><strong>Questions?</strong> <a href="mailto:tom@imaimpact.com">tom@imaimpact.com</a></p>
   </div>
   <p style="margin-top:28px;font-size:14px;color:#444">Manage your bookings at:<br/>
   <a href="${escapeHtml(manageUrl)}" style="color:#0d9488">${escapeHtml(manageUrl)}</a></p>
@@ -348,6 +431,7 @@ function buildHtmlBody(summary, manageUrl) {
 
 module.exports = {
   buildBookingEmailSummary,
+  buildFallbackSummaryFromStripeSession,
   buildPlainTextBody,
   buildHtmlBody,
   buildAdminPaidNotificationText,

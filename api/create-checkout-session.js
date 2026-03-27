@@ -7,7 +7,7 @@ const { getUserFromRequest, upsertParentProfile } = require('./lib/auth');
 const { dayRate, weekRate, registrationFee, extraCampShirt } = require('./lib/pricing');
 /** Full-week bookings that overlap a camper's already-confirmed days fail here with a specific message (see validateBooking in ./lib/capacity). */
 const { validateBooking } = require('./lib/capacity');
-const { sendCheckoutStartedAdminNotify } = require('./lib/email');
+const { sendCheckoutStartedAdminNotify, sendCampPaymentEmails } = require('./lib/email');
 const { formatMoney } = require('./lib/booking-email-summary');
 
 function json(res, code, obj) {
@@ -579,6 +579,32 @@ module.exports = async (req, res) => {
         notifyErr && notifyErr.message ? notifyErr.message : notifyErr
       );
     }
+
+    /**
+     * “Booking confirmed” emails require a paid session. Hosted Checkout is almost always unpaid here;
+     * success.html → /api/confirm-checkout awaits sendCampPaymentEmails so the function doesn’t exit early.
+     */
+    try {
+      if (session.payment_status === 'paid' || session.status === 'complete') {
+        await sendCampPaymentEmails(stripe, session, {
+          ok: true,
+          email: emailForStripe || undefined,
+          count: bookingsArray.length,
+        });
+        console.log('[create-checkout-session] paid booking emails sent (session already paid)', session.id);
+      } else {
+        console.log(
+          '[create-checkout-session] paid booking emails deferred until payment (confirm-checkout); payment_status=%s',
+          session.payment_status || 'n/a'
+        );
+      }
+    } catch (paidEmailErr) {
+      console.error(
+        '[create-checkout-session] paid booking email error (non-fatal):',
+        paidEmailErr && paidEmailErr.message ? paidEmailErr.message : paidEmailErr
+      );
+    }
+
     const checkoutUrl = session.url || null;
     if (!checkoutUrl) {
       console.warn('create-checkout-session: Stripe session missing url; client will use redirectToCheckout only');

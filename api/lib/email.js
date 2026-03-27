@@ -104,6 +104,7 @@ const META_SENT = 'camp_payment_emails_sent';
 const { serviceClient } = require('./supabase');
 const {
   buildBookingEmailSummary,
+  buildFallbackSummaryFromStripeSession,
   buildPlainTextBody,
   buildHtmlBody,
   buildAdminPaidNotificationText,
@@ -217,42 +218,90 @@ async function sendCheckoutStartedAdminNotifyInner(payload) {
 }
 
 /**
- * Customer receipt + staff paid-booking alerts after checkout is confirmed in our DB.
- * Runs whenever result.ok (including already-confirmed) unless Stripe metadata says we already sent.
+ * Customer receipt + staff paid-booking alerts after payment succeeds (confirm-checkout or webhook).
+ * Idempotent via Stripe session metadata camp_payment_emails_sent.
  */
 async function sendCampPaymentEmails(stripe, session, result) {
-  if (!result || !result.ok) return;
-  const meta = session.metadata || {};
-  if (meta[META_SENT] === '1') {
+  if (!result || !result.ok) {
+    console.log('[email] sendCampPaymentEmails skip (result not ok)', result && result.reason);
+    return;
+  }
+  const metaEarly = session.metadata || {};
+  if (metaEarly[META_SENT] === '1') {
+    console.log('[email] sendCampPaymentEmails skip (already sent)', session.id);
     return;
   }
 
-  const baseUrl = (process.env.BASE_URL || '').replace(/\/$/, '');
+  let sessionForEmail = session;
+  try {
+    const hasLines = session.line_items && session.line_items.data && session.line_items.data.length;
+    if (!hasLines && stripe && session.id) {
+      sessionForEmail = await stripe.checkout.sessions.retrieve(session.id, {
+        expand: ['line_items', 'customer_details'],
+      });
+    }
+  } catch (reErr) {
+    console.warn('[email] could not re-fetch session for line_items:', reErr && reErr.message ? reErr.message : reErr);
+  }
+
+  const meta = sessionForEmail.metadata || {};
   const customerEmail =
     result.email ||
-    (session.customer_details && session.customer_details.email) ||
-    session.customer_email ||
+    (sessionForEmail.customer_details && sessionForEmail.customer_details.email) ||
+    sessionForEmail.customer_email ||
     '';
+
+  console.log('[email] camp payment emails START', {
+    sessionId: sessionForEmail.id,
+    parentEmail: customerEmail || '(none)',
+    resendKey: !!resolveResendApiKey(),
+  });
 
   const parentSubject = '🥊 IMA Summer Camp — Booking Confirmed!';
 
-  let textBody;
-  let htmlBody;
   let summary = null;
   try {
     const sb = serviceClient();
-    summary = await buildBookingEmailSummary(sb, session, result);
+    summary = await buildBookingEmailSummary(sb, sessionForEmail, result);
+  } catch (e) {
+    console.error('[email] buildBookingEmailSummary failed:', e && e.message ? e.message : e, e && e.stack ? e.stack : '');
+  }
+  if (!summary) {
+    try {
+      summary = buildFallbackSummaryFromStripeSession(sessionForEmail, result);
+      console.log('[email] using Stripe line_items fallback summary', sessionForEmail.id);
+    } catch (e2) {
+      console.error('[email] buildFallbackSummaryFromStripeSession failed:', e2 && e2.message ? e2.message : e2);
+    }
+  }
+
+  let textBody;
+  let htmlBody;
+  if (summary) {
     textBody = buildPlainTextBody(summary, MANAGE_BOOKINGS_URL);
     htmlBody = buildHtmlBody(summary, MANAGE_BOOKINGS_URL);
-  } catch (e) {
-    console.error('[email] booking summary build failed, using short receipt:', e && e.message ? e.message : e);
-    textBody =
-      'Thank you! Your summer camp payment went through.\n\n' +
-      'Create a parent account with the same email to add more weeks on the camp site:\n' +
-      (baseUrl || 'https://ima-summer-camp.vercel.app') +
-      '/register.html\n\n' +
-      '— Impact Martial Athletics';
-    htmlBody = undefined;
+  } else {
+    const gt = (sessionForEmail.amount_total != null ? Number(sessionForEmail.amount_total) : 0) / 100;
+    textBody = [
+      'Hi there,',
+      '',
+      'Your IMA Summer Camp payment went through.',
+      `Total charged: ${formatMoney(gt)}`,
+      '',
+      'Manage bookings: ' + MANAGE_BOOKINGS_URL,
+      '',
+      'Questions? tom@imaimpact.com',
+      '',
+      '— Impact Martial Athletics',
+    ].join('\n');
+    htmlBody = `<div style="font-family:system-ui,sans-serif;font-size:15px;line-height:1.5;color:#111">
+  <p>Hi there,</p>
+  <p>Your <strong>IMA Summer Camp</strong> payment went through.</p>
+  <p><strong>Total charged:</strong> ${escapeHtml(formatMoney(gt))}</p>
+  <p><a href="${escapeHtml(MANAGE_BOOKINGS_URL)}">Manage bookings</a></p>
+  <p>Questions? <a href="mailto:tom@imaimpact.com">tom@imaimpact.com</a></p>
+</div>`;
+    console.warn('[email] sent minimal parent receipt (no summary)', sessionForEmail.id);
   }
 
   let parentOk = !customerEmail;
@@ -264,9 +313,17 @@ async function sendCampPaymentEmails(stripe, session, result) {
       html: htmlBody,
     });
     parentOk = !!(r.ok && !r.skipped);
-    if (!parentOk) {
-      console.error('[email] parent confirmation Resend failure', customerEmail, r.error || r.reason || r.status);
+    console.log(
+      '[email] parent booking email',
+      parentOk ? 'SUCCESS' : 'FAIL',
+      customerEmail,
+      r.skipped ? '(skipped)' : r.error || r.id || ''
+    );
+    if (!parentOk && !r.skipped) {
+      console.error('[email] parent Resend failure detail', r.error || r.status);
     }
+  } else {
+    console.warn('[email] no customer email on session — parent booking email skipped');
   }
 
   let adminText;
@@ -274,35 +331,43 @@ async function sendCampPaymentEmails(stripe, session, result) {
   let adminSubject;
   if (summary) {
     adminSubject = buildAdminPaidSubject(summary);
-    adminText = buildAdminPaidNotificationText(summary, customerEmail, session.id);
-    adminHtml = buildAdminPaidNotificationHtml(summary, customerEmail, session.id);
+    adminText = buildAdminPaidNotificationText(summary, customerEmail, sessionForEmail.id);
+    adminHtml = buildAdminPaidNotificationHtml(summary, customerEmail, sessionForEmail.id);
   } else {
-    adminSubject = '🥊 New IMA Camp Booking — (summary unavailable)';
+    const gt = (sessionForEmail.amount_total != null ? Number(sessionForEmail.amount_total) : 0) / 100;
+    adminSubject = `🥊 New IMA Camp Booking — ${formatMoney(gt)}`;
     adminText = [
-      'New booking received (full summary could not be built).',
-      `Parent email: ${customerEmail || 'n/a'}`,
-      `Stripe session: ${session.id}`,
-      `View in admin: ${ADMIN_DASHBOARD_URL}`,
+      'New booking received!',
+      '',
+      `Parent: (${customerEmail || 'n/a'})`,
+      `TOTAL: ${formatMoney(gt)}`,
+      `Stripe session: ${sessionForEmail.id}`,
+      `View admin: ${ADMIN_DASHBOARD_URL}`,
     ].join('\n');
-    adminHtml = `<p>Paid checkout — see <a href="${escapeHtml(ADMIN_DASHBOARD_URL)}">admin</a>. Session ${escapeHtml(
-      session.id
-    )}</p>`;
+    adminHtml = `<p><strong>New booking</strong> — ${escapeHtml(formatMoney(gt))}</p>
+  <p>Session ${escapeHtml(sessionForEmail.id)}</p>
+  <p><a href="${escapeHtml(ADMIN_DASHBOARD_URL)}">View admin</a></p>`;
   }
 
   const staffPaidResults = await sendResendToStaff(adminSubject, adminText, adminHtml);
   const staffPaidOk =
     staffPaidResults.length > 0 && staffPaidResults.every((x) => x.ok && !x.skipped);
+  console.log(
+    '[email] staff booking emails',
+    staffPaidOk ? 'SUCCESS' : 'PARTIAL_OR_FAIL',
+    staffPaidResults.map((x) => ({ to: x.to, ok: x.ok, skipped: x.skipped }))
+  );
 
   if (parentOk && staffPaidOk) {
     try {
-      await markCampPaymentEmailsSent(stripe, session.id);
-      console.log('[email] camp payment emails complete; marked', META_SENT, 'on', session.id);
+      await markCampPaymentEmailsSent(stripe, sessionForEmail.id);
+      console.log('[email] camp payment emails COMPLETE; marked', META_SENT, 'on', sessionForEmail.id);
     } catch (e) {
       console.error('[email] could not set Stripe metadata after sends:', e && e.message ? e.message : e);
     }
   } else {
     console.error(
-      '[email] camp payment emails incomplete — not marking sent (parentOk=%s staffPaidOk=%s). Fix Resend/domain or check logs.',
+      '[email] camp payment emails INCOMPLETE — not marking sent (parentOk=%s staffPaidOk=%s). Retry confirm-checkout or check Resend.',
       parentOk,
       staffPaidOk
     );

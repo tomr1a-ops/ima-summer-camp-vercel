@@ -1,5 +1,6 @@
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { confirmStripeSession } = require('./lib/confirm-stripe-session');
+const { sendCampPaymentEmails } = require('./lib/email');
 
 async function readJsonBody(req) {
   if (req.body !== undefined && req.body !== null) {
@@ -43,9 +44,22 @@ module.exports = async (req, res) => {
   }
   try {
     const session = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ['customer_details'],
+      expand: ['customer_details', 'line_items'],
     });
     const result = await confirmStripeSession(stripe, session);
+    if (result.ok) {
+      try {
+        await sendCampPaymentEmails(stripe, session, result);
+        console.log('[confirm-checkout] payment emails finished for session', sessionId);
+      } catch (mailErr) {
+        console.error(
+          '[confirm-checkout] payment emails error (non-fatal):',
+          mailErr && mailErr.message ? mailErr.message : mailErr
+        );
+      }
+    } else {
+      console.log('[confirm-checkout] skip emails (confirm not ok)', sessionId, result && result.reason);
+    }
     res.statusCode = 200;
     return res.end(JSON.stringify(result));
   } catch (e) {

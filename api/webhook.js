@@ -35,8 +35,8 @@ module.exports = async (req, res) => {
       const result = await confirmStripeSession(stripe, session);
       if (result.ok) {
         try {
-          /** Parent confirmation + staff paid-booking emails (Resend). Failures are logged; we still 200 Stripe. */
           await sendCampPaymentEmails(stripe, session, result);
+          console.log('[webhook] payment emails finished for session', session.id);
         } catch (emailErr) {
           console.error('[webhook] sendCampPaymentEmails failed:', emailErr && emailErr.message ? emailErr.message : emailErr);
         }
