@@ -1421,8 +1421,40 @@
     gap: 10px;
     margin-bottom: 8px;
     font-size: 14px;
-    cursor: pointer;
     color: var(--text);
+  }
+  .week-kid-cb-inner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+  }
+  .week-kid-cb--conflict .week-kid-cb-inner {
+    cursor: default;
+  }
+  .week-kid-remove {
+    flex-shrink: 0;
+    font-family: var(--font-cond);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: #ff9a9a;
+    background: transparent;
+    border: none;
+    padding: 4px 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .week-kid-remove:hover:not(:disabled) {
+    color: #ffc4c4;
+  }
+  .week-kid-remove:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
   }
   .week-kid-cb input {
     width: 20px;
@@ -1867,6 +1899,8 @@
   let session = null;
   /** Confirmed enrollments from GET /api/enrollments — shown after checkout clears local draft. */
   let confirmedEnrollmentsCache = [];
+  /** Same fetch, before dedupe — needed to cancel every DB row for a camper+week. */
+  let confirmedEnrollmentsRaw = [];
   let pricingPreview = {
     dayRate: 85,
     weekRate: 375,
@@ -3276,6 +3310,7 @@
 
   async function refreshConfirmedEnrollmentsFromServer() {
     confirmedEnrollmentsCache = [];
+    confirmedEnrollmentsRaw = [];
     if (!session || !session.access_token) return;
     try {
       const res = await imaNoStoreFetch('/api/enrollments', {
@@ -3287,10 +3322,44 @@
       const confirmed = rows.filter(function (r) {
         return r && r.status === 'confirmed';
       });
+      confirmedEnrollmentsRaw = confirmed;
       confirmedEnrollmentsCache = dedupeConfirmedEnrollmentsForDisplay(confirmed);
     } catch (e) {
       confirmedEnrollmentsCache = [];
+      confirmedEnrollmentsRaw = [];
     }
+  }
+
+  function confirmedEnrollmentIdsForCamperWeek(weekId, camperId) {
+    const out = [];
+    (confirmedEnrollmentsRaw || []).forEach(function (r) {
+      if (!r || !r.id) return;
+      if (r.status !== 'confirmed') return;
+      if (String(r.camper_id) !== String(camperId)) return;
+      if (String(r.week_id) !== String(weekId)) return;
+      out.push(String(r.id));
+    });
+    return out;
+  }
+
+  async function cancelConfirmedEnrollmentsForCamperWeek(weekId, camperId) {
+    if (!session || !session.access_token) return { ok: false, error: 'Not signed in' };
+    const ids = confirmedEnrollmentIdsForCamperWeek(weekId, camperId);
+    if (!ids.length) return { ok: false, error: 'No enrollment found' };
+    for (var i = 0; i < ids.length; i++) {
+      const res = await imaNoStoreFetch('/api/enrollments?id=' + encodeURIComponent(ids[i]), {
+        method: 'DELETE',
+        headers: { Authorization: 'Bearer ' + session.access_token },
+      });
+      if (!res.ok) {
+        var errText = '';
+        try {
+          errText = await res.text();
+        } catch (eT) {}
+        return { ok: false, error: errText || res.statusText || 'Request failed' };
+      }
+    }
+    return { ok: true };
   }
 
   function enrollmentRowToScheduleLi(row) {
@@ -3842,12 +3911,16 @@
     const wk = String(weekId);
     parentCampers.forEach(function (c) {
       const cid = String(c.id);
-      const row = document.createElement('label');
+      const row = document.createElement('div');
       row.className = 'week-kid-cb';
+      const inner = document.createElement('label');
+      inner.className = 'week-kid-cb-inner';
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       let st = map[wk];
       const conflictMsg = mode === 'full' ? fullWeekPaidDayConflictMessage(weekId, cid) : '';
+      const paidFullWeekHere =
+        mode === 'full' && weekBlocked && camperWeekHasConfirmedFullWeek(weekId, cid);
       if (mode === 'full' && conflictMsg) {
         if (st && st.has(cid)) {
           st.delete(cid);
@@ -3858,10 +3931,14 @@
         cb.disabled = true;
         cb.checked = false;
         row.title = conflictMsg;
+      } else if (paidFullWeekHere) {
+        cb.checked = true;
+        cb.disabled = true;
+        row.title = 'Registered for this week — use Remove to cancel this booking.';
       } else {
         cb.checked = !!(st && st.has(cid));
         cb.disabled = weekBlocked;
-        row.title = '';
+        row.title = weekBlocked ? 'This week is full — you cannot add more children here.' : '';
       }
       cb.addEventListener('change', function () {
         if (enrollDomApplyLock || weekBlocked) return;
@@ -3900,8 +3977,70 @@
       });
       const sp = document.createElement('span');
       sp.textContent = c.first_name + ' ' + c.last_name;
-      row.appendChild(cb);
-      row.appendChild(sp);
+      inner.appendChild(cb);
+      inner.appendChild(sp);
+      row.appendChild(inner);
+      if (paidFullWeekHere) {
+        const rm = document.createElement('button');
+        rm.type = 'button';
+        rm.className = 'week-kid-remove';
+        rm.textContent = 'Remove';
+        rm.setAttribute('aria-label', 'Remove ' + (c.first_name || '') + ' from this week');
+        rm.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (!session || !session.access_token) return;
+          const nm = (c.first_name + ' ' + c.last_name).trim() || 'This child';
+          if (
+            !confirm(
+              'Remove ' +
+                nm +
+                ' from this week? Their spot will open up. Contact IMA if you need a refund.'
+            )
+          ) {
+            return;
+          }
+          rm.disabled = true;
+          void (async function () {
+            try {
+              const result = await cancelConfirmedEnrollmentsForCamperWeek(weekId, cid);
+              if (!result.ok) {
+                const msgEl = document.getElementById('msg');
+                if (msgEl) {
+                  msgEl.className = 'msg error';
+                  msgEl.textContent =
+                    'Could not remove that registration. Try again or contact IMA.';
+                }
+                rm.disabled = false;
+                return;
+              }
+              var s2 = fullWeekCampersByWeek[wk];
+              if (s2) {
+                s2.delete(cid);
+                if (!s2.size) delete fullWeekCampersByWeek[wk];
+              }
+              clearFullWeekHydrateDismiss(wk, cid);
+              await refreshConfirmedEnrollmentsFromServer();
+              await loadWeeks();
+              hydrateSelectionFromConfirmedEnrollments();
+              refreshScheduleUiAfterEnrollStorageChange();
+              try {
+                persistEnrollLocal();
+              } catch (ePl) {}
+              refreshPricingPreview();
+              updateSummary();
+              var msgOk = document.getElementById('msg');
+              if (msgOk) {
+                msgOk.className = 'msg';
+                msgOk.textContent = '';
+              }
+            } catch (eRem) {
+              rm.disabled = false;
+            }
+          })();
+        });
+        row.appendChild(rm);
+      }
       if (mode === 'full' && conflictMsg) {
         const hint = document.createElement('small');
         hint.className = 'week-kid-cb-conflict';
@@ -4355,6 +4494,7 @@
     } catch (e) {
       session = null;
       confirmedEnrollmentsCache = [];
+      confirmedEnrollmentsRaw = [];
       try {
         localStorage.removeItem('ima_post_checkout_clear_enroll');
         sessionStorage.removeItem('ima_post_checkout_clear_enroll');
@@ -4396,6 +4536,7 @@
       } catch (ePe) {}
     } else {
       confirmedEnrollmentsCache = [];
+      confirmedEnrollmentsRaw = [];
       try {
         localStorage.removeItem('ima_post_checkout_clear_enroll');
         sessionStorage.removeItem('ima_post_checkout_clear_enroll');
