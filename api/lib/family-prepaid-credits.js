@@ -134,16 +134,20 @@ async function loadFloatingPrepaidPool(sb, parentId, bookingsArray, normCamperKe
   const weekDaysByWeekId = new Map();
 
   if (weekIds.length) {
-    const { data: weeks, error: we } = await sb.from('weeks').select('id,week_number').in('id', weekIds);
+    const [weeksRes, daysRes] = await Promise.all([
+      sb.from('weeks').select('id,week_number').in('id', weekIds),
+      sb
+        .from('days')
+        .select('id,week_id,date')
+        .in('week_id', weekIds)
+        .order('date', { ascending: true }),
+    ]);
+    const { data: weeks, error: we } = weeksRes;
     if (we) throw we;
     for (const w of weeks || []) {
       weekMetaMap.set(String(w.id), { week_number: w.week_number });
     }
-    const { data: allDays, error: de } = await sb
-      .from('days')
-      .select('id,week_id,date')
-      .in('week_id', weekIds)
-      .order('date', { ascending: true });
+    const { data: allDays, error: de } = daysRes;
     if (de) throw de;
     for (const wid of weekIds) weekDaysByWeekId.set(String(wid), []);
     for (const d of allDays || []) {

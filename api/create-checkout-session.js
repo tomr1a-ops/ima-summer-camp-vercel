@@ -193,12 +193,6 @@ module.exports = async (req, res) => {
     return failCheckout(res, 400, 'INVALID_JSON', 'Invalid JSON', parseErr && parseErr.message ? parseErr.message : '');
   }
 
-  try {
-    console.log('[create-checkout-session] incoming body', JSON.stringify(body));
-  } catch (logErr) {
-    console.log('[create-checkout-session] incoming body (could not stringify)', typeof body);
-  }
-
   const { testPricing, imaMember, registrationFeeForCamper, extraShirtByCamper } = body;
   const rawBookings = Array.isArray(body.bookings) ? body.bookings : [];
   let bookingsArray = normalizeIncomingBookings(rawBookings);
@@ -213,6 +207,10 @@ module.exports = async (req, res) => {
   }
   const shirtChoice = normalizeExtraShirtChoice(extraShirtByCamper);
   const shirtIdsRequested = Object.keys(shirtChoice).filter((k) => shirtChoice[k] === true);
+  console.log('[create-checkout-session] start', {
+    bookings: bookingsArray.length,
+    shirtAddons: shirtIdsRequested.length,
+  });
   const guest = body.guest;
   if (guest && typeof guest === 'object' && (guest.email || guest.firstName || guest.lastName || guest.age != null)) {
     return failCheckout(res, 400, 'GUEST_NOT_ALLOWED', 'Guest checkout is not available. Sign in with a parent account to complete registration.');
@@ -264,32 +262,32 @@ module.exports = async (req, res) => {
     return json(res, pe.statusCode || 500, { error: pe.message });
   }
   parentId = user.id;
-  if (bookingsArray.length) {
-    for (const b of bookingsArray) {
-      if (!b.camperId) {
-        return failCheckout(res, 400, 'MISSING_CAMPER', 'Each week needs a child selected (camperId on each booking).');
-      }
+  for (const b of bookingsArray) {
+    if (!b.camperId) {
+      return failCheckout(res, 400, 'MISSING_CAMPER', 'Each week needs a child selected (camperId on each booking).');
     }
-    const seen = new Set();
-    for (const b of bookingsArray) {
-      const cid = b.camperId;
-      if (seen.has(cid)) continue;
-      seen.add(cid);
-      const { data: camper, error: ce } = await sb.from('campers').select('id, parent_id').eq('id', cid).single();
-      if (ce || !camper) {
-        return failCheckout(res, 400, 'CAMPER_NOT_FOUND', 'Camper not found', { camperId: cid, supabase: ce && ce.message });
-      }
-      if (String(camper.parent_id) !== String(user.id)) {
-        return failCheckout(res, 403, 'CAMPER_FORBIDDEN', 'Not your camper', { camperId: cid });
-      }
+  }
+  const camperIdsToVerify = [
+    ...new Set([
+      ...bookingsArray.map((b) => b.camperId),
+      ...shirtIdsRequested.map((id) => String(id).trim()).filter(Boolean),
+    ]),
+  ].filter(Boolean);
+  if (camperIdsToVerify.length) {
+    const { data: camperList, error: batchCe } = await sb
+      .from('campers')
+      .select('id, parent_id')
+      .in('id', camperIdsToVerify);
+    if (batchCe) {
+      return failCheckout(res, 500, 'CAMPER_LOOKUP', batchCe.message || 'Camper lookup failed');
     }
-  } else {
-    for (const cid of shirtIdsRequested) {
-      const { data: camper, error: ce } = await sb.from('campers').select('id, parent_id').eq('id', cid).single();
-      if (ce || !camper) {
+    const byKey = new Map((camperList || []).map((r) => [normCamperKey(r.id), r]));
+    for (const cid of camperIdsToVerify) {
+      const row = byKey.get(normCamperKey(cid));
+      if (!row) {
         return failCheckout(res, 400, 'CAMPER_NOT_FOUND', 'Camper not found', { camperId: cid });
       }
-      if (String(camper.parent_id) !== String(user.id)) {
+      if (String(row.parent_id) !== String(user.id)) {
         return failCheckout(res, 403, 'CAMPER_FORBIDDEN', 'Not your camper', { camperId: cid });
       }
     }
@@ -300,7 +298,8 @@ module.exports = async (req, res) => {
   const regFee = registrationFee(tp);
   const shirtDollars = extraCampShirt(tp);
   const batchId = randomUUID();
-  const bookingModes = [];
+  /** One entry per `bookingsArray` row — same order for Stripe metadata / finalize. */
+  let bookingModes = [];
 
   /** Family pooled prepaid credits (confirmed weeks/days not in this cart) → reduce camp line charges. */
   let campLineCents = [];
@@ -324,28 +323,23 @@ module.exports = async (req, res) => {
   }
 
   if (bookingsArray.length) {
-    for (const b of bookingsArray) {
-      const weekId = b.weekId;
-      const dayIds = Array.isArray(b.dayIds) ? b.dayIds : [];
-      const pricingMode = b.pricingMode === 'full_week' ? 'full_week' : 'daily';
-      const cid = b.camperId;
-      try {
-        await validateBooking(sb, {
-          weekId,
-          dayIds,
-          camperId: cid,
-          excludeEnrollmentId: null,
-          pricingMode,
-        });
-      } catch (e) {
-        return failCheckout(res, e.statusCode || 400, 'VALIDATE_BOOKING', e.message || String(e), {
-          weekId,
-          camperId: cid,
-          pricingMode,
-          dayCount: (dayIds || []).length,
-        });
-      }
-      bookingModes.push(pricingMode);
+    bookingModes = bookingsArray.map((b) => (b.pricingMode === 'full_week' ? 'full_week' : 'daily'));
+    try {
+      await Promise.all(
+        bookingsArray.map((b, i) =>
+          validateBooking(sb, {
+            weekId: b.weekId,
+            dayIds: Array.isArray(b.dayIds) ? b.dayIds : [],
+            camperId: b.camperId,
+            excludeEnrollmentId: null,
+            pricingMode: bookingModes[i],
+          })
+        )
+      );
+    } catch (e) {
+      return failCheckout(res, e.statusCode || 400, 'VALIDATE_BOOKING', e.message || String(e), {
+        detail: e && e.message,
+      });
     }
   }
 
@@ -372,23 +366,41 @@ module.exports = async (req, res) => {
   });
   const regFeeChoice = normalizeRegFeeChoice(registrationFeeForCamper);
 
+  const regFeeChecks = await Promise.all(
+    uniqueCampers.map(async (cid) => {
+      if (regFeeWaivedByParentChoice(regFeeChoice, cid)) {
+        return { cid, waived: true, paid: true };
+      }
+      const paid = await hasRegistrationFeePaid(sb, cid);
+      return { cid, waived: false, paid };
+    })
+  );
+
   const regLineItems = [];
   /** Campers who are paying registration in this session — stored on Stripe session for confirm → DB. */
   const registrationCamperIds = [];
   let regCentsTotal = 0;
-  for (const cid of uniqueCampers) {
-    if (regFeeWaivedByParentChoice(regFeeChoice, cid)) {
-      continue;
+  for (const r of regFeeChecks) {
+    if (r.waived || r.paid) continue;
+    const cents = Math.round(regFee * 100);
+    regCentsTotal += cents;
+    const row = (camperShirtRows || []).find((c) => normCamperKey(c.id) === normCamperKey(r.cid));
+    const label =
+      row && (row.first_name || row.last_name)
+        ? `${row.first_name || ''} ${row.last_name || ''}`.trim()
+        : 'Camper';
+    regLineItems.push({ cents, label });
+    registrationCamperIds.push(String(r.cid));
+  }
+
+  const uniqueWeekIds = [...new Set(bookingsArray.map((b) => String(b.weekId)))];
+  const weekLabelById = new Map();
+  if (uniqueWeekIds.length) {
+    const { data: wkRows, error: wkErr } = await sb.from('weeks').select('id,label').in('id', uniqueWeekIds);
+    if (wkErr) {
+      return failCheckout(res, 500, 'WEEK_LABELS', wkErr.message || 'Could not load week labels');
     }
-    const needs = !(await hasRegistrationFeePaid(sb, cid));
-    if (needs) {
-      const cents = Math.round(regFee * 100);
-      regCentsTotal += cents;
-      const { data: cm } = await sb.from('campers').select('first_name,last_name').eq('id', cid).single();
-      const label = cm ? `${cm.first_name} ${cm.last_name}`.trim() : 'Camper';
-      regLineItems.push({ cents, label });
-      registrationCamperIds.push(String(cid));
-    }
+    (wkRows || []).forEach((w) => weekLabelById.set(String(w.id), w.label || 'Week'));
   }
 
   const line_items = [];
@@ -400,8 +412,7 @@ module.exports = async (req, res) => {
     const unitCents = campLineCents[i] != null ? campLineCents[i] : Math.round((mode === 'full_week' ? wr : n * dr) * 100);
     campCentsTotal += unitCents;
     if (unitCents <= 0) continue;
-    const { data: week } = await sb.from('weeks').select('label').eq('id', b.weekId).single();
-    const wlabel = week ? week.label : 'Week';
+    const wlabel = weekLabelById.get(String(b.weekId)) || 'Week';
     if (mode === 'full_week') {
       line_items.push({
         price_data: {
@@ -481,14 +492,12 @@ module.exports = async (req, res) => {
     );
   }
 
-  for (const cid of uniqueCampers) {
-    if (regFeeChoice && regFeeWaivedByParentChoice(regFeeChoice, cid)) continue;
-    const paid = await hasRegistrationFeePaid(sb, cid);
-    if (paid) continue;
-    const cNorm = normCamperKey(cid);
+  for (const r of regFeeChecks) {
+    if (r.waived || r.paid) continue;
+    const cNorm = normCamperKey(r.cid);
     if (!registrationCamperIds.some((x) => normCamperKey(x) === cNorm)) {
       console.error('[checkout] registration fee missing for camper', {
-        cid: String(cid),
+        cid: String(r.cid),
         cNorm,
         registrationCamperIds,
         regFeeChoice,
@@ -502,19 +511,19 @@ module.exports = async (req, res) => {
     }
   }
 
-  /** One insert per row so DB row order matches `booking_modes` metadata (confirm uses row index). */
-  for (const b of bookingsArray) {
-    const cid = b.camperId;
-    const { error: ie } = await sb.from('enrollments').insert({
+  /** Batch insert — row order matches `booking_modes` / `camp_line_cents` (confirm uses row index). */
+  if (bookingsArray.length) {
+    const insertRows = bookingsArray.map((b) => ({
       parent_id: parentId,
-      camper_id: cid,
+      camper_id: b.camperId,
       week_id: b.weekId,
       day_ids: b.dayIds,
       price_paid: 0,
       registration_fee_paid: false,
       status: 'pending',
       checkout_batch_id: batchId,
-    });
+    }));
+    const { error: ie } = await sb.from('enrollments').insert(insertRows);
     if (ie) {
       console.error('[create-checkout-session] enrollment insert failed', ie);
       return failCheckout(res, 500, 'ENROLLMENT_INSERT', ie.message || 'Could not create enrollment', {

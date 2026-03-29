@@ -4619,7 +4619,10 @@
 
     let stripePk = '';
     try {
-      stripePk = await IMA.getStripePublishableKey();
+      const pricingPromise =
+        session && session.access_token ? refreshPricingPreview() : Promise.resolve();
+      const results = await Promise.all([IMA.getStripePublishableKey(), pricingPromise]);
+      stripePk = results[0];
     } catch (eCfg) {
       showCheckoutErr('Could not load site configuration.');
       return;
@@ -4631,9 +4634,6 @@
           'Set STRIPE_PUBLISHABLE_KEY (or NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY) in Vercel with your Stripe publishable key, then redeploy.';
       }
       return;
-    }
-    if (session && session.access_token) {
-      await refreshPricingPreview();
     }
     if (session) {
       pruneConflictingFullWeekSelections();
