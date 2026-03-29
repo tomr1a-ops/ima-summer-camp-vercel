@@ -3544,9 +3544,54 @@
     };
   }
 
-  /** “In this checkout” lines = only what collectBookings would charge (excludes paid days). */
-  function draftScheduleLinesFromNewBookingsOnly(cid, sortedWeeks) {
-    const rows = [];
+  /** True if this child already has any confirmed enrollment row for the camp week (paid on file). */
+  function camperHasConfirmedPaidEnrollmentForWeek(camperId, weekId) {
+    return (confirmedEnrollmentsCache || []).some(function (r) {
+      return r && String(r.camper_id) === String(camperId) && String(r.week_id) === String(weekId);
+    });
+  }
+
+  function formatDraftCheckoutWeekLineHtml(w, agg) {
+    const wl = escapeHtml(String(w.label || 'Week'));
+    const range = formatWeekRangeForSummary(w);
+    const rangeHtml = range ? ' · ' + escapeHtml(range) : '';
+    if (agg.full) {
+      return (
+        '<li><span class="sov-week">' +
+        wl +
+        rangeHtml +
+        '</span><span class="sov-type">Full week Mon–Fri</span></li>'
+      );
+    }
+    if (!agg.dayIdSet.size) return '';
+    const dayObjs = (w.days || []).filter(function (d) {
+      return agg.dayIdSet.has(String(d.id));
+    });
+    dayObjs.sort(function (a, b) {
+      return String(a.date).localeCompare(String(b.date));
+    });
+    const dTxt = dayObjs
+      .map(function (d) {
+        return formatDayLabel(d);
+      })
+      .join(', ');
+    return (
+      '<li><span class="sov-week">' +
+        wl +
+        rangeHtml +
+        '</span><span class="sov-type">Daily: ' +
+        escapeHtml(dTxt) +
+        '</span></li>'
+    );
+  }
+
+  /**
+   * Draft checkout lines from collectBookings, split by whether this child already has paid registration
+   * for that week. Avoids listing the same camp week under both “Registered & paid” and “In this checkout”.
+   */
+  function splitDraftScheduleLinesByPriorPaidWeek(cid, sortedWeeks) {
+    const newWeekLines = [];
+    const addonWeekLines = [];
     const mine = collectBookings().filter(function (b) {
       return String(b.camperId) === String(cid);
     });
@@ -3555,48 +3600,21 @@
       const wk = String(b.weekId);
       if (!byWeek[wk]) byWeek[wk] = { full: false, dayIdSet: new Set() };
       if (b.pricingMode === 'full_week') byWeek[wk].full = true;
-      else (b.dayIds || []).forEach(function (d) {
-        byWeek[wk].dayIdSet.add(String(d));
-      });
+      else
+        (b.dayIds || []).forEach(function (d) {
+          byWeek[wk].dayIdSet.add(String(d));
+        });
     });
     sortedWeeks.forEach(function (w) {
       const wk = String(w.id);
       const agg = byWeek[wk];
       if (!agg) return;
-      const wl = escapeHtml(String(w.label || 'Week'));
-      const range = formatWeekRangeForSummary(w);
-      const rangeHtml = range ? ' · ' + escapeHtml(range) : '';
-      if (agg.full) {
-        rows.push(
-          '<li><span class="sov-week">' +
-            wl +
-            rangeHtml +
-            '</span><span class="sov-type">Full week Mon–Fri</span></li>'
-        );
-        return;
-      }
-      if (!agg.dayIdSet.size) return;
-      const dayObjs = (w.days || []).filter(function (d) {
-        return agg.dayIdSet.has(String(d.id));
-      });
-      dayObjs.sort(function (a, b) {
-        return String(a.date).localeCompare(String(b.date));
-      });
-      const dTxt = dayObjs
-        .map(function (d) {
-          return formatDayLabel(d);
-        })
-        .join(', ');
-      rows.push(
-        '<li><span class="sov-week">' +
-          wl +
-          rangeHtml +
-          '</span><span class="sov-type">Daily: ' +
-          escapeHtml(dTxt) +
-          '</span></li>'
-      );
+      const html = formatDraftCheckoutWeekLineHtml(w, agg);
+      if (!html) return;
+      if (camperHasConfirmedPaidEnrollmentForWeek(cid, w.id)) addonWeekLines.push(html);
+      else newWeekLines.push(html);
     });
-    return rows;
+    return { newWeekLines: newWeekLines, addonWeekLines: addonWeekLines };
   }
 
   function renderScheduleOverview() {
@@ -3639,9 +3657,11 @@
       const paidRows = paidByCamperRows[cid] || [];
       const coalescedPaid = coalesceEnrollmentRowsForSidebar(paidRows);
       const paidDisplayLis = coalescedPaid.map(enrollmentRowToScheduleLi).filter(Boolean);
-      const draftRows = draftScheduleLinesFromNewBookingsOnly(cid, sortedWeeks);
+      const splitDraft = splitDraftScheduleLinesByPriorPaidWeek(cid, sortedWeeks);
+      const draftNewWeekRows = splitDraft.newWeekLines;
+      const draftAddonWeekRows = splitDraft.addonWeekLines;
       const shirtInCheckout = extraShirtChargesThisCheckout(camper.id);
-      if (draftRows.length) anyDraft = true;
+      if (draftNewWeekRows.length || draftAddonWeekRows.length) anyDraft = true;
       if (shirtInCheckout) anyDraft = true;
 
       html += '<div class="schedule-overview-child">';
@@ -3652,10 +3672,15 @@
         html += '<ul class="schedule-overview-list">' + paidDisplayLis.join('') + '</ul>';
       }
 
-      if (draftRows.length || shirtInCheckout) {
+      if (draftAddonWeekRows.length) {
+        html += '<div class="schedule-overview-sub">Additional in this checkout</div>';
+        html += '<ul class="schedule-overview-list">' + draftAddonWeekRows.join('') + '</ul>';
+      }
+
+      if (draftNewWeekRows.length || shirtInCheckout) {
         html += '<div class="schedule-overview-sub">In this checkout</div>';
         html += '<ul class="schedule-overview-list">';
-        html += draftRows.join('');
+        html += draftNewWeekRows.join('');
         if (shirtInCheckout) {
           html +=
             '<li><span class="sov-week">Extra camp T-shirt</span><span class="sov-type">Add-on</span></li>';
@@ -3663,7 +3688,12 @@
         html += '</ul>';
       }
 
-      if (!paidDisplayLis.length && !draftRows.length && !shirtInCheckout) {
+      if (
+        !paidDisplayLis.length &&
+        !draftNewWeekRows.length &&
+        !draftAddonWeekRows.length &&
+        !shirtInCheckout
+      ) {
         html +=
           '<p class="schedule-overview-empty">No registrations yet. Select weeks on the left to add them to checkout.</p>';
       }
