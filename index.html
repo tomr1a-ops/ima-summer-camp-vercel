@@ -1037,6 +1037,17 @@
   .week-card.full-card .week-kids-ctrl {
     pointer-events: none;
   }
+  /* Sold-out cards: parent must still tap Cancel; keep controls above card chrome */
+  .week-card.full-card .week-camper-row.week-kids-checkboxes {
+    position: relative;
+    z-index: 2;
+    pointer-events: auto;
+  }
+  .week-card.full-card .week-kid-remove {
+    position: relative;
+    z-index: 3;
+    pointer-events: auto;
+  }
   .day-chips {
     display: flex;
     flex-wrap: wrap;
@@ -3336,16 +3347,24 @@
     }
   }
 
+  /** Confirmed full-week enrollment row ids for this camper+week (raw + deduped cache; matches sold-out Cancel UI). */
   function confirmedEnrollmentIdsForCamperWeek(weekId, camperId) {
-    const out = [];
-    (confirmedEnrollmentsRaw || []).forEach(function (r) {
-      if (!r || !r.id) return;
+    const w = weeksPayload.find(function (x) {
+      return String(x.id) === String(weekId);
+    });
+    if (!w) return [];
+    const idSet = new Set();
+    function considerRow(r) {
+      if (!r || r.id == null) return;
       if (r.status !== 'confirmed') return;
       if (String(r.camper_id) !== String(camperId)) return;
       if (String(r.week_id) !== String(weekId)) return;
-      out.push(String(r.id));
-    });
-    return out;
+      if (!enrollmentCoversFullWeek(r, w)) return;
+      idSet.add(String(r.id));
+    }
+    (confirmedEnrollmentsRaw || []).forEach(considerRow);
+    (confirmedEnrollmentsCache || []).forEach(considerRow);
+    return Array.from(idSet);
   }
 
   async function cancelConfirmedEnrollmentsForCamperWeek(weekId, camperId) {
@@ -3353,9 +3372,14 @@
     const ids = confirmedEnrollmentIdsForCamperWeek(weekId, camperId);
     if (!ids.length) return { ok: false, error: 'No enrollment found' };
     for (var i = 0; i < ids.length; i++) {
-      const res = await imaNoStoreFetch('/api/enrollments?id=' + encodeURIComponent(ids[i]), {
+      /* JSON body: some platforms mishandle query strings on DELETE; API accepts body.id */
+      const res = await imaNoStoreFetch('/api/enrollments', {
         method: 'DELETE',
-        headers: { Authorization: 'Bearer ' + session.access_token },
+        headers: {
+          Authorization: 'Bearer ' + session.access_token,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: ids[i] }),
       });
       if (!res.ok) {
         var errText = '';
@@ -4055,6 +4079,12 @@
               }
             } catch (eRem) {
               rm.disabled = false;
+              const msgEx = document.getElementById('msg');
+              if (msgEx) {
+                msgEx.className = 'msg error';
+                msgEx.textContent =
+                  (eRem && eRem.message) || 'Could not remove that registration. Try again or contact IMA.';
+              }
             }
           })();
         });
