@@ -2714,7 +2714,10 @@
           }
         } catch (eL) {}
       }
-      if (!raw) return;
+      if (!raw) {
+        setEnrollmentType(enrollmentType);
+        return;
+      }
       const o = JSON.parse(raw);
       /* Full snapshot (fwComplete): every camp week is stored as camper id[] or [] so “unchecked” survives refresh.
          Legacy: only keys present in o.fw were applied — sparse saves could not represent “all empty”. */
@@ -2820,7 +2823,11 @@
       });
       const et = o.enrollmentType === 'daily' ? 'daily' : 'full';
       setEnrollmentType(et);
-    } catch (e) {}
+    } catch (e) {
+      try {
+        setEnrollmentType(enrollmentType);
+      } catch (e2) {}
+    }
   }
 
   function setEnrollmentType(type) {
@@ -3437,22 +3444,28 @@
     return coalesceEnrollmentRowsForSidebar(paidRows);
   }
 
-  /** Paid weeks/days that are NOT checked below = unused credit on file for this child. */
+  /** Paid weeks/days that are NOT reflected in the grid below = unused (“floating”) credit for this child. */
   function unusedPaidWeekDayCountsForCamper(cid) {
     var weeks = 0;
     var days = 0;
+    const camperId = String(cid);
     coalescedConfirmedRowsForCamper(cid).forEach(function (r) {
-      if (paidEnrollmentMatchesPicker(r, cid)) return;
       var w = weeksPayload.find(function (x) {
         return String(x.id) === String(r.week_id);
       });
       if (!w) return;
       if (enrollmentCoversFullWeek(r, w)) {
+        if (paidEnrollmentMatchesPicker(r, camperId)) return;
         weeks += 1;
         return;
       }
       var dayIds = (r.day_ids || []).map(String).filter(Boolean);
-      days += dayIds.length;
+      if (!dayIds.length) return;
+      var wk = String(r.week_id);
+      dayIds.forEach(function (did) {
+        var s = getDayCamperSetMain(wk, did);
+        if (!s || !s.has(camperId)) days += 1;
+      });
     });
     return { weeks: weeks, days: days };
   }
@@ -4467,7 +4480,7 @@
       });
       document.getElementById('weeks-loading-full').style.display = 'none';
       document.getElementById('weeks-loading-daily').style.display = 'none';
-      setEnrollmentType('full');
+      /* Tab (weekly vs daily) comes from restoreEnrollLocal / bootAuth — do not force “full” here or refresh/bfcache drops daily drafts */
       updateEnrollmentGate();
     } catch (e) {
       const err = '<p class="empty-state" style="color:#f88">Could not load weeks. Check API and Supabase env.</p>';
@@ -4592,6 +4605,7 @@
       } catch (eClr2) {}
       wipeRegEnrollStorage();
       showAuthPanels();
+      setEnrollmentType('full');
     }
     function onLogoutClick(ev) {
       ev.preventDefault();
@@ -5003,6 +5017,9 @@
     chain
       .then(function () {
         if (session && session.access_token) {
+          try {
+            restoreEnrollLocal();
+          } catch (eR) {}
           hydrateSelectionFromConfirmedEnrollments();
           try {
             refreshScheduleUiAfterEnrollStorageChange();
@@ -5027,6 +5044,9 @@
       if (session && session.access_token) {
         refreshConfirmedEnrollmentsFromServer()
           .then(function () {
+            try {
+              restoreEnrollLocal();
+            } catch (eRv) {}
             hydrateSelectionFromConfirmedEnrollments();
             try {
               refreshScheduleUiAfterEnrollStorageChange();
