@@ -6,6 +6,36 @@
   <title>Admin — IMA Summer Camp</title>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/ima-theme.css" />
+  <style>
+    .admin-nav-inv {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+    }
+    .admin-nav-inv-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 999px;
+      background: #f59e0b;
+      color: #1a1206;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1;
+      font-family: var(--font-body);
+      letter-spacing: 0;
+      text-transform: none;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+    }
+    .admin-nav-inv-badge[hidden] {
+      display: none !important;
+    }
+  </style>
 </head>
 <body>
   <header class="app-header">
@@ -14,7 +44,12 @@
       <span>Admin</span>
     </a>
     <div class="app-actions">
-      <button type="button" class="btn-ghost" id="btn-portal">Parent portal</button>
+      <a class="btn-ghost admin-nav-inv" href="/admin/inventory.html" id="link-inventory">
+        <span>Inventory</span>
+        <span class="admin-nav-inv-badge" id="inv-low-badge" hidden aria-hidden="true" title="Items at or below reorder point"></span>
+      </a>
+      <a class="btn-ghost" href="/admin/gear-distribution.html">Gear</a>
+      <button type="button" class="btn-ghost" id="btn-portal">Camp site</button>
       <button type="button" class="btn-ghost" id="btn-out">Log out</button>
     </div>
   </header>
@@ -91,7 +126,7 @@
     </div>
   </main>
 
-  <script src="/js/ima-core.js"></script>
+  <script src="/js/ima-core.js?v=20260330"></script>
   <script>
     (function () {
       const banner = document.getElementById('banner');
@@ -99,7 +134,7 @@
       document.getElementById('btn-out').onclick = function () {
         IMA.signOut('/admin-login.html');
       };
-      document.getElementById('btn-portal').onclick = function () { window.location.href = '/portal.html'; };
+      document.getElementById('btn-portal').onclick = function () { window.location.href = '/index.html#schedule'; };
 
       function showBanner(text, ok) {
         if (!text) {
@@ -127,13 +162,13 @@
         const profile = await IMA.getProfile();
         if (!profile) {
           showBanner('No profile found.', false);
-          window.location.replace('/portal.html');
+          window.location.replace('/index.html#schedule');
           return null;
         }
         const em = String(session.user && session.user.email ? session.user.email : '').toLowerCase();
         if (profile.role !== 'admin' && !IMA.isAdminLoginEmail(em)) {
           showBanner('Admin access only.', false);
-          window.location.replace('/portal.html');
+          window.location.replace('/index.html#schedule');
           return null;
         }
         return { session: session, profile: profile };
@@ -143,6 +178,19 @@
         const { data, error } = await sb.from('weeks').select('*').order('week_number');
         if (error) throw error;
         return data || [];
+      }
+
+      /** Max days.current_enrollment per week_id — same source as /api/weeks and portal. */
+      async function loadWeekPeakEnrollmentByWeekId(sb) {
+        const { data, error } = await sb.from('days').select('week_id,current_enrollment');
+        if (error) throw error;
+        const peak = {};
+        (data || []).forEach(function (d) {
+          const wid = String(d.week_id);
+          const n = Number(d.current_enrollment) || 0;
+          peak[wid] = Math.max(peak[wid] || 0, n);
+        });
+        return peak;
       }
 
       async function loadEnrollments(sb) {
@@ -257,9 +305,9 @@
           const summary =
             '<p class="empty-hint" style="margin-bottom:12px">' +
             Object.keys(distinct).length +
-            ' distinct camper(s) confirmed (capacity bar) · ' +
+            ' distinct camper(s) with confirmed enrollment · ' +
             activeRoster.length +
-            ' active row(s)</p>';
+            ' active row(s). Week capacity on the list above uses <strong>days.current_enrollment</strong>.</p>';
           function rosterTable(title, list) {
             if (!list.length) return '';
             return (
@@ -327,22 +375,15 @@
         });
       }
 
-      function renderWeekManage(sb, weeks, enr) {
-        const confirmed = enr.filter(function (e) { return e.status === 'confirmed'; });
-        const byWeek = {};
-        weeks.forEach(function (w) { byWeek[w.id] = {}; });
-        confirmed.forEach(function (e) {
-          if (!byWeek[e.week_id]) byWeek[e.week_id] = {};
-          byWeek[e.week_id][e.camper_id] = true;
-        });
+      function renderWeekManage(sb, weeks, peakByWeekId) {
         const el = document.getElementById('week-manage');
         el.innerHTML = weeks
           .map(function (w) {
-            const set = byWeek[w.id] || {};
-            const n = Object.keys(set).length;
+            const wid = String(w.id);
+            const n = peakByWeekId[wid] != null ? peakByWeekId[wid] : 0;
             const max = w.max_capacity || 35;
             const pct = Math.min(100, Math.round((n / max) * 100));
-            const full = w.is_full || n >= max;
+            const full = !!w.is_full || n >= max;
             return (
               '<div class="week-manage-row week-row-admin" data-week-id="' +
               escapeHtml(String(w.id)) +
@@ -492,18 +533,46 @@
         return t;
       }
 
+      function inventoryLowStockCount(rows) {
+        return (rows || []).filter(function (r) {
+          if (r.reorder_point == null || r.reorder_point === '') return false;
+          const rp = Number(r.reorder_point);
+          if (!Number.isFinite(rp)) return false;
+          return Number(r.quantity_on_hand) <= rp;
+        }).length;
+      }
+
+      async function refreshInventoryLowBadge(sb) {
+        const el = document.getElementById('inv-low-badge');
+        if (!el) return;
+        try {
+          const { data, error } = await sb.from('inventory_items').select('quantity_on_hand,reorder_point');
+          if (error) throw error;
+          const n = inventoryLowStockCount(data || []);
+          el.textContent = String(n);
+          el.hidden = n === 0;
+          el.setAttribute('aria-hidden', n === 0 ? 'true' : 'false');
+        } catch (e) {
+          el.hidden = true;
+          el.setAttribute('aria-hidden', 'true');
+        }
+      }
+
       async function boot() {
         const ctx = await requireAdmin();
         if (!ctx) return;
         const sb = await IMA.getSupabase();
 
+        refreshInventoryLowBadge(sb);
+
         state.weeks = await loadWeeks(sb);
         state.enr = await loadEnrollments(sb);
         await hydrateCampersWeeks(sb, state.enr);
         state.parents = await hydrateParents(sb, state.enr);
+        const peakByWeekId = await loadWeekPeakEnrollmentByWeekId(sb);
 
         overviewStats(state.enr);
-        renderWeekManage(sb, state.weeks, state.enr);
+        renderWeekManage(sb, state.weeks, peakByWeekId);
         bindRosterModalUiOnce();
         fillWeekFilterSelect();
         renderTable(state.enr, state.parents);

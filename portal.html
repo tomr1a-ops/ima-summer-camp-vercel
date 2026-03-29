@@ -926,6 +926,16 @@
     return w.max_capacity || 35;
   }
 
+  /** Headline occupancy for a week: max of days.current_enrollment (same source as /api/weeks). */
+  function weekPeakEnrollmentFromDays(w) {
+    if (w && typeof w.week_peak_enrollment === 'number') return w.week_peak_enrollment;
+    var m = 0;
+    (w.days || []).forEach(function (d) {
+      m = Math.max(m, Number(d.current_enrollment) || 0);
+    });
+    return m;
+  }
+
   function formatDayLabel(d) {
     const p = String(d.date).split('-');
     const dt = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
@@ -1228,8 +1238,8 @@
     state.weeks.forEach(function (w) {
       if (String(w.id) === String(enrollment.week_id)) return;
       const max = w.max_capacity || 35;
-      const n = typeof w.distinct_camper_count === 'number' ? w.distinct_camper_count : 0;
-      const hasRoom = n < max && !w.is_full;
+      const n = weekPeakEnrollmentFromDays(w);
+      const hasRoom = n < max && !w.is_full && !w.disabled;
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'swap-week-option';
