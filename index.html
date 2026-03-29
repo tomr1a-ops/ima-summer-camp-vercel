@@ -3333,7 +3333,12 @@
         lines.push({ b: b, sub: sub, creditDays: use, nDays: n });
       }
     });
-    return { campTotal: campTotal, lines: lines };
+    return {
+      campTotal: campTotal,
+      lines: lines,
+      remainingWeeks: pw,
+      remainingDays: pd,
+    };
   }
 
   /** “In this checkout” lines = only what collectBookings would charge (excludes paid days). */
@@ -3471,8 +3476,11 @@
     el.innerHTML = html;
   }
 
-  /** Family-pooled paid time not checked below — applied automatically to new weeks/days at checkout until used up. */
-  function renderCreditByCamperBlock() {
+  /**
+   * Family-pooled “floating” prepaid (paid time not checked against that booking in the grid).
+   * Household balance = pool left after applying credits to the current checkout (same order as pricing lines).
+   */
+  function renderCreditByCamperBlock(creditApplied) {
     var el = document.getElementById('credit-by-camper');
     if (!el) return;
     if (!session || !parentCampers.length) {
@@ -3480,18 +3488,22 @@
       el.innerHTML = '';
       return;
     }
-    var cnt = familyUnusedPaidWeekDayCounts();
-    if (cnt.weeks <= 0 && cnt.days <= 0) {
+    var gross = familyUnusedPaidWeekDayCounts();
+    if (gross.weeks <= 0 && gross.days <= 0) {
       el.hidden = true;
       el.innerHTML = '';
       return;
     }
+    var remW = creditApplied ? creditApplied.remainingWeeks | 0 : gross.weeks;
+    var remD = creditApplied ? creditApplied.remainingDays | 0 : gross.days;
     el.hidden = false;
+    var balLabel = formatWeekDayCreditLabel(remW, remD);
+    if (!balLabel) balLabel = 'None left — fully used by current checkout';
     el.innerHTML =
       '<div class="credit-by-camper-title">Unused paid credit (family pool)</div>' +
-      '<p class="credit-by-camper-hint">Total paid camp time you are <strong>not</strong> showing as checked below. It is <strong>pooled for your household</strong> and applies automatically to new weeks and days at checkout until it runs out. To cancel a paid booking, contact IMA staff.</p>' +
+      '<p class="credit-by-camper-hint">Paid camp time you have <strong>not</strong> checked against an existing week below is <strong>pooled</strong> for your household. It is applied to new weeks and days in this checkout first (same order as the line items). <strong>Household balance</strong> is what remains <em>after</em> your current selections. To cancel a paid booking, contact IMA staff.</p>' +
       '<div class="credit-by-camper-row"><span>Household balance</span><span>' +
-      escapeHtml(formatWeekDayCreditLabel(cnt.weeks, cnt.days)) +
+      escapeHtml(balLabel) +
       '</span></div>';
   }
 
@@ -3548,7 +3560,6 @@
   function updateSummary() {
     updateEnrollmentGate();
     renderScheduleOverview();
-    renderCreditByCamperBlock();
     const empty = document.getElementById('empty-state');
     const lines = document.getElementById('summary-lines');
     const totalRow = document.getElementById('total-row');
@@ -3560,6 +3571,7 @@
     const wr = Number(testPriceMode ? 1 : pricingPreview.weekRate != null ? pricingPreview.weekRate : weekRateClient());
     const bookings = collectBookings();
     var creditApplied = applyFamilyPrepaidCredits(bookings, wr, dr);
+    renderCreditByCamperBlock(creditApplied);
     const fwConflictMsgs = getFullWeekPaidDayConflictMessages();
     const camperOk = camperSelectionReady();
 
