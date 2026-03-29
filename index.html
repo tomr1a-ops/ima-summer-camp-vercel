@@ -3,9 +3,12 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <title>IMA Summer Camp 2026 — Register Now</title>
 <script src="https://js.stripe.com/v3/"></script>
-<script src="/js/ima-core.js"></script>
+<script src="/js/ima-core.js?v=20260327"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -4721,6 +4724,16 @@
       } catch (eP) {}
     } else if (document.visibilityState === 'visible') {
       schedulePricingRefreshFromNav();
+      if (session && session.access_token) {
+        refreshConfirmedEnrollmentsFromServer()
+          .then(function () {
+            hydrateSelectionFromConfirmedEnrollments();
+            try {
+              refreshScheduleUiAfterEnrollStorageChange();
+            } catch (eVis) {}
+          })
+          .catch(function () {});
+      }
     }
   });
   window.addEventListener('pagehide', function () {
