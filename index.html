@@ -3427,15 +3427,7 @@
       const name = escapeHtml(String((camper.first_name + ' ' + camper.last_name).trim()));
       const paidRows = paidByCamperRows[cid] || [];
       const coalescedPaid = coalesceEnrollmentRowsForSidebar(paidRows);
-      const paidOffpage = coalescedPaid.filter(function (r) {
-        return !paidEnrollmentMatchesPicker(r, cid);
-      });
-      const paidSelectedLis = coalescedPaid
-        .filter(function (r) {
-          return paidEnrollmentMatchesPicker(r, cid);
-        })
-        .map(enrollmentRowToScheduleLi)
-        .filter(Boolean);
+      const paidDisplayLis = coalescedPaid.map(enrollmentRowToScheduleLi).filter(Boolean);
       const draftRows = draftScheduleLinesFromNewBookingsOnly(cid, sortedWeeks);
       const shirtInCheckout = extraShirtChargesThisCheckout(camper.id);
       if (draftRows.length) anyDraft = true;
@@ -3444,9 +3436,9 @@
       html += '<div class="schedule-overview-child">';
       html += '<div class="schedule-overview-name">' + name + '</div>';
 
-      if (paidSelectedLis.length) {
+      if (paidDisplayLis.length) {
         html += '<div class="schedule-overview-sub">Registered &amp; paid</div>';
-        html += '<ul class="schedule-overview-list">' + paidSelectedLis.join('') + '</ul>';
+        html += '<ul class="schedule-overview-list">' + paidDisplayLis.join('') + '</ul>';
       }
 
       if (draftRows.length || shirtInCheckout) {
@@ -3460,14 +3452,9 @@
         html += '</ul>';
       }
 
-      if (!paidSelectedLis.length && !draftRows.length && !shirtInCheckout) {
-        if (paidOffpage.length) {
-          html +=
-            '<p class="schedule-overview-empty">Nothing selected below. Paid weeks you unchecked stay on file — check weeks again here to re-apply, or contact IMA if you need to cancel a booking.</p>';
-        } else {
-          html +=
-            '<p class="schedule-overview-empty">No registrations yet. Select weeks on the left to add them to checkout.</p>';
-        }
+      if (!paidDisplayLis.length && !draftRows.length && !shirtInCheckout) {
+        html +=
+          '<p class="schedule-overview-empty">No registrations yet. Select weeks on the left to add them to checkout.</p>';
       }
 
       html += '</div>';
