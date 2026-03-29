@@ -9,11 +9,16 @@ function bearerToken(req) {
 async function getUserFromRequest(req) {
   const token = bearerToken(req);
   if (!token) return { user: null, token: null };
-  const sb = anonClient();
-  const { data, error } = await sb.auth.getUser(token);
-  /* Keep `token` so callers can tell “Authorization sent but JWT invalid/expired” vs missing header. */
-  if (error || !data.user) return { user: null, token };
-  return { user: data.user, token };
+  try {
+    const sb = anonClient();
+    const { data, error } = await sb.auth.getUser(token);
+    /* Keep `token` so callers can tell “Authorization sent but JWT invalid/expired” vs missing header. */
+    if (error || !data.user) return { user: null, token };
+    return { user: data.user, token };
+  } catch (e) {
+    console.warn('[auth] getUserFromRequest', e && e.message);
+    return { user: null, token };
+  }
 }
 
 /** Load profile by id using service role (JWT already validated by caller when userId comes from getUser). */

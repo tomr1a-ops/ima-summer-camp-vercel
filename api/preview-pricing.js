@@ -53,7 +53,7 @@ module.exports = async (req, res) => {
             .select('parent_id, extra_shirt_addon_paid')
             .eq('id', camperId)
             .single();
-          if (ce || !camper || camper.parent_id !== user.id) {
+          if (ce || !camper || String(camper.parent_id) !== String(user.id)) {
             res.statusCode = 403;
             return res.end(JSON.stringify({ error: 'Invalid camper selection' }));
           }

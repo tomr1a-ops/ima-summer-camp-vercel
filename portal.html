@@ -744,7 +744,17 @@
     return fetch(busted, Object.assign({ cache: 'no-store', credentials: 'same-origin' }, init, { headers: h }));
   }
 
+  async function mergePortalSessionFromApi() {
+    if (!state.session) return;
+    try {
+      const auth = await IMA.refreshSessionForApi();
+      if (auth.session) state.session = auth.session;
+    } catch (eM) {}
+  }
+
   async function reloadPortalDataFromServer() {
+    if (!state.session) return;
+    await mergePortalSessionFromApi();
     if (!state.session || !state.session.access_token) return;
     state.enrollments = [];
     try {
@@ -959,7 +969,13 @@
       return c.id;
     });
     state.portalRegEstimate = { weekRate: null, regFee: 65, perCamperNeedsReg: {} };
-    if (!ids.length || !state.session || !state.session.access_token) {
+    if (!ids.length || !state.session) {
+      renderPortalRegFeePanel();
+      updateFullWeekSummary();
+      return;
+    }
+    await mergePortalSessionFromApi();
+    if (!state.session || !state.session.access_token) {
       renderPortalRegFeePanel();
       updateFullWeekSummary();
       return;
@@ -1133,6 +1149,8 @@
 
   async function refreshPortalBookings() {
     state.enrollments = [];
+    if (!state.session) return;
+    await mergePortalSessionFromApi();
     if (!state.session || !state.session.access_token) return;
     try {
       const res = await imaNoStoreFetch('/api/enrollments', {
@@ -1161,6 +1179,11 @@
       return;
     }
     try {
+      await mergePortalSessionFromApi();
+      if (!state.session || !state.session.access_token) {
+        showBanner('Please sign in again to update your booking.', false);
+        return;
+      }
       const res = await fetch('/api/enrollments', {
         method: 'PUT',
         headers: {
@@ -1892,6 +1915,7 @@
     const session = await IMA.requireAuth('/login.html');
     if (!session) return;
     state.session = session;
+    await mergePortalSessionFromApi();
 
     const profile = await IMA.getProfile();
     state.profile = profile;

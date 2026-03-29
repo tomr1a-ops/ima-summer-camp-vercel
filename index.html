@@ -1835,6 +1835,15 @@
     return fetch(busted, Object.assign({ cache: 'no-store', credentials: 'same-origin' }, init, { headers: h }));
   }
 
+  /** Refresh JWT before parent-only API calls (enrollments, preview-pricing) — avoids 401/500 when access_token expired on mobile. */
+  async function mergeParentSessionFromApi() {
+    if (!session) return;
+    try {
+      const auth = await IMA.refreshSessionForApi();
+      if (auth.session) session = auth.session;
+    } catch (eM) {}
+  }
+
   let testPriceMode = false;
   let weeksPayload = [];
   /** @type {Record<string, Set<string>>} */
@@ -3186,6 +3195,8 @@
   async function refreshConfirmedEnrollmentsFromServer() {
     confirmedEnrollmentsCache = [];
     if (!session || !session.access_token) return;
+    await mergeParentSessionFromApi();
+    if (!session || !session.access_token) return;
     try {
       const res = await imaNoStoreFetch('/api/enrollments', {
         headers: { Authorization: 'Bearer ' + session.access_token },
@@ -3508,6 +3519,7 @@
   }
 
   async function refreshPricingPreview() {
+    if (session) await mergeParentSessionFromApi();
     const headers = {};
     if (session && session.access_token) headers['Authorization'] = 'Bearer ' + session.access_token;
     const params = new URLSearchParams();
@@ -4240,6 +4252,14 @@
       renderRegFeeCamperBoxes();
       return;
     }
+    await mergeParentSessionFromApi();
+    if (!session) {
+      parentCampers = [];
+      renderParentCamperList();
+      updateRegFlowClasses();
+      renderRegFeeCamperBoxes();
+      return;
+    }
     const sb = await IMA.getSupabase();
     const { data: campers, error } = await sb.from('campers').select('id,first_name,last_name').eq('parent_id', session.user.id);
     if (error) {
@@ -4288,6 +4308,7 @@
       }
     }
     if (session) {
+      await mergeParentSessionFromApi();
       await loadParentCampers();
       await refreshConfirmedEnrollmentsFromServer();
       applyPostCheckoutEnrollClearIfFlag();
