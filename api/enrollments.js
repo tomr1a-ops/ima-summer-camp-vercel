@@ -1,5 +1,6 @@
 const { serviceClient } = require('./lib/supabase');
 const { getUserFromRequest } = require('./lib/auth');
+const { setNoStoreJsonHeaders } = require('./lib/http-no-store');
 const {
   validateBooking,
   validateAddedDaysOnly,
@@ -58,6 +59,7 @@ async function inferPricingModeForWeek(sb, weekId, dayIds) {
 
 module.exports = async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
+  setNoStoreJsonHeaders(res);
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -88,7 +90,7 @@ module.exports = async (req, res) => {
 
     /**
      * POST — create a pending enrollment (optional / admin flows).
-     * Paid “add week” or “add days” from the parent portal uses POST /api/create-checkout-session
+     * Paid “add week” or “add days” from the camp site uses POST /api/create-checkout-session
      * (Stripe creates pending rows in the same batch as payment).
      */
     if (req.method === 'POST') {

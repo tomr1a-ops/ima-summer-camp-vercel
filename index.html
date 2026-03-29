@@ -567,9 +567,29 @@
   }
 
   .summary-line:last-of-type { border-bottom: none; }
-  .summary-line .label { color: #fff; flex: 1; line-height: 1.4; }
-  .summary-line .val   { color: #fff; font-weight: 600; white-space: nowrap; }
-  .summary-line .summary-line-detail { color: #fff; font-size: 0.85em; }
+  .summary-line .label { color: #fff; flex: 1; line-height: 1.4; min-width: 0; }
+  .summary-line .val   { color: #fff; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+  .summary-line .summary-line-detail { color: var(--muted); font-size: 0.92em; }
+
+  @media (max-width: 768px) {
+    .summary-line {
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      padding: 8px 0;
+    }
+    .summary-line::-webkit-scrollbar { display: none; }
+    .summary-line .label {
+      white-space: nowrap;
+      flex: 0 1 auto;
+      line-height: 1.25;
+    }
+    .summary-line .val { margin-left: auto; }
+  }
 
   .summary-total-row {
     display: flex;
@@ -1241,7 +1261,9 @@
     opacity: 0.55;
     /* Do not use pointer-events: none — it blocked taps on some mobile layouts; inputs use disabled instead */
   }
-  .week-card.full-card .week-card-title { color: #555; }
+  .week-card.full-card:not(.has-kids) .week-card-title {
+    color: #555;
+  }
 
   .week-card-head {
     position: relative;
@@ -1255,8 +1277,11 @@
   .week-card-title {
     font-family: var(--font-display);
     font-size: 18px;
-    color: var(--cyan);
+    color: #888;
     line-height: 1.1;
+  }
+  .week-card.has-kids .week-card-title {
+    color: var(--cyan);
   }
   .week-card-price {
     font-family: var(--font-cond);
@@ -1520,6 +1545,35 @@
     opacity: 0.75;
   }
 
+  /* Keep checkbox + label + price on a single line on narrow screens (no wrap). */
+  @media (max-width: 768px) {
+    .reg-fee-camper-row {
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      font-size: 13px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .reg-fee-camper-row::-webkit-scrollbar {
+      display: none;
+    }
+    .reg-fee-camper-row input {
+      margin-top: 0;
+    }
+    .reg-fee-camper-row .reg-fee-lbl {
+      flex: 0 1 auto;
+      white-space: nowrap;
+      line-height: 1.25;
+    }
+    .reg-fee-camper-row .reg-fee-amt {
+      flex-shrink: 0;
+      margin-left: auto;
+    }
+  }
+
   /* Phones: ~20% larger type and UI (px-based rules scale together). */
   @media (max-width: 768px) {
     html {
@@ -1758,6 +1812,26 @@
       localStorage.setItem(LS_STRIPE_TEST_UI, '1');
     } catch (eS) {}
   }
+  if (qsBoot.get('portal') === '1') {
+    try {
+      qsBoot.delete('portal');
+      var qsStripped = qsBoot.toString();
+      var pathClean = location.pathname + (qsStripped ? '?' + qsStripped : '') + (location.hash || '');
+      history.replaceState(null, '', pathClean);
+    } catch (eStrip) {}
+  }
+
+  /** Parent portal / registration: never use cached API responses (CDN or browser HTTP cache). */
+  function imaNoStoreFetch(url, init) {
+    init = init || {};
+    var sep = url.indexOf('?') >= 0 ? '&' : '?';
+    var busted = url + sep + '_nc=' + Date.now();
+    var h = Object.assign({}, init.headers || {});
+    h['Cache-Control'] = 'no-cache';
+    h['Pragma'] = 'no-cache';
+    return fetch(busted, Object.assign({ cache: 'no-store', credentials: 'same-origin' }, init, { headers: h }));
+  }
+
   let testPriceMode = false;
   let weeksPayload = [];
   /** @type {Record<string, Set<string>>} */
@@ -1774,6 +1848,13 @@
   const dailyCampersByWeek = {};
   /** Signed-in daily: weekId → dayId → Set of camper ids */
   const dailyPerDayCampers = {};
+  /**
+   * After refresh, hydrate replays confirmed enrollments into the pickers. If the user unchecked a row that
+   * still exists in the DB, remember that so we do not re-check it (persisted in enroll draft).
+   */
+  const fullWeekHydrateDismissed = {};
+  /** weekId → dayId → Set<camperId> */
+  const dailyHydrateDismissed = {};
   const dailyExpandedKeysMain = new Set();
   /** Ignore checkbox `change` while rebuilding week/day DOM (browsers sometimes fire it and wipe selections when toggling weekly/daily). */
   let enrollDomApplyLock = false;
@@ -2240,6 +2321,12 @@
     Object.keys(dailyPerDayCampers).forEach(function (k) {
       delete dailyPerDayCampers[k];
     });
+    Object.keys(fullWeekHydrateDismissed).forEach(function (k) {
+      delete fullWeekHydrateDismissed[k];
+    });
+    Object.keys(dailyHydrateDismissed).forEach(function (k) {
+      delete dailyHydrateDismissed[k];
+    });
     dailyExpandedKeysMain.clear();
     weeksPayload.forEach(function (w) {
       fullWeekQty[w.id] = 0;
@@ -2384,26 +2471,69 @@
       if (!session) return;
       var sk = enrollStorageKey();
       if (!sk) return;
+      const fwComplete = !!(weeksPayload && weeksPayload.length);
       const fw = {};
-      Object.keys(fullWeekCampersByWeek).forEach(function (wid) {
-        fw[String(wid)] = Array.from(fullWeekCampersByWeek[wid] || []).map(String);
-      });
+      if (fwComplete) {
+        weeksPayload.forEach(function (w) {
+          const wid = String(w.id);
+          const s = fullWeekCampersByWeek[wid];
+          fw[wid] = s && s.size ? Array.from(s).map(String) : [];
+        });
+      } else {
+        Object.keys(fullWeekCampersByWeek).forEach(function (wid) {
+          fw[String(wid)] = Array.from(fullWeekCampersByWeek[wid] || []).map(String);
+        });
+      }
+      const pdcComplete = fwComplete;
       const pdc = {};
-      Object.keys(dailyPerDayCampers).forEach(function (wid) {
-        const inner = dailyPerDayCampers[wid];
-        if (!inner) return;
-        pdc[wid] = {};
+      if (pdcComplete) {
+        weeksPayload.forEach(function (w) {
+          const wid = String(w.id);
+          const inner = dailyPerDayCampers[wid];
+          pdc[wid] = {};
+          (w.days || []).forEach(function (d) {
+            const dk = String(d.id);
+            const s = inner && inner[dk];
+            pdc[wid][dk] = s && s.size ? Array.from(s).map(String) : [];
+          });
+        });
+      } else {
+        Object.keys(dailyPerDayCampers).forEach(function (wid) {
+          const inner = dailyPerDayCampers[wid];
+          if (!inner) return;
+          pdc[wid] = {};
+          Object.keys(inner).forEach(function (dk) {
+            const s = inner[dk];
+            if (s && s.size) pdc[wid][dk] = Array.from(s).map(String);
+          });
+          if (!Object.keys(pdc[wid]).length) delete pdc[wid];
+        });
+      }
+      const fwd = {};
+      Object.keys(fullWeekHydrateDismissed).forEach(function (wk) {
+        const s = fullWeekHydrateDismissed[wk];
+        if (s && s.size) fwd[wk] = Array.from(s);
+      });
+      const pdd = {};
+      Object.keys(dailyHydrateDismissed).forEach(function (wk) {
+        const inner = dailyHydrateDismissed[wk];
+        if (!inner || typeof inner !== 'object') return;
+        pdd[wk] = {};
         Object.keys(inner).forEach(function (dk) {
           const s = inner[dk];
-          if (s && s.size) pdc[wid][dk] = Array.from(s).map(String);
+          if (s && s.size) pdd[wk][dk] = Array.from(s);
         });
-        if (!Object.keys(pdc[wid]).length) delete pdc[wid];
+        if (!Object.keys(pdd[wk]).length) delete pdd[wk];
       });
       var enrollPayload = JSON.stringify({
         fw: fw,
+        fwComplete: fwComplete,
+        fwd: fwd,
         dw: {},
         sw: {},
         pdc: pdc,
+        pdcComplete: pdcComplete,
+        pdd: pdd,
         fullWeekQty: fullWeekQty,
         dailyKidsByWeek: dailyKidsByWeek,
         regFeeIncludeByCamper: regFeeIncludeByCamper,
@@ -2446,7 +2576,8 @@
       if (t2 > t1) return rLocal;
       if (t1 > t2) return rSess;
     } catch (eP) {}
-    return rSess;
+    /* Prefer localStorage on a tie — sessionStorage is cleared when the tab/session ends (common on mobile). */
+    return rLocal || rSess;
   }
 
   function restoreEnrollLocal() {
@@ -2467,17 +2598,41 @@
       }
       if (!raw) return;
       const o = JSON.parse(raw);
-      /* Merge into existing state — never wipe everything first. A wipe + partial snapshot
-         (or stale sessionStorage) was dropping other weeks and looked like “toggle clears cart”. */
-      Object.keys(o.fw || {}).forEach(function (wid) {
-        const k = String(wid);
-        const arr = o.fw[wid];
-        if (arr && arr.length) fullWeekCampersByWeek[k] = new Set(arr.map(String));
-        else delete fullWeekCampersByWeek[k];
-      });
+      /* Full snapshot (fwComplete): every camp week is stored as camper id[] or [] so “unchecked” survives refresh.
+         Legacy: only keys present in o.fw were applied — sparse saves could not represent “all empty”. */
+      if (o.fwComplete && weeksPayload && weeksPayload.length) {
+        weeksPayload.forEach(function (w) {
+          const k = String(w.id);
+          const rawArr = o.fw && o.fw[k];
+          const arr = Array.isArray(rawArr) ? rawArr : [];
+          if (arr.length) fullWeekCampersByWeek[k] = new Set(arr.map(String));
+          else delete fullWeekCampersByWeek[k];
+        });
+      } else {
+        Object.keys(o.fw || {}).forEach(function (wid) {
+          const k = String(wid);
+          const arr = o.fw[wid];
+          if (arr && arr.length) fullWeekCampersByWeek[k] = new Set(arr.map(String));
+          else delete fullWeekCampersByWeek[k];
+        });
+      }
       var hasPdcKey = o && Object.prototype.hasOwnProperty.call(o, 'pdc');
       var pdcObj = hasPdcKey && o.pdc && typeof o.pdc === 'object' ? o.pdc : null;
-      if (pdcObj && Object.keys(pdcObj).length) {
+      if (o.pdcComplete && weeksPayload && weeksPayload.length && pdcObj) {
+        weeksPayload.forEach(function (w) {
+          const wk = String(w.id);
+          delete dailyPerDayCampers[wk];
+          const saved = pdcObj[wk];
+          if (!saved || typeof saved !== 'object') return;
+          const map = ensureDailyPerDayMapMain(wk);
+          (w.days || []).forEach(function (d) {
+            const dk = String(d.id);
+            const arr = saved[dk];
+            if (Array.isArray(arr) && arr.length) map[dk] = new Set(arr.map(String));
+          });
+          pruneEmptyDailyWeekMain(wk);
+        });
+      } else if (pdcObj && Object.keys(pdcObj).length) {
         Object.keys(pdcObj).forEach(function (wid) {
           const inner = pdcObj[wid];
           const wk = String(wid);
@@ -2524,6 +2679,27 @@
           if (o.extraShirtByCamper[k]) extraShirtByCamper[String(k)] = true;
         });
       }
+      Object.keys(fullWeekHydrateDismissed).forEach(function (k) {
+        delete fullWeekHydrateDismissed[k];
+      });
+      Object.keys(o.fwd || {}).forEach(function (wk) {
+        const arr = o.fwd[wk];
+        if (arr && arr.length) fullWeekHydrateDismissed[String(wk)] = new Set(arr.map(String));
+      });
+      Object.keys(dailyHydrateDismissed).forEach(function (k) {
+        delete dailyHydrateDismissed[k];
+      });
+      Object.keys(o.pdd || {}).forEach(function (wKey) {
+        const inner = o.pdd[wKey];
+        if (!inner || typeof inner !== 'object') return;
+        const wk = String(wKey);
+        dailyHydrateDismissed[wk] = {};
+        Object.keys(inner).forEach(function (dk) {
+          const arr = inner[dk];
+          if (arr && arr.length) dailyHydrateDismissed[wk][String(dk)] = new Set(arr.map(String));
+        });
+        if (!Object.keys(dailyHydrateDismissed[wk]).length) delete dailyHydrateDismissed[wk];
+      });
       const et = o.enrollmentType === 'daily' ? 'daily' : 'full';
       setEnrollmentType(et);
     } catch (e) {}
@@ -2689,6 +2865,47 @@
     }
   }
 
+  /** Drop full-week picks for ids not on this parent (e.g. removed child still in localStorage). */
+  function pruneFullWeekCampersUnknownToParent() {
+    if (!session || !parentCampers.length) return;
+    var allow = {};
+    parentCampers.forEach(function (c) {
+      allow[String(c.id)] = true;
+    });
+    var changed = false;
+    Object.keys(fullWeekCampersByWeek).forEach(function (wk) {
+      var fw = fullWeekCampersByWeek[wk];
+      if (!fw || !fw.size) return;
+      Array.from(fw).forEach(function (cid) {
+        if (!allow[String(cid)]) {
+          fw.delete(cid);
+          changed = true;
+        }
+      });
+      if (!fw.size) delete fullWeekCampersByWeek[wk];
+    });
+    if (changed) {
+      try {
+        persistEnrollLocal();
+      } catch (ePr) {}
+    }
+  }
+
+  /** Matches visible "Children in this week" checkboxes — not raw Set size (conflicts / stale ids). */
+  function fullWeekCardHasAnyCheckedCamper(weekId) {
+    if (!session || !parentCampers.length) return false;
+    var wk = String(weekId);
+    var st = fullWeekCampersByWeek[wk];
+    if (!st || !st.size) return false;
+    for (var i = 0; i < parentCampers.length; i++) {
+      var cid = String(parentCampers[i].id);
+      if (!st.has(cid)) continue;
+      if (fullWeekPaidDayConflictMessage(weekId, cid)) continue;
+      return true;
+    }
+    return false;
+  }
+
   /** Group confirmed rows by camper + week (UUIDs have no `|`). */
   function groupConfirmedRowsByCamperWeek(rows) {
     const groups = {};
@@ -2705,12 +2922,85 @@
     return groups;
   }
 
+  function isFullWeekHydrateDismissed(weekKey, camperId) {
+    const s = fullWeekHydrateDismissed[String(weekKey)];
+    return !!(s && s.has(String(camperId)));
+  }
+
+  function dismissFullWeekHydrate(weekKey, camperId) {
+    const wk = String(weekKey);
+    if (!fullWeekHydrateDismissed[wk]) fullWeekHydrateDismissed[wk] = new Set();
+    fullWeekHydrateDismissed[wk].add(String(camperId));
+  }
+
+  function clearFullWeekHydrateDismiss(weekKey, camperId) {
+    const s = fullWeekHydrateDismissed[String(weekKey)];
+    if (!s) return;
+    s.delete(String(camperId));
+    if (!s.size) delete fullWeekHydrateDismissed[String(weekKey)];
+  }
+
+  function isDailyHydrateDismissed(weekKey, dayKey, camperId) {
+    const inner = dailyHydrateDismissed[String(weekKey)];
+    if (!inner) return false;
+    const s = inner[String(dayKey)];
+    return !!(s && s.has(String(camperId)));
+  }
+
+  function dismissDailyHydrate(weekKey, dayKey, camperId) {
+    const wk = String(weekKey);
+    const dk = String(dayKey);
+    if (!dailyHydrateDismissed[wk]) dailyHydrateDismissed[wk] = {};
+    if (!dailyHydrateDismissed[wk][dk]) dailyHydrateDismissed[wk][dk] = new Set();
+    dailyHydrateDismissed[wk][dk].add(String(camperId));
+  }
+
+  function clearDailyHydrateDismiss(weekKey, dayKey, camperId) {
+    const wk = String(weekKey);
+    const dk = String(dayKey);
+    const inner = dailyHydrateDismissed[wk];
+    if (!inner || !inner[dk]) return;
+    inner[dk].delete(String(camperId));
+    if (!inner[dk].size) delete inner[dk];
+    if (!Object.keys(inner).length) delete dailyHydrateDismissed[wk];
+  }
+
+  function pruneFullWeekHydrateDismissals() {
+    Object.keys(fullWeekHydrateDismissed).forEach(function (wk) {
+      const s = fullWeekHydrateDismissed[wk];
+      if (!s || !s.size) return;
+      Array.from(s).forEach(function (cid) {
+        if (!camperWeekHasConfirmedFullWeek(wk, cid)) s.delete(cid);
+      });
+      if (!s.size) delete fullWeekHydrateDismissed[wk];
+    });
+  }
+
+  function pruneDailyHydrateDismissals() {
+    Object.keys(dailyHydrateDismissed).forEach(function (wk) {
+      const inner = dailyHydrateDismissed[wk];
+      if (!inner) return;
+      Object.keys(inner).forEach(function (dk) {
+        const s = inner[dk];
+        if (!s || !s.size) return;
+        Array.from(s).forEach(function (cid) {
+          const covered = daysCoveredByConfirmedForCamperWeek(wk, cid);
+          if (!covered.has(String(dk))) s.delete(cid);
+        });
+        if (!s.size) delete inner[dk];
+      });
+      if (!Object.keys(inner).length) delete dailyHydrateDismissed[wk];
+    });
+  }
+
   /**
    * If the DB has both a full-week and a stray partial-day row for the same child/week,
    * treat as one full week (partial must not clear full-week picker state).
    */
   function hydrateSelectionFromConfirmedEnrollments() {
     if (!session) return;
+    pruneFullWeekHydrateDismissals();
+    pruneDailyHydrateDismissals();
     const groups = groupConfirmedRowsByCamperWeek(confirmedEnrollmentsCache);
     Object.keys(groups).forEach(function (key) {
       const g = groups[key];
@@ -2721,6 +3011,7 @@
         return enrollmentCoversFullWeek(r, w);
       });
       if (hasFull) {
+        if (isFullWeekHydrateDismissed(wk, cid)) return;
         if (!fullWeekCampersByWeek[wk]) fullWeekCampersByWeek[wk] = new Set();
         fullWeekCampersByWeek[wk].add(cid);
         clearDailyForCamperWeek(wk, cid);
@@ -2737,6 +3028,7 @@
           });
         });
         daySet.forEach(function (did) {
+          if (isDailyHydrateDismissed(wk, did, cid)) return;
           ensureDayCamperSetMain(wk, did).add(cid);
         });
         pruneEmptyDailyWeekMain(wk);
@@ -2892,7 +3184,7 @@
     confirmedEnrollmentsCache = [];
     if (!session || !session.access_token) return;
     try {
-      const res = await fetch('/api/enrollments', {
+      const res = await imaNoStoreFetch('/api/enrollments', {
         headers: { Authorization: 'Bearer ' + session.access_token },
       });
       if (!res.ok) return;
@@ -2981,6 +3273,64 @@
       parts.push(days + ' day' + (days === 1 ? '' : 's'));
     }
     return parts.join(' · ');
+  }
+
+  /** Pooled across all children on this parent account (matches checkout credit application). */
+  function familyUnusedPaidWeekDayCounts() {
+    var w = 0;
+    var d = 0;
+    if (!session || !parentCampers.length) return { weeks: 0, days: 0 };
+    parentCampers.forEach(function (c) {
+      var u = unusedPaidWeekDayCountsForCamper(String(c.id));
+      w += u.weeks;
+      d += u.days;
+    });
+    return { weeks: w, days: d };
+  }
+
+  /** Same sort as server `sortBookingsForCreditApply` (week_number, then camper id). */
+  function sortBookingsStable(bookings) {
+    return bookings.slice().sort(function (a, b) {
+      const wa = weeksPayload.find(function (x) {
+        return String(x.id) === String(a.weekId);
+      });
+      const wb = weeksPayload.find(function (x) {
+        return String(x.id) === String(b.weekId);
+      });
+      const na = Number(wa && wa.week_number) || 0;
+      const nb = Number(wb && wb.week_number) || 0;
+      if (na !== nb) return na - nb;
+      return String(a.camperId).localeCompare(String(b.camperId));
+    });
+  }
+
+  function applyFamilyPrepaidCredits(bookings, wr, dr) {
+    var pool = familyUnusedPaidWeekDayCounts();
+    var pw = pool.weeks | 0;
+    var pd = pool.days | 0;
+    var sorted = sortBookingsStable(bookings);
+    var campTotal = 0;
+    var lines = [];
+    sorted.forEach(function (b) {
+      if (b.pricingMode === 'full_week') {
+        if (pw > 0) {
+          pw -= 1;
+          lines.push({ b: b, sub: 0, fullCredit: true });
+        } else {
+          campTotal += wr;
+          lines.push({ b: b, sub: wr, fullCredit: false });
+        }
+      } else {
+        var n = (b.dayIds || []).length;
+        var use = Math.min(n, pd);
+        pd -= use;
+        var chargeDays = n - use;
+        var sub = chargeDays * dr;
+        campTotal += sub;
+        lines.push({ b: b, sub: sub, creditDays: use, nDays: n });
+      }
+    });
+    return { campTotal: campTotal, lines: lines };
   }
 
   /** “In this checkout” lines = only what collectBookings would charge (excludes paid days). */
@@ -3131,7 +3481,7 @@
     el.innerHTML = html;
   }
 
-  /** Week/day counts for paid enrollments not selected below (unused credit). */
+  /** Family-pooled paid time not checked below — applied automatically to new weeks/days at checkout until used up. */
   function renderCreditByCamperBlock() {
     var el = document.getElementById('credit-by-camper');
     if (!el) return;
@@ -3140,35 +3490,19 @@
       el.innerHTML = '';
       return;
     }
-    var lines = [];
-    parentCampers.forEach(function (c) {
-      var cnt = unusedPaidWeekDayCountsForCamper(String(c.id));
-      if (cnt.weeks > 0 || cnt.days > 0) {
-        lines.push({
-          name: (c.first_name + ' ' + c.last_name).trim(),
-          weeks: cnt.weeks,
-          days: cnt.days,
-        });
-      }
-    });
-    if (!lines.length) {
+    var cnt = familyUnusedPaidWeekDayCounts();
+    if (cnt.weeks <= 0 && cnt.days <= 0) {
       el.hidden = true;
       el.innerHTML = '';
       return;
     }
     el.hidden = false;
-    var html =
-      '<div class="credit-by-camper-title">Unused paid credit (weeks &amp; days)</div>' +
-      '<p class="credit-by-camper-hint">Counts paid camp time you are <strong>not</strong> showing as checked below — check a week to apply it; uncheck to move it back here. To cancel a paid booking, contact IMA staff.</p>';
-    lines.forEach(function (L) {
-      html +=
-        '<div class="credit-by-camper-row"><span>' +
-        escapeHtml(L.name) +
-        '</span><span>' +
-        escapeHtml(formatWeekDayCreditLabel(L.weeks, L.days)) +
-        '</span></div>';
-    });
-    el.innerHTML = html;
+    el.innerHTML =
+      '<div class="credit-by-camper-title">Unused paid credit (family pool)</div>' +
+      '<p class="credit-by-camper-hint">Total paid camp time you are <strong>not</strong> showing as checked below. It is <strong>pooled for your household</strong> and applies automatically to new weeks and days at checkout until it runs out. To cancel a paid booking, contact IMA staff.</p>' +
+      '<div class="credit-by-camper-row"><span>Household balance</span><span>' +
+      escapeHtml(formatWeekDayCreditLabel(cnt.weeks, cnt.days)) +
+      '</span></div>';
   }
 
   async function refreshPricingPreview() {
@@ -3188,7 +3522,7 @@
     const url = '/api/preview-pricing' + (q ? '?' + q : '');
     try {
       try {
-        const res = await fetch(url, { headers });
+        const res = await imaNoStoreFetch(url, { headers });
         if (res.ok) {
           const j = await res.json();
           applyPricingFromServer(j);
@@ -3235,6 +3569,7 @@
     const dr = Number(testPriceMode ? 1 : pricingPreview.dayRate != null ? pricingPreview.dayRate : dayRateClient());
     const wr = Number(testPriceMode ? 1 : pricingPreview.weekRate != null ? pricingPreview.weekRate : weekRateClient());
     const bookings = collectBookings();
+    var creditApplied = applyFamilyPrepaidCredits(bookings, wr, dr);
     const fwConflictMsgs = getFullWeekPaidDayConflictMessages();
     const camperOk = camperSelectionReady();
 
@@ -3303,11 +3638,7 @@
       return;
     }
 
-    let campTotal = 0;
-    bookings.forEach(function (b) {
-      if (b.pricingMode === 'full_week') campTotal += wr;
-      else campTotal += Number((b.dayIds || []).length) * dr;
-    });
+    let campTotal = creditApplied.campTotal;
 
     const rf = Number(testPriceMode ? 1 : pricingPreview.registrationFee != null ? pricingPreview.registrationFee : regFeeClient());
     const regCamperIds = [...new Set(bookings.map(function (b) { return b.camperId; }).filter(Boolean))];
@@ -3321,7 +3652,8 @@
     totalRow.style.display = '';
 
     let html = '';
-    bookings.forEach(function (b) {
+    creditApplied.lines.forEach(function (row) {
+      const b = row.b;
       const w = weeksPayload.find(function (x) {
         return x.id === b.weekId;
       });
@@ -3329,17 +3661,19 @@
       const childName = getCamperNameById(b.camperId);
       const headLine = w ? w.label + (range ? ' (' + range + ')' : '') + ' — ' + childName : 'Camp — ' + childName;
       if (b.pricingMode === 'full_week') {
+        var detailFw = row.fullCredit
+          ? 'Full week — covered by prepaid credit'
+          : 'Full week Mon–Fri · ' + fmt(wr);
         html +=
           '<div class="summary-line"><span class="label">' +
           escapeHtml(headLine) +
-          '<br><small class="summary-line-detail">Full week Mon–Fri · ' +
-          fmt(wr) +
-          '</small></span><span class="val">' +
-          fmt(wr) +
+          ' <span class="summary-line-detail">· ' +
+          detailFw +
+          '</span></span><span class="val">' +
+          (row.sub > 0 ? fmt(row.sub) : '$0') +
           '</span></div>';
       } else {
         const n = b.dayIds.length;
-        const sub = Number(n) * dr;
         const dayLabels = (w ? w.days : [])
           .filter(function (d) {
             return b.dayIds.indexOf(d.id) !== -1;
@@ -3348,19 +3682,17 @@
             return formatDayLabel(d);
           })
           .join(', ');
+        var dPart =
+          (row.creditDays || 0) > 0
+            ? row.creditDays + ' of ' + n + ' day' + (n === 1 ? '' : 's') + ' covered by prepaid credit · ' + escapeHtml(dayLabels)
+            : n + ' day' + (n === 1 ? '' : 's') + ' × ' + fmt(dr) + ' · ' + escapeHtml(dayLabels);
         html +=
           '<div class="summary-line"><span class="label">' +
           escapeHtml(headLine) +
-          '<br><small class="summary-line-detail">' +
-          n +
-          ' day' +
-          (n === 1 ? '' : 's') +
-          ' × ' +
-          fmt(dr) +
-          '<br>' +
-          escapeHtml(dayLabels) +
-          '</small></span><span class="val">' +
-          fmt(sub) +
+          ' <span class="summary-line-detail">· ' +
+          dPart +
+          '</span></span><span class="val">' +
+          fmt(row.sub) +
           '</span></div>';
       }
     });
@@ -3453,9 +3785,15 @@
         const s = map[wk];
         if (cb.checked) {
           s.add(cid);
-          if (mode === 'full') clearDailyForCamperWeek(wk, cid);
+          if (mode === 'full') {
+            clearDailyForCamperWeek(wk, cid);
+            clearFullWeekHydrateDismiss(wk, cid);
+          }
         } else {
           s.delete(cid);
+          if (mode === 'full' && camperWeekHasConfirmedFullWeek(weekId, cid)) {
+            dismissFullWeekHydrate(wk, cid);
+          }
         }
         if (!s.size) {
           delete map[wk];
@@ -3529,6 +3867,7 @@
 
   function renderFullWeeks() {
     pruneConflictingFullWeekSelections();
+    pruneFullWeekCampersUnknownToParent();
     const mount = document.getElementById('weeks-mount-full');
     const loadEl = document.getElementById('weeks-loading-full');
     if (!mount) return;
@@ -3552,8 +3891,7 @@
           ? 1
           : 0
         : fullWeekQty[w.id] || 0;
-      const fwSet = fullWeekCampersByWeek[wk];
-      const hasKids = signedInParent ? !!(fwSet && fwSet.size) : qty > 0;
+      const hasKids = signedInParent ? fullWeekCardHasAnyCheckedCamper(w.id) : qty > 0;
       const card = document.createElement('div');
       card.className = 'week-card' + (full ? ' full-card' : '') + (hasKids ? ' has-kids' : '');
       const head = document.createElement('div');
@@ -3771,8 +4109,10 @@
             cb.addEventListener('change', function () {
               if (enrollDomApplyLock) return;
               const set = ensureDayCamperSetMain(wk, d.id);
+              const dk = String(d.id);
               if (cb.checked) {
                 set.add(cid);
+                clearDailyHydrateDismiss(wk, dk, cid);
                 const fws = fullWeekCampersByWeek[wk];
                 if (fws && fws.has(cid)) {
                   fws.delete(cid);
@@ -3780,6 +4120,9 @@
                 }
               } else {
                 set.delete(cid);
+                if (daysCoveredByConfirmedForCamperWeek(w.id, cid).has(dk)) {
+                  dismissDailyHydrate(wk, dk, cid);
+                }
               }
               if (!set.size) {
                 const map = ensureDailyPerDayMapMain(wk);
@@ -3833,7 +4176,7 @@
 
   async function loadWeeks() {
     try {
-      const res = await fetch('/api/weeks');
+      const res = await imaNoStoreFetch('/api/weeks');
       if (!res.ok) throw new Error('Weeks failed');
       const data = await res.json();
       weeksPayload = data.weeks || [];
@@ -3949,6 +4292,9 @@
       restoreEnrollLocal();
       hydrateSelectionFromConfirmedEnrollments();
       refreshScheduleUiAfterEnrollStorageChange();
+      try {
+        persistEnrollLocal();
+      } catch (ePe) {}
     } else {
       confirmedEnrollmentsCache = [];
       try {
@@ -4049,8 +4395,11 @@
     if (session && session.access_token) {
       await refreshPricingPreview();
     }
-    if (session) pruneConflictingFullWeekSelections();
-    const bookings = collectBookings();
+    if (session) {
+      pruneConflictingFullWeekSelections();
+      pruneFullWeekCampersUnknownToParent();
+    }
+    const bookings = sortBookingsStable(collectBookings());
     var fwBlock = getFullWeekPaidDayConflictMessages();
     if (fwBlock.length) {
       showCheckoutErr(fwBlock[0]);
@@ -4134,6 +4483,15 @@
         return {};
       });
       if (!res.ok) throw new Error(data.error || 'Server error ' + res.status);
+      if (data.zeroDollarComplete) {
+        clearCheckoutLoading();
+        try {
+          localStorage.setItem('ima_post_checkout_clear_enroll', '1');
+          sessionStorage.setItem('ima_post_checkout_clear_enroll', '1');
+        } catch (eZ) {}
+        window.location.assign('/success.html?prepaid=1');
+        return;
+      }
       if (!data.sessionId || typeof data.sessionId !== 'string') {
         throw new Error(
           'Checkout started but no Stripe session was returned. Open DevTools → Network, find create-checkout-session, and check the response (or contact IMA).'
@@ -4242,12 +4600,28 @@
     t1.setAttribute('aria-selected', String(!isSchedule));
     t2.setAttribute('aria-selected', String(isSchedule));
     if (isSchedule) {
-      /* Do not restore here: restore wipes memory then reapplies storage; stale/partial
-         sessionStorage (e.g. vs localStorage) made weekly picks disappear when toggling
-         tabs or modes. Draft is loaded once after bootAuth; persist keeps it in sync. */
-      updateEnrollmentGate();
-      updateSummary();
-      refreshPricingPreview();
+      /* Do not restore from storage here; always re-fetch enrollments + pricing from API when opening schedule (parent portal). */
+      if (session && session.access_token) {
+        void refreshConfirmedEnrollmentsFromServer()
+          .then(function () {
+            hydrateSelectionFromConfirmedEnrollments();
+            try {
+              refreshScheduleUiAfterEnrollStorageChange();
+            } catch (eSch) {}
+            try {
+              persistEnrollLocal();
+            } catch (ePe) {}
+          })
+          .catch(function () {})
+          .finally(function () {
+            updateEnrollmentGate();
+            refreshPricingPreview();
+          });
+      } else {
+        updateEnrollmentGate();
+        updateSummary();
+        refreshPricingPreview();
+      }
       window.requestAnimationFrame(function () {
         schedule.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
@@ -4319,17 +4693,39 @@
       if (session && session.access_token) refreshPricingPreview();
     }, 400);
   }
-  window.addEventListener('pageshow', function () {
+  window.addEventListener('pageshow', function (ev) {
     applyPostCheckoutEnrollClearIfFlag();
-    schedulePricingRefreshFromNav();
+    var fromBfcache = !!(ev && ev.persisted);
+    var chain = Promise.resolve();
     if (session && session.access_token) {
-      refreshConfirmedEnrollmentsFromServer().then(function () {
-        hydrateSelectionFromConfirmedEnrollments();
-        try {
-          refreshScheduleUiAfterEnrollStorageChange();
-        } catch (ePs) {}
-      });
+      if (fromBfcache) {
+        chain = loadWeeks()
+          .then(function () {
+            return loadParentCampers();
+          })
+          .then(function () {
+            return refreshConfirmedEnrollmentsFromServer();
+          });
+      } else {
+        chain = refreshConfirmedEnrollmentsFromServer();
+      }
     }
+    chain
+      .then(function () {
+        if (session && session.access_token) {
+          hydrateSelectionFromConfirmedEnrollments();
+          try {
+            refreshScheduleUiAfterEnrollStorageChange();
+          } catch (ePs) {}
+          try {
+            persistEnrollLocal();
+          } catch (eP2) {}
+        }
+      })
+      .catch(function () {})
+      .finally(function () {
+        schedulePricingRefreshFromNav();
+      });
   });
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'hidden') {

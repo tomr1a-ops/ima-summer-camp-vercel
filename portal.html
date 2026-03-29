@@ -3,6 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+
   <meta name="ima-portal-build" content="2026-03-28" />
   <title>Parent Portal — IMA Summer Camp</title>
   <script src="https://js.stripe.com/v3/"></script>
@@ -729,6 +733,39 @@
     console.log.apply(console, args);
   }
 
+  /** Always hit Supabase-backed APIs with a fresh request (no browser/CDN HTTP cache). */
+  function imaNoStoreFetch(url, init) {
+    init = init || {};
+    var sep = url.indexOf('?') >= 0 ? '&' : '?';
+    var busted = url + sep + '_nc=' + Date.now();
+    var h = Object.assign({}, init.headers || {});
+    h['Cache-Control'] = 'no-cache';
+    h['Pragma'] = 'no-cache';
+    return fetch(busted, Object.assign({ cache: 'no-store', credentials: 'same-origin' }, init, { headers: h }));
+  }
+
+  async function reloadPortalDataFromServer() {
+    if (!state.session || !state.session.access_token) return;
+    try {
+      const wr = await imaNoStoreFetch('/api/weeks');
+      if (wr.ok) {
+        const wj = await wr.json();
+        state.weeks = wj.weeks || [];
+      }
+    } catch (eW) {}
+    await refreshPortalBookings();
+    renderPortalBookings();
+    try {
+      refreshPortalPricingForFullWeek();
+    } catch (eP) {}
+    try {
+      if (state.campers.length) {
+        renderFullWeekCards();
+        renderDailyWeeks();
+      }
+    } catch (eR) {}
+  }
+
   function fmt(n) {
     return '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
   }
@@ -1149,7 +1186,7 @@
       return;
     }
     try {
-      const res = await fetch('/api/preview-pricing?camperIds=' + encodeURIComponent(ids.join(',')), {
+      const res = await imaNoStoreFetch('/api/preview-pricing?camperIds=' + encodeURIComponent(ids.join(',')), {
         headers: { Authorization: 'Bearer ' + state.session.access_token },
       });
       if (res.ok) {
@@ -1320,7 +1357,7 @@
     state.enrollments = [];
     if (!state.session || !state.session.access_token) return;
     try {
-      const res = await fetch('/api/enrollments', {
+      const res = await imaNoStoreFetch('/api/enrollments', {
         headers: { Authorization: 'Bearer ' + state.session.access_token },
       });
       if (!res.ok) return;
@@ -1367,7 +1404,7 @@
       await refreshPortalBookings();
       renderPortalBookings();
       try {
-        const wr = await fetch('/api/weeks');
+        const wr = await imaNoStoreFetch('/api/weeks');
         if (wr.ok) {
           const wj = await wr.json();
           state.weeks = wj.weeks || [];
@@ -1520,7 +1557,7 @@
             await refreshPortalBookings();
             renderPortalBookings();
             try {
-              const wr = await fetch('/api/weeks');
+              const wr = await imaNoStoreFetch('/api/weeks');
               if (wr.ok) {
                 const wj = await wr.json();
                 state.weeks = wj.weeks || [];
@@ -2089,7 +2126,7 @@
     state.campers = campers || [];
 
     try {
-      const wr = await fetch('/api/weeks');
+      const wr = await imaNoStoreFetch('/api/weeks');
       if (wr.ok) {
         const wj = await wr.json();
         state.weeks = wj.weeks || [];
@@ -2239,6 +2276,17 @@
       if (state.campers.length) renderDailyWeeks();
     } else showView('dashboard');
   }
+
+
+  window.addEventListener('pageshow', function (ev) {
+    if (!state.session || !state.session.access_token) return;
+    if (!(ev && ev.persisted)) return;
+    void reloadPortalDataFromServer().then(function () {
+      try {
+        routeHash();
+      } catch (eH) {}
+    });
+  });
 
   window.addEventListener('hashchange', routeHash);
   window.addEventListener('pagehide', function () {

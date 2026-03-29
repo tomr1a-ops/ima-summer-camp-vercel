@@ -1,4 +1,5 @@
-const { clientForWeeksApi, resolveSupabaseUrl } = require('./lib/supabase');
+const { clientForWeeksApi, resolveSupabaseUrl, serviceClient } = require('./lib/supabase');
+const { setNoStoreJsonHeaders } = require('./lib/http-no-store');
 
 /**
  * GET /api/weeks
@@ -41,6 +42,7 @@ function serializeSupabaseError(e) {
 
 module.exports = async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
+  setNoStoreJsonHeaders(res);
   const requestId = newRequestId();
   const exposeDetails = process.env.EXPOSE_WEEKS_ERROR_DETAILS === '1';
 
@@ -129,6 +131,32 @@ module.exports = async (req, res) => {
       byWeek[d.week_id].push(d);
     });
 
+    /**
+     * Distinct campers per week for **UI** sold-out styling only — **confirmed** enrollments.
+     * Pending rows from abandoned Stripe sessions must not brick the picker (checkboxes disabled /
+     * pointer-events blocked). Checkout still enforces real capacity via validateBooking (pending + confirmed).
+     */
+    const distinctByWeekId = {};
+    try {
+      const svc = serviceClient();
+      const { data: enrRows, error: enrErr } = await svc
+        .from('enrollments')
+        .select('week_id,camper_id')
+        .eq('status', 'confirmed');
+      if (!enrErr && enrRows) {
+        enrRows.forEach((row) => {
+          if (!row.week_id || !row.camper_id) return;
+          const wid = String(row.week_id);
+          if (!distinctByWeekId[wid]) distinctByWeekId[wid] = new Set();
+          distinctByWeekId[wid].add(String(row.camper_id));
+        });
+      } else if (enrErr) {
+        console.warn('[api/weeks]', requestId, 'enrollment_count_skipped', serializeSupabaseError(enrErr));
+      }
+    } catch (e) {
+      console.warn('[api/weeks]', requestId, 'enrollment_count_no_service', e.message || e);
+    }
+
     const capDefault = 35;
     const payload = (weeks || []).map((w) => {
       const max = w.max_capacity || capDefault;
@@ -140,10 +168,16 @@ module.exports = async (req, res) => {
         slots_left: Math.max(0, max - (d.current_enrollment || 0)),
         at_capacity: (d.current_enrollment || 0) >= max,
       }));
+      const wid = String(w.id);
+      const distinctCount = distinctByWeekId[wid] ? distinctByWeekId[wid].size : 0;
+      const weekSoldOut = distinctCount >= max;
+      const mergedFull = !!(w.is_full || weekSoldOut);
       return {
         ...w,
+        is_full: mergedFull,
+        distinct_camper_count: distinctCount,
         days: wdays,
-        disabled: w.is_full || !w.is_active,
+        disabled: mergedFull || !w.is_active,
       };
     });
 

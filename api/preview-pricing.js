@@ -1,6 +1,7 @@
 const { serviceClient } = require('./lib/supabase');
 const { getUserFromRequest, getProfileForUser } = require('./lib/auth');
-const { dayRate, weekRate, registrationFee } = require('./lib/pricing');
+const { setNoStoreJsonHeaders } = require('./lib/http-no-store');
+const { dayRate, weekRate, registrationFee, extraCampShirt } = require('./lib/pricing');
 
 function uniqueCamperIdsFromQuery(url) {
   const raw = url.searchParams.get('camperIds') || url.searchParams.get('camperId') || '';
@@ -13,6 +14,7 @@ function uniqueCamperIdsFromQuery(url) {
 
 module.exports = async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
+  setNoStoreJsonHeaders(res);
   if (req.method !== 'GET') {
     res.statusCode = 405;
     return res.end(JSON.stringify({ error: 'Method not allowed' }));
@@ -25,6 +27,8 @@ module.exports = async (req, res) => {
     const { user, token } = await getUserFromRequest(req);
 
     const perCamperNeedsReg = {};
+    /** True when this camper already paid the optional extra T-shirt add-on (no repeat charge). */
+    const perCamperExtraShirtPaid = {};
     let profile = null;
 
     if (user && token && camperIds.length) {
@@ -44,27 +48,33 @@ module.exports = async (req, res) => {
 
       if (profile && sb) {
         for (const camperId of camperIds) {
-          const { data: camper, error: ce } = await sb.from('campers').select('parent_id').eq('id', camperId).single();
+          const { data: camper, error: ce } = await sb
+            .from('campers')
+            .select('parent_id, extra_shirt_addon_paid')
+            .eq('id', camperId)
+            .single();
           if (ce || !camper || camper.parent_id !== user.id) {
             res.statusCode = 403;
             return res.end(JSON.stringify({ error: 'Invalid camper selection' }));
           }
+          perCamperExtraShirtPaid[String(camperId)] = !!camper.extra_shirt_addon_paid;
           try {
-            const { count, error } = await sb
+            const { data: paidRows, error } = await sb
               .from('enrollments')
-              .select('*', { count: 'exact', head: true })
-              .eq('camper_id', camperId)
+              .select('id')
+              .eq('camper_id', String(camperId))
               .eq('status', 'confirmed')
-              .eq('registration_fee_paid', true);
+              .eq('registration_fee_paid', true)
+              .limit(1);
             if (error) {
               console.warn('[preview-pricing] enrollment count:', error.message);
-              perCamperNeedsReg[camperId] = true;
+              perCamperNeedsReg[String(camperId)] = true;
             } else {
-              perCamperNeedsReg[camperId] = (count || 0) === 0;
+              perCamperNeedsReg[String(camperId)] = !(paidRows && paidRows.length);
             }
           } catch (cntErr) {
             console.warn('[preview-pricing] count error:', cntErr.message);
-            perCamperNeedsReg[camperId] = true;
+            perCamperNeedsReg[String(camperId)] = true;
           }
         }
       }
@@ -79,8 +89,10 @@ module.exports = async (req, res) => {
         dayRate: dayRate(testPricing),
         weekRate: weekRate(testPricing),
         registrationFee: registrationFee(testPricing),
+        extraCampShirt: extraCampShirt(testPricing),
         needsRegistration,
         perCamperNeedsReg,
+        perCamperExtraShirtPaid,
       })
     );
   } catch (e) {
