@@ -2434,6 +2434,26 @@
     } catch (eU) {}
   }
 
+  function schedulePostCheckoutEnrollmentRefetchRetries() {
+    const delaysMs = [0, 450, 1200, 2800, 5500];
+    delaysMs.forEach(function (ms) {
+      setTimeout(function () {
+        void (async function () {
+          try {
+            if (!session || !session.access_token) return;
+            await refreshConfirmedEnrollmentsFromServer();
+            await loadParentCampers();
+            hydrateSelectionFromConfirmedEnrollments();
+            refreshScheduleUiAfterEnrollStorageChange();
+            try {
+              persistEnrollLocal();
+            } catch (eP) {}
+          } catch (e) {}
+        })();
+      }, ms);
+    });
+  }
+
   /** After successful Stripe payment, success.html sets a flag so checkout drafts clear on index (legacy portal storage key is wiped too). */
   function applyPostCheckoutEnrollClearIfFlag() {
     try {
@@ -2441,6 +2461,7 @@
       if (!IMA.consumePostCheckoutClearEnrollFlag()) return;
       clearEnrollmentSelections();
       refreshScheduleUiAfterEnrollStorageChange();
+      schedulePostCheckoutEnrollmentRefetchRetries();
     } catch (e) {}
   }
 
