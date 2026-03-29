@@ -11,7 +11,8 @@ async function getUserFromRequest(req) {
   if (!token) return { user: null, token: null };
   const sb = anonClient();
   const { data, error } = await sb.auth.getUser(token);
-  if (error || !data.user) return { user: null, token: null };
+  /* Keep `token` so callers can tell “Authorization sent but JWT invalid/expired” vs missing header. */
+  if (error || !data.user) return { user: null, token };
   return { user: data.user, token };
 }
 

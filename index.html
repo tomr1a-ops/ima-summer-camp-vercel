@@ -8,7 +8,7 @@
 <meta http-equiv="Expires" content="0" />
 <title>IMA Summer Camp 2026 — Register Now</title>
 <script src="https://js.stripe.com/v3/"></script>
-<script src="/js/ima-core.js?v=20260327"></script>
+<script src="/js/ima-core.js?v=20260329"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -2260,6 +2260,7 @@
           writeImaMemberPref(String(id), el.checked);
         }
         updateSummary();
+        persistEnrollLocal();
       });
     });
     mount.querySelectorAll('input[data-shirt-camper]').forEach(function (el) {
@@ -2270,6 +2271,7 @@
           else delete extraShirtByCamper[String(id)];
         }
         updateSummary();
+        persistEnrollLocal();
       });
     });
   }
@@ -2467,7 +2469,244 @@
     } catch (e) {}
   }
 
-  /* Registration week/day draft is not persisted; confirmed rows always from GET /api/enrollments. */
+  function persistEnrollLocal() {
+    try {
+      if (!session) return;
+      var sk = enrollStorageKey();
+      if (!sk) return;
+      const fwComplete = !!(weeksPayload && weeksPayload.length);
+      const fw = {};
+      if (fwComplete) {
+        weeksPayload.forEach(function (w) {
+          const wid = String(w.id);
+          const s = fullWeekCampersByWeek[wid];
+          fw[wid] = s && s.size ? Array.from(s).map(String) : [];
+        });
+      } else {
+        Object.keys(fullWeekCampersByWeek).forEach(function (wid) {
+          fw[String(wid)] = Array.from(fullWeekCampersByWeek[wid] || []).map(String);
+        });
+      }
+      const pdcComplete = fwComplete;
+      const pdc = {};
+      if (pdcComplete) {
+        weeksPayload.forEach(function (w) {
+          const wid = String(w.id);
+          const inner = dailyPerDayCampers[wid];
+          pdc[wid] = {};
+          (w.days || []).forEach(function (d) {
+            const dk = String(d.id);
+            const s = inner && inner[dk];
+            pdc[wid][dk] = s && s.size ? Array.from(s).map(String) : [];
+          });
+        });
+      } else {
+        Object.keys(dailyPerDayCampers).forEach(function (wid) {
+          const inner = dailyPerDayCampers[wid];
+          if (!inner) return;
+          pdc[wid] = {};
+          Object.keys(inner).forEach(function (dk) {
+            const s = inner[dk];
+            if (s && s.size) pdc[wid][dk] = Array.from(s).map(String);
+          });
+          if (!Object.keys(pdc[wid]).length) delete pdc[wid];
+        });
+      }
+      const fwd = {};
+      Object.keys(fullWeekHydrateDismissed).forEach(function (wk) {
+        const s = fullWeekHydrateDismissed[wk];
+        if (s && s.size) fwd[wk] = Array.from(s);
+      });
+      const pdd = {};
+      Object.keys(dailyHydrateDismissed).forEach(function (wk) {
+        const inner = dailyHydrateDismissed[wk];
+        if (!inner || typeof inner !== 'object') return;
+        pdd[wk] = {};
+        Object.keys(inner).forEach(function (dk) {
+          const s = inner[dk];
+          if (s && s.size) pdd[wk][dk] = Array.from(s);
+        });
+        if (!Object.keys(pdd[wk]).length) delete pdd[wk];
+      });
+      var enrollPayload = JSON.stringify({
+        fw: fw,
+        fwComplete: fwComplete,
+        fwd: fwd,
+        dw: {},
+        sw: {},
+        pdc: pdc,
+        pdcComplete: pdcComplete,
+        pdd: pdd,
+        fullWeekQty: fullWeekQty,
+        dailyKidsByWeek: dailyKidsByWeek,
+        regFeeIncludeByCamper: regFeeIncludeByCamper,
+        extraShirtByCamper: extraShirtByCamper,
+        enrollmentType: enrollmentType,
+        updatedAt: Date.now(),
+      });
+      var okS = false;
+      var okL = false;
+      try {
+        sessionStorage.setItem(sk, enrollPayload);
+        okS = sessionStorage.getItem(sk) === enrollPayload;
+      } catch (e1) {}
+      try {
+        localStorage.setItem(sk, enrollPayload);
+        okL = localStorage.getItem(sk) === enrollPayload;
+      } catch (e2) {}
+      if (!okS && !okL && typeof console !== 'undefined' && console.warn) {
+        console.warn('[IMA camp] Could not save enrollment draft to storage (private mode or full storage). Selections may not persist after refresh.');
+      }
+    } catch (e) {}
+  }
+
+  function pickEnrollRaw(sk) {
+    var rSess = null;
+    var rLocal = null;
+    try {
+      rSess = sessionStorage.getItem(sk);
+    } catch (e) {}
+    try {
+      rLocal = localStorage.getItem(sk);
+    } catch (e2) {}
+    if (!rSess) return rLocal;
+    if (!rLocal) return rSess;
+    try {
+      var o1 = JSON.parse(rSess);
+      var o2 = JSON.parse(rLocal);
+      var t1 = Number(o1.updatedAt) || 0;
+      var t2 = Number(o2.updatedAt) || 0;
+      if (t2 > t1) return rLocal;
+      if (t1 > t2) return rSess;
+    } catch (eP) {}
+    /* Prefer localStorage on a tie — sessionStorage is cleared when the tab/session ends (common on mobile). */
+    return rLocal || rSess;
+  }
+
+  function restoreEnrollLocal() {
+    try {
+      if (!session) return;
+      var sk = enrollStorageKey();
+      if (!sk) return;
+      var raw = pickEnrollRaw(sk);
+      if (!raw) {
+        try {
+          var legacy = sessionStorage.getItem(ENROLL_SS);
+          if (legacy) {
+            sessionStorage.setItem(sk, legacy);
+            sessionStorage.removeItem(ENROLL_SS);
+            raw = legacy;
+          }
+        } catch (eL) {}
+      }
+      if (!raw) return;
+      const o = JSON.parse(raw);
+      /* Full snapshot (fwComplete): every camp week is stored as camper id[] or [] so “unchecked” survives refresh.
+         Legacy: only keys present in o.fw were applied — sparse saves could not represent “all empty”. */
+      if (o.fwComplete && weeksPayload && weeksPayload.length) {
+        weeksPayload.forEach(function (w) {
+          const k = String(w.id);
+          const rawArr = o.fw && o.fw[k];
+          const arr = Array.isArray(rawArr) ? rawArr : [];
+          if (arr.length) fullWeekCampersByWeek[k] = new Set(arr.map(String));
+          else delete fullWeekCampersByWeek[k];
+        });
+      } else {
+        Object.keys(o.fw || {}).forEach(function (wid) {
+          const k = String(wid);
+          const arr = o.fw[wid];
+          if (arr && arr.length) fullWeekCampersByWeek[k] = new Set(arr.map(String));
+          else delete fullWeekCampersByWeek[k];
+        });
+      }
+      var hasPdcKey = o && Object.prototype.hasOwnProperty.call(o, 'pdc');
+      var pdcObj = hasPdcKey && o.pdc && typeof o.pdc === 'object' ? o.pdc : null;
+      if (o.pdcComplete && weeksPayload && weeksPayload.length && pdcObj) {
+        weeksPayload.forEach(function (w) {
+          const wk = String(w.id);
+          delete dailyPerDayCampers[wk];
+          const saved = pdcObj[wk];
+          if (!saved || typeof saved !== 'object') return;
+          const map = ensureDailyPerDayMapMain(wk);
+          (w.days || []).forEach(function (d) {
+            const dk = String(d.id);
+            const arr = saved[dk];
+            if (Array.isArray(arr) && arr.length) map[dk] = new Set(arr.map(String));
+          });
+          pruneEmptyDailyWeekMain(wk);
+        });
+      } else if (pdcObj && Object.keys(pdcObj).length) {
+        Object.keys(pdcObj).forEach(function (wid) {
+          const inner = pdcObj[wid];
+          const wk = String(wid);
+          delete dailyPerDayCampers[wk];
+          if (!inner || typeof inner !== 'object') return;
+          const map = ensureDailyPerDayMapMain(wk);
+          Object.keys(inner).forEach(function (dk) {
+            const arr = inner[dk];
+            if (arr && arr.length) map[String(dk)] = new Set(arr.map(String));
+          });
+          pruneEmptyDailyWeekMain(wk);
+        });
+      } else if (!hasPdcKey) {
+        Object.keys(o.sw || {}).forEach(function (wid) {
+          const days = o.sw[wid];
+          const kids = (o.dw && o.dw[wid]) || [];
+          if (!days || !days.length || !kids.length) return;
+          const map = ensureDailyPerDayMapMain(wid);
+          days.forEach(function (dk) {
+            map[String(dk)] = new Set(kids.map(String));
+          });
+        });
+      }
+      if (o.fullWeekQty && typeof o.fullWeekQty === 'object') {
+        Object.keys(o.fullWeekQty).forEach(function (wid) {
+          fullWeekQty[wid] = o.fullWeekQty[wid];
+        });
+      }
+      if (o.dailyKidsByWeek && typeof o.dailyKidsByWeek === 'object') {
+        Object.keys(o.dailyKidsByWeek).forEach(function (wid) {
+          dailyKidsByWeek[wid] = o.dailyKidsByWeek[wid];
+        });
+      }
+      if (o.regFeeIncludeByCamper && typeof o.regFeeIncludeByCamper === 'object') {
+        Object.keys(o.regFeeIncludeByCamper).forEach(function (k) {
+          var kk = String(k);
+          regFeeIncludeByCamper[kk] = o.regFeeIncludeByCamper[k];
+          writeImaMemberPref(kk, !regFeeIncludeByCamper[kk]);
+        });
+      }
+      if (o.extraShirtByCamper && typeof o.extraShirtByCamper === 'object') {
+        extraShirtByCamper = {};
+        Object.keys(o.extraShirtByCamper).forEach(function (k) {
+          if (o.extraShirtByCamper[k]) extraShirtByCamper[String(k)] = true;
+        });
+      }
+      Object.keys(fullWeekHydrateDismissed).forEach(function (k) {
+        delete fullWeekHydrateDismissed[k];
+      });
+      Object.keys(o.fwd || {}).forEach(function (wk) {
+        const arr = o.fwd[wk];
+        if (arr && arr.length) fullWeekHydrateDismissed[String(wk)] = new Set(arr.map(String));
+      });
+      Object.keys(dailyHydrateDismissed).forEach(function (k) {
+        delete dailyHydrateDismissed[k];
+      });
+      Object.keys(o.pdd || {}).forEach(function (wKey) {
+        const inner = o.pdd[wKey];
+        if (!inner || typeof inner !== 'object') return;
+        const wk = String(wKey);
+        dailyHydrateDismissed[wk] = {};
+        Object.keys(inner).forEach(function (dk) {
+          const arr = inner[dk];
+          if (arr && arr.length) dailyHydrateDismissed[wk][String(dk)] = new Set(arr.map(String));
+        });
+        if (!Object.keys(dailyHydrateDismissed[wk]).length) delete dailyHydrateDismissed[wk];
+      });
+      const et = o.enrollmentType === 'daily' ? 'daily' : 'full';
+      setEnrollmentType(et);
+    } catch (e) {}
+  }
 
   function setEnrollmentType(type) {
     if (type !== 'full' && type !== 'daily') return;
@@ -2624,6 +2863,7 @@
     });
     if (changed) {
       try {
+        persistEnrollLocal();
       } catch (ePr) {}
     }
   }
@@ -2649,6 +2889,7 @@
     });
     if (changed) {
       try {
+        persistEnrollLocal();
       } catch (ePr) {}
     }
   }
@@ -2797,6 +3038,7 @@
       }
     });
     try {
+      persistEnrollLocal();
     } catch (eH) {}
   }
 
@@ -3365,6 +3607,7 @@
       lines.style.display = 'none';
       totalRow.style.display = 'none';
       btn.disabled = true;
+      persistEnrollLocal();
       return;
     }
 
@@ -3375,6 +3618,7 @@
       lines.style.display = 'none';
       totalRow.style.display = 'none';
       btn.disabled = true;
+      persistEnrollLocal();
       return;
     }
 
@@ -3392,6 +3636,7 @@
         msg.textContent = fwConflictMsgs[0];
       }
       btn.disabled = true;
+      persistEnrollLocal();
       return;
     }
 
@@ -3487,6 +3732,7 @@
     } else {
       btn.disabled = false;
     }
+    persistEnrollLocal();
   }
 
   function buildWeekCamperCheckboxes(weekId, mode) {
@@ -3555,6 +3801,7 @@
           delete map[wk];
           if (mode === 'daily') delete selectedByWeek[wk];
         }
+        persistEnrollLocal();
         renderFullWeeks();
         renderDailyWeeks();
         refreshPricingPreview();
@@ -3616,6 +3863,7 @@
       btnEl.classList.add('on');
     }
     if (set.size === 0) delete selectedByWeek[wk];
+    persistEnrollLocal();
     updateSummary();
   }
 
@@ -3884,6 +4132,7 @@
                 pruneEmptyDailyWeekMain(wk);
               }
               refreshMainDayBtn();
+              persistEnrollLocal();
               updateSummary();
               refreshPricingPreview();
             });
@@ -4042,8 +4291,12 @@
       await loadParentCampers();
       await refreshConfirmedEnrollmentsFromServer();
       applyPostCheckoutEnrollClearIfFlag();
+      restoreEnrollLocal();
       hydrateSelectionFromConfirmedEnrollments();
       refreshScheduleUiAfterEnrollStorageChange();
+      try {
+        persistEnrollLocal();
+      } catch (ePe) {}
     } else {
       confirmedEnrollmentsCache = [];
       try {
@@ -4341,6 +4594,9 @@
     if (isSchedule && !canUseCampScheduleTab()) {
       isSchedule = false;
     }
+    if (which === 'account') {
+      persistEnrollLocal();
+    }
     account.hidden = isSchedule;
     schedule.hidden = !isSchedule;
     t1.setAttribute('aria-selected', String(!isSchedule));
@@ -4354,6 +4610,9 @@
             try {
               refreshScheduleUiAfterEnrollStorageChange();
             } catch (eSch) {}
+            try {
+              persistEnrollLocal();
+            } catch (ePe) {}
           })
           .catch(function () {})
           .finally(function () {
@@ -4438,15 +4697,20 @@
   }
   window.addEventListener('pageshow', function (ev) {
     applyPostCheckoutEnrollClearIfFlag();
+    var fromBfcache = !!(ev && ev.persisted);
     var chain = Promise.resolve();
     if (session && session.access_token) {
-      chain = loadWeeks()
-        .then(function () {
-          return loadParentCampers();
-        })
-        .then(function () {
-          return refreshConfirmedEnrollmentsFromServer();
-        });
+      if (fromBfcache) {
+        chain = loadWeeks()
+          .then(function () {
+            return loadParentCampers();
+          })
+          .then(function () {
+            return refreshConfirmedEnrollmentsFromServer();
+          });
+      } else {
+        chain = refreshConfirmedEnrollmentsFromServer();
+      }
     }
     chain
       .then(function () {
@@ -4455,6 +4719,9 @@
           try {
             refreshScheduleUiAfterEnrollStorageChange();
           } catch (ePs) {}
+          try {
+            persistEnrollLocal();
+          } catch (eP2) {}
         }
       })
       .catch(function () {})
@@ -4463,16 +4730,14 @@
       });
   });
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'visible') {
+    if (document.visibilityState === 'hidden') {
+      try {
+        persistEnrollLocal();
+      } catch (eP) {}
+    } else if (document.visibilityState === 'visible') {
       schedulePricingRefreshFromNav();
       if (session && session.access_token) {
-        loadWeeks()
-          .then(function () {
-            return loadParentCampers();
-          })
-          .then(function () {
-            return refreshConfirmedEnrollmentsFromServer();
-          })
+        refreshConfirmedEnrollmentsFromServer()
           .then(function () {
             hydrateSelectionFromConfirmedEnrollments();
             try {
@@ -4482,6 +4747,11 @@
           .catch(function () {});
       }
     }
+  });
+  window.addEventListener('pagehide', function () {
+    try {
+      persistEnrollLocal();
+    } catch (eH) {}
   });
 
   loadWeeks()

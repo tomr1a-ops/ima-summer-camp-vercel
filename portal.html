@@ -689,7 +689,7 @@
     </p>
   </div>
 
-  <script src="/js/ima-core.js?v=20260327"></script>
+  <script src="/js/ima-core.js?v=20260329"></script>
   <script>
 (function () {
   const API_CHECKOUT = '/api/create-checkout-session';
@@ -1839,11 +1839,16 @@
       return;
     }
     try {
+      const auth = await IMA.refreshSessionForApi();
+      if (!auth.accessToken) {
+        throw new Error('Please sign in again to continue checkout.');
+      }
+      state.session = auth.session;
       const res = await fetch(API_CHECKOUT, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: 'Bearer ' + state.session.access_token,
+          Authorization: 'Bearer ' + auth.accessToken,
         },
         body: JSON.stringify(buildPortalCheckoutBody(bookings)),
       });

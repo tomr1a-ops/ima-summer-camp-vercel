@@ -7,12 +7,13 @@ const { getUserFromRequest, upsertParentProfile } = require('./lib/auth');
 const { dayRate, weekRate, registrationFee, extraCampShirt } = require('./lib/pricing');
 /** Full-week bookings that overlap a camper's already-confirmed days fail here with a specific message (see validateBooking in ./lib/capacity). */
 const { validateBooking } = require('./lib/capacity');
+const { sendCampPaymentEmails } = require('./lib/email');
 const {
-  sendCheckoutStartedAdminNotify,
-  sendCampPaymentEmails,
-  CAMP_STAFF_NOTIFY,
-} = require('./lib/email');
-const { formatMoney } = require('./lib/booking-email-summary');
+  loadFloatingPrepaidPool,
+  sortBookingsForCreditApply,
+  applyPoolToBookings,
+} = require('./lib/family-prepaid-credits');
+const { finalizePendingEnrollmentBatch } = require('./lib/finalize-batch-enrollments');
 
 function json(res, code, obj) {
   res.statusCode = code;
@@ -240,6 +241,11 @@ module.exports = async (req, res) => {
   let sb = null;
 
   if (!user) {
+    if (token) {
+      return json(res, 401, {
+        error: 'Your sign-in session expired. Refresh this page and try checkout again (you will stay signed in if your browser still has your session).',
+      });
+    }
     return json(res, 401, { error: 'Sign in with your parent account to register for camp.' });
   }
   if (!token) return json(res, 401, { error: 'Sign in required' });
@@ -295,6 +301,20 @@ module.exports = async (req, res) => {
   const shirtDollars = extraCampShirt(tp);
   const batchId = randomUUID();
   const bookingModes = [];
+
+  /** Family pooled prepaid credits (confirmed weeks/days not in this cart) → reduce camp line charges. */
+  let campLineCents = [];
+  if (bookingsArray.length) {
+    try {
+      const { poolW, poolD, weekMetaMap } = await loadFloatingPrepaidPool(sb, parentId, bookingsArray, normCamperKey);
+      bookingsArray = sortBookingsForCreditApply(bookingsArray, weekMetaMap);
+      const applied = applyPoolToBookings(bookingsArray, poolW, poolD, wr, dr);
+      campLineCents = applied.campLineCents;
+    } catch (poolErr) {
+      console.error('[create-checkout-session] prepaid pool', poolErr);
+      return failCheckout(res, 500, 'PREPAID_POOL', 'Could not apply prepaid credits. Try again or contact IMA.', poolErr && poolErr.message);
+    }
+  }
 
   if (bookingsArray.length) {
     for (const b of bookingsArray) {
@@ -365,25 +385,17 @@ module.exports = async (req, res) => {
   }
 
   const line_items = [];
-  const checkoutCartLines = [];
   let campCentsTotal = 0;
   for (let i = 0; i < bookingsArray.length; i++) {
     const b = bookingsArray[i];
     const mode = bookingModes[i];
     const n = (b.dayIds || []).length;
+    const unitCents = campLineCents[i] != null ? campLineCents[i] : Math.round((mode === 'full_week' ? wr : n * dr) * 100);
+    campCentsTotal += unitCents;
+    if (unitCents <= 0) continue;
     const { data: week } = await sb.from('weeks').select('label').eq('id', b.weekId).single();
     const wlabel = week ? week.label : 'Week';
-    const crow = (camperShirtRows || []).find((r) => normCamperKey(r.id) === normCamperKey(b.camperId));
-    const cname = crow
-      ? `${crow.first_name || ''} ${crow.last_name || ''}`.trim() || 'Camper'
-      : 'Camper';
-    const sched = mode === 'full_week' ? 'Full week (Mon–Fri)' : `${n} day(s)`;
-    checkoutCartLines.push(
-      `${cname} — ${wlabel} — ${sched} — ${formatMoney(mode === 'full_week' ? wr : n * dr)}`
-    );
     if (mode === 'full_week') {
-      const unitCents = Math.round(wr * 100);
-      campCentsTotal += unitCents;
       line_items.push({
         price_data: {
           currency: 'usd',
@@ -396,8 +408,6 @@ module.exports = async (req, res) => {
         quantity: 1,
       });
     } else {
-      const unitCents = Math.round(n * dr * 100);
-      campCentsTotal += unitCents;
       line_items.push({
         price_data: {
           currency: 'usd',
@@ -424,7 +434,6 @@ module.exports = async (req, res) => {
       },
       quantity: 1,
     });
-    checkoutCartLines.push(`Registration (one-time) — ${r.label} — ${formatMoney(r.cents / 100)}`);
   }
 
   let shirtCentsTotal = 0;
@@ -453,7 +462,6 @@ module.exports = async (req, res) => {
       },
       quantity: 1,
     });
-    checkoutCartLines.push(`Extra camp T-shirt — ${label2} — ${formatMoney(shirtDollars)}`);
   }
 
   const baseUrl = publicSiteBaseUrl(req);
@@ -509,7 +517,45 @@ module.exports = async (req, res) => {
     }
   }
 
+  const totalDueCents = campCentsTotal + regCentsTotal + shirtCentsTotal;
+
   if (!line_items.length) {
+    if (bookingsArray.length && totalDueCents === 0) {
+      try {
+        await finalizePendingEnrollmentBatch(sb, batchId, {
+          stripeSessionId: null,
+          customerEmail: (profile && profile.email) || null,
+          testPricing: tp,
+          campLineCents,
+          bookingModes,
+          registrationFeeCents: String(regCentsTotal),
+          registrationCamperIds,
+          extraShirtCents: String(shirtCentsTotal),
+          extraShirtCamperIds: shirtCamperIds,
+        });
+      } catch (fz) {
+        console.error('[create-checkout-session] zero-dollar finalize failed', fz);
+        try {
+          await sb.from('enrollments').delete().eq('checkout_batch_id', batchId);
+        } catch (delE) {}
+        return failCheckout(res, 500, 'FINALIZE_BATCH', fz.message || 'Could not complete registration', '');
+      }
+      return json(res, 200, {
+        sessionId: null,
+        checkoutUrl: null,
+        batchId,
+        zeroDollarComplete: true,
+        totals: {
+          camp: campCentsTotal / 100,
+          registration: regCentsTotal / 100,
+          extraShirts: shirtCentsTotal / 100,
+          total: 0,
+        },
+      });
+    }
+    try {
+      await sb.from('enrollments').delete().eq('checkout_batch_id', batchId);
+    } catch (delE) {}
     return failCheckout(
       res,
       400,
@@ -535,6 +581,8 @@ module.exports = async (req, res) => {
         /** Comma-separated camper UUIDs charged registration this checkout (confirm marks all their rows in batch). */
         registration_camper_ids: registrationCamperIds.join(','),
         booking_modes: bookingModes.join(','),
+        /** Actual camp line amounts (cents) per enrollment row after family prepaid credits. */
+        camp_line_cents: campLineCents.length ? campLineCents.join(',') : '',
         ima_member: imaMember ? 'true' : 'false',
         extra_shirt_cents: String(shirtCentsTotal),
         extra_shirt_camper_ids: shirtCamperIds.join(','),
@@ -562,32 +610,6 @@ module.exports = async (req, res) => {
     }
 
     const totalCents = campCentsTotal + regCentsTotal + shirtCentsTotal;
-    /**
-     * Await staff email so Vercel/serverless does not freeze the isolate before Resend completes.
-     * Failures are swallowed — checkout response still returns 200.
-     */
-    try {
-      console.log('[create-checkout-session] calling sendCheckoutStartedAdminNotify', {
-        sessionId: session.id,
-        batchId,
-        staffRecipients: CAMP_STAFF_NOTIFY,
-      });
-      await sendCheckoutStartedAdminNotify({
-        parentName: (profile && profile.full_name && String(profile.full_name).trim()) || '',
-        parentEmail: emailForStripe || 'n/a',
-        sessionId: session.id,
-        batchId,
-        cartLines: checkoutCartLines,
-        intendedTotal: totalCents / 100,
-        registrationIncluded: regCentsTotal > 0,
-      });
-      console.log('[create-checkout-session] sendCheckoutStartedAdminNotify finished', session.id);
-    } catch (notifyErr) {
-      console.error(
-        '[create-checkout-session] checkout-started admin notify error (non-fatal):',
-        notifyErr && notifyErr.message ? notifyErr.message : notifyErr
-      );
-    }
 
     /**
      * “Booking confirmed” emails require a paid session. Hosted Checkout is almost always unpaid here;
