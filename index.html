@@ -3510,37 +3510,71 @@
     });
   }
 
+  /** Match server `applyPoolToBookings`: prepaid pool valued in cents so week credits apply to daily lines. */
+  function decomposeRemainingPrepaidCentsClient(cents, wrC, drC) {
+    var c = Math.max(0, Math.round(Number(cents) || 0));
+    var w = 0;
+    if (wrC > 0) {
+      while (c >= wrC) {
+        w += 1;
+        c -= wrC;
+      }
+    }
+    var d = drC > 0 ? Math.floor(c / drC) : 0;
+    return { weeks: w, days: d };
+  }
+
   function applyFamilyPrepaidCredits(bookings, wr, dr) {
+    var wrC = Math.round(Number(wr) * 100);
+    var drC = Math.round(Number(dr) * 100);
     var pool = familyUnusedPaidWeekDayCounts();
-    var pw = pool.weeks | 0;
-    var pd = pool.days | 0;
+    var poolCents = Math.max(0, (pool.weeks | 0) * wrC + (pool.days | 0) * drC);
     var sorted = sortBookingsStable(bookings);
-    var campTotal = 0;
+    var campTotalCents = 0;
     var lines = [];
+    var pc = poolCents;
     sorted.forEach(function (b) {
+      var needCents;
       if (b.pricingMode === 'full_week') {
-        if (pw > 0) {
-          pw -= 1;
-          lines.push({ b: b, sub: 0, fullCredit: true });
-        } else {
-          campTotal += wr;
-          lines.push({ b: b, sub: wr, fullCredit: false });
-        }
+        needCents = wrC;
+      } else {
+        needCents = (b.dayIds || []).length * drC;
+      }
+      var applyCents = Math.min(pc, needCents);
+      pc -= applyCents;
+      var chargeCents = needCents - applyCents;
+      campTotalCents += chargeCents;
+      if (b.pricingMode === 'full_week') {
+        lines.push({
+          b: b,
+          chargeCents: chargeCents,
+          sub: chargeCents / 100,
+          fullCredit: chargeCents === 0,
+          applyCents: applyCents,
+          needCents: needCents,
+        });
       } else {
         var n = (b.dayIds || []).length;
-        var use = Math.min(n, pd);
-        pd -= use;
-        var chargeDays = n - use;
-        var sub = chargeDays * dr;
-        campTotal += sub;
-        lines.push({ b: b, sub: sub, creditDays: use, nDays: n });
+        var creditDays = drC > 0 ? Math.min(n, Math.floor(applyCents / drC + 1e-9)) : 0;
+        lines.push({
+          b: b,
+          chargeCents: chargeCents,
+          sub: chargeCents / 100,
+          creditDays: creditDays,
+          nDays: n,
+          applyCents: applyCents,
+          needCents: needCents,
+        });
       }
     });
+    var rem = decomposeRemainingPrepaidCentsClient(pc, wrC, drC);
     return {
-      campTotal: campTotal,
+      campTotal: campTotalCents / 100,
+      campTotalCents: campTotalCents,
       lines: lines,
-      remainingWeeks: pw,
-      remainingDays: pd,
+      remainingWeeks: rem.weeks,
+      remainingDays: rem.days,
+      remainingPrepaidCents: pc,
     };
   }
 
@@ -3811,6 +3845,10 @@
     const totalRow = document.getElementById('total-row');
     const btn = document.getElementById('checkout-btn');
     const msg = document.getElementById('msg');
+    var btnMainDefault = document.querySelector('#checkout-btn .btn-text');
+    var secureNoteDefault = document.querySelector('.order-summary .secure-note');
+    if (btnMainDefault) btnMainDefault.textContent = 'Secure Checkout →';
+    if (secureNoteDefault) secureNoteDefault.textContent = '🔒 Powered by Stripe · Card data stays safe';
     msg.className = 'msg';
 
     const dr = Number(testPriceMode ? 1 : pricingPreview.dayRate != null ? pricingPreview.dayRate : dayRateClient());
@@ -3909,9 +3947,20 @@
       const childName = getCamperNameById(b.camperId);
       const headLine = w ? w.label + (range ? ' (' + range + ')' : '') + ' — ' + childName : 'Camp — ' + childName;
       if (b.pricingMode === 'full_week') {
-        var detailFw = row.fullCredit
-          ? 'Full week — covered by prepaid credit'
-          : 'Full week Mon–Fri · ' + fmt(wr);
+        var applyFw = Number(row.applyCents) || 0;
+        var detailFw;
+        if (row.fullCredit) {
+          detailFw = 'Full week — covered by prepaid credit';
+        } else if (applyFw > 0) {
+          detailFw =
+            'Prepaid credit ' +
+            fmt(applyFw / 100) +
+            ' applied · you pay ' +
+            fmt(row.sub) +
+            ' for full week Mon–Fri';
+        } else {
+          detailFw = 'Full week Mon–Fri · ' + fmt(wr);
+        }
         html +=
           '<div class="summary-line"><span class="label">' +
           escapeHtml(headLine) +
@@ -3930,10 +3979,36 @@
             return formatDayLabel(d);
           })
           .join(', ');
-        var dPart =
-          (row.creditDays || 0) > 0
-            ? row.creditDays + ' of ' + n + ' day' + (n === 1 ? '' : 's') + ' covered by prepaid credit · ' + escapeHtml(dayLabels)
-            : n + ' day' + (n === 1 ? '' : 's') + ' × ' + fmt(dr) + ' · ' + escapeHtml(dayLabels);
+        var cd = row.creditDays | 0;
+        var dPart;
+        if (cd > 0 && row.sub > 0) {
+          var rest = n - cd;
+          dPart =
+            cd +
+            ' of ' +
+            n +
+            ' day' +
+            (n === 1 ? '' : 's') +
+            ' covered by prepaid credit · ' +
+            rest +
+            ' day' +
+            (rest === 1 ? '' : 's') +
+            ' × ' +
+            fmt(dr) +
+            ' · ' +
+            escapeHtml(dayLabels);
+        } else if (cd > 0) {
+          dPart =
+            cd +
+            ' of ' +
+            n +
+            ' day' +
+            (n === 1 ? '' : 's') +
+            ' covered by prepaid credit · ' +
+            escapeHtml(dayLabels);
+        } else {
+          dPart = n + ' day' + (n === 1 ? '' : 's') + ' × ' + fmt(dr) + ' · ' + escapeHtml(dayLabels);
+        }
         html +=
           '<div class="summary-line"><span class="label">' +
           escapeHtml(headLine) +
@@ -3971,6 +4046,20 @@
     const grand = Number(campTotal) + Number(reg) + Number(shirtTotal);
     lastSummaryGrandDollars = grand;
     document.getElementById('total-amount').textContent = fmt(grand);
+    var btnMain = document.querySelector('#checkout-btn .btn-text');
+    var secureNote = document.querySelector('.order-summary .secure-note');
+    if (btnMain) {
+      btnMain.textContent =
+        grand < 0.01 && (bookings.length > 0 || shirtTotal > 0)
+          ? 'Complete order — $0'
+          : 'Secure Checkout →';
+    }
+    if (secureNote) {
+      secureNote.textContent =
+        grand < 0.01 && (bookings.length > 0 || shirtTotal > 0)
+          ? 'No card charge for this order. Tap to confirm your registration.'
+          : '🔒 Powered by Stripe · Card data stays safe';
+    }
     if (fwConflictMsgs.length) {
       msg.className = 'msg error';
       msg.textContent = fwConflictMsgs[0];

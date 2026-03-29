@@ -81,33 +81,50 @@ function sortBookingsForCreditApply(bookingsArray, weekMetaMap) {
   });
 }
 
+/**
+ * Turn leftover prepaid value (cents) into week + day counts for UI (greedy weeks first).
+ */
+function decomposeRemainingPrepaidCents(cents, wrC, drC) {
+  let c = Math.max(0, Math.round(Number(cents) || 0));
+  let w = 0;
+  if (wrC > 0) {
+    while (c >= wrC) {
+      w += 1;
+      c -= wrC;
+    }
+  }
+  const d = drC > 0 ? Math.floor(c / drC) : 0;
+  return { weeks: w, days: d };
+}
+
+/**
+ * Apply floating prepaid to camp line items in sort order.
+ * Pool is valued in cents: each week credit = full week rate, each day credit = day rate.
+ * This lets “1 week” of credit pay down daily lines (week rate vs 5× day rate is handled by dollars).
+ */
 function applyPoolToBookings(sortedBookings, poolW, poolD, wr, dr) {
-  let pw = poolW;
-  let pd = poolD;
+  const wrC = Math.round(Number(wr) * 100);
+  const drC = Math.round(Number(dr) * 100);
+  let poolCents = Math.max(0, (Number(poolW) || 0) * wrC + (Number(poolD) || 0) * drC);
   const campLineCents = [];
   let campCentsTotal = 0;
   for (const b of sortedBookings) {
     const mode = b.pricingMode === 'full_week' ? 'full_week' : 'daily';
+    let needCents;
     if (mode === 'full_week') {
-      if (pw > 0) {
-        pw -= 1;
-        campLineCents.push(0);
-      } else {
-        const c = Math.round(wr * 100);
-        campCentsTotal += c;
-        campLineCents.push(c);
-      }
+      needCents = wrC;
     } else {
       const n = (b.dayIds || []).length;
-      const useD = Math.min(n, pd);
-      pd -= useD;
-      const chargeDays = n - useD;
-      const c = Math.round(chargeDays * dr * 100);
-      campCentsTotal += c;
-      campLineCents.push(c);
+      needCents = n * drC;
     }
+    const applyCents = Math.min(poolCents, needCents);
+    poolCents -= applyCents;
+    const chargeCents = needCents - applyCents;
+    campLineCents.push(chargeCents);
+    campCentsTotal += chargeCents;
   }
-  return { campLineCents, campCentsTotal, remainingWeeks: pw, remainingDays: pd };
+  const { weeks: remainingWeeks, days: remainingDays } = decomposeRemainingPrepaidCents(poolCents, wrC, drC);
+  return { campLineCents, campCentsTotal, remainingWeeks, remainingDays, remainingPrepaidCents: poolCents };
 }
 
 /**
@@ -172,4 +189,5 @@ module.exports = {
   loadFloatingPrepaidPool,
   sortBookingsForCreditApply,
   applyPoolToBookings,
+  decomposeRemainingPrepaidCents,
 };
