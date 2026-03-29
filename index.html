@@ -559,6 +559,13 @@
     padding-top: 0;
   }
 
+  .credit-by-camper-balance-footnote {
+    margin: 8px 0 0;
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--muted);
+  }
+
   .summary-line {
     display: flex;
     justify-content: space-between;
@@ -3637,7 +3644,7 @@
 
   /**
    * Family-pooled “floating” prepaid (paid time not checked against that booking in the grid).
-   * Household balance = pool left after applying credits to the current checkout (same order as pricing lines).
+   * Remaining balance = pool left after applying credits to the current checkout (same order as pricing lines).
    */
   function renderCreditByCamperBlock(creditApplied) {
     var el = document.getElementById('credit-by-camper');
@@ -3658,12 +3665,25 @@
     el.hidden = false;
     var balLabel = formatWeekDayCreditLabel(remW, remD);
     if (!balLabel) balLabel = 'None left — fully used by current checkout';
+    var balanceFootnote = '';
+    if (remW > 0 || remD > 0) {
+      if (remW > 0 && remD > 0) {
+        balanceFootnote = 'This shows how many weeks and days you still have left.';
+      } else if (remW > 0) {
+        balanceFootnote = 'This shows how many weeks you still have left.';
+      } else {
+        balanceFootnote = 'This shows how many days you still have left.';
+      }
+    }
     el.innerHTML =
-      '<div class="credit-by-camper-title">Unused paid credit (family pool)</div>' +
-      '<p class="credit-by-camper-hint">Paid camp time you have <strong>not</strong> checked against an existing week below is <strong>pooled</strong> for your household. It is applied to new weeks and days in this checkout first (same order as the line items). <strong>Household balance</strong> is what remains <em>after</em> your current selections. To cancel a paid booking, contact IMA staff.</p>' +
-      '<div class="credit-by-camper-row"><span>Household balance</span><span>' +
+      '<div class="credit-by-camper-title">Unused Credit (Your Family)</div>' +
+      '<p class="credit-by-camper-hint">If you can’t come on the week or day you picked, you can use your credit to choose a different week or day that works better.</p>' +
+      '<div class="credit-by-camper-row"><span>Remaining Balance</span><span>' +
       escapeHtml(balLabel) +
-      '</span></div>';
+      '</span></div>' +
+      (balanceFootnote
+        ? '<p class="credit-by-camper-balance-footnote">' + balanceFootnote + '</p>'
+        : '');
   }
 
   async function refreshPricingPreview() {
