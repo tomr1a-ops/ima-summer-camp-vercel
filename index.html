@@ -2454,6 +2454,49 @@
     });
   }
 
+  /**
+   * When the registration page loads with ?session_id= (Stripe checkout session from the back link on success.html),
+   * read it once and remove it from the address bar (keeps hash e.g. #schedule).
+   * @returns {string|null}
+   */
+  function consumeStripeReturnSessionIdFromUrl() {
+    try {
+      var u = new URL(window.location.href);
+      var sid = (u.searchParams.get('session_id') || '').trim();
+      if (!sid) return null;
+      u.searchParams.delete('session_id');
+      var q = u.searchParams.toString();
+      var next = u.pathname + (q ? '?' + q : '') + u.hash;
+      history.replaceState(null, '', next);
+      return sid;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async function confirmCheckoutFromStripeReturn(sid) {
+    if (!sid) return;
+    try {
+      var res = await fetch('/api/confirm-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: sid }),
+      });
+      try {
+        await res.json();
+      } catch (eJ) {}
+    } catch (e) {}
+  }
+
+  /** Fresh enrollment load after payment: server rows may lag confirm-checkout by a tick. */
+  async function refreshConfirmedEnrollmentsAfterStripeReturn() {
+    await refreshConfirmedEnrollmentsFromServer();
+    await new Promise(function (resolve) {
+      setTimeout(resolve, 450);
+    });
+    await refreshConfirmedEnrollmentsFromServer();
+  }
+
   /** After successful Stripe payment, success.html sets a flag so checkout drafts clear on index (legacy portal storage key is wiped too). */
   function applyPostCheckoutEnrollClearIfFlag() {
     try {
@@ -4336,8 +4379,14 @@
       }
     }
     if (session) {
+      var stripeReturnSid = consumeStripeReturnSessionIdFromUrl();
       await loadParentCampers();
-      await refreshConfirmedEnrollmentsFromServer();
+      if (stripeReturnSid) {
+        await confirmCheckoutFromStripeReturn(stripeReturnSid);
+        await refreshConfirmedEnrollmentsAfterStripeReturn();
+      } else {
+        await refreshConfirmedEnrollmentsFromServer();
+      }
       applyPostCheckoutEnrollClearIfFlag();
       restoreEnrollLocal();
       hydrateSelectionFromConfirmedEnrollments();

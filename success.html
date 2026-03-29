@@ -17,6 +17,8 @@
   .back{display:inline-block;margin-top:32px;padding:13px 28px;background:linear-gradient(135deg,#00e5cc,#3344ff);color:#000;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:2px;border-radius:6px;text-decoration:none}
   .sub{margin-top:20px;font-size:13px;color:#555}
   #sync{font-size:12px;color:#666;margin-top:16px}
+  @media (max-width:768px){html{font-size:120%}}
+  @media (max-width:768px){@supports (zoom:1){html{font-size:100%;zoom:1.2}}}
 </style>
 </head>
 <body>
@@ -24,15 +26,67 @@
     <div class="icon">🥊</div>
     <h1>You're In!</h1>
     <p>Your payment went through. Check your email for a receipt. We can't wait to train with your kid this summer at Impact Martial Athletics!</p>
-    <p class="sub">Checked out as a guest? <a href="/register.html" style="color:#00e5cc">Create a parent account</a> with the same email to manage bookings in the portal.</p>
-    <a href="/index.html" class="back">Back to checkout</a>
+    <p class="sub">Want to add more weeks later? <a href="/register.html" style="color:#00e5cc">Create a parent account</a> with the same email you used at checkout, then use camp registration on the main site.</p>
+    <a href="/index.html#schedule" class="back">Back to camp registration</a>
     <p id="sync"></p>
   </div>
   <script>
     (function () {
       var p = new URLSearchParams(window.location.search);
+      if (p.get('prepaid') === '1') {
+        var FLAG = 'ima_post_checkout_clear_enroll';
+        try {
+          localStorage.setItem(FLAG, '1');
+          sessionStorage.setItem(FLAG, '1');
+        } catch (e) {}
+        var h = document.querySelector('h1');
+        var mainP = document.querySelector('body > div > p');
+        if (h) h.textContent = "You're In!";
+        if (mainP) {
+          mainP.textContent =
+            'Your registrations are saved. Camp fees were covered with your household prepaid credits (no card charge). We will see you this summer at Impact Martial Athletics!';
+        }
+        var el = document.getElementById('sync');
+        if (el) el.textContent = '';
+        return;
+      }
       var sid = p.get('session_id');
+      var back = document.querySelector('a.back');
+      if (back && sid) {
+        back.href = '/index.html?session_id=' + encodeURIComponent(sid) + '#schedule';
+      }
       if (!sid) return;
+      var FLAG = 'ima_post_checkout_clear_enroll';
+      /** Remember Stripe sessions we already signaled — avoids clearing a *new* draft if someone reopens an old success URL. */
+      var SEEN = 'ima_post_checkout_handled_stripe_sessions';
+
+      function readSeen() {
+        try {
+          var raw = localStorage.getItem(SEEN);
+          var arr = raw ? JSON.parse(raw) : [];
+          return Array.isArray(arr) ? arr : [];
+        } catch (e) {
+          return [];
+        }
+      }
+
+      /** First time we see this Checkout session → tell index to drop the local draft (Stripe only sends users here after success). */
+      function emitClearForSessionOnce() {
+        try {
+          var arr = readSeen();
+          if (arr.indexOf(sid) !== -1) return;
+          arr.push(sid);
+          if (arr.length > 80) arr = arr.slice(-80);
+          localStorage.setItem(SEEN, JSON.stringify(arr));
+        } catch (e) {}
+        try {
+          localStorage.setItem(FLAG, '1');
+          sessionStorage.setItem(FLAG, '1');
+        } catch (e2) {}
+      }
+
+      emitClearForSessionOnce();
+
       var el = document.getElementById('sync');
       el.textContent = 'Confirming registration…';
       fetch('/api/confirm-checkout', {
@@ -42,8 +96,15 @@
       })
         .then(function (r) { return r.json(); })
         .then(function (j) {
-          if (j && j.ok) el.textContent = j.already ? '' : 'Registration saved.';
-          else el.textContent = '';
+          if (j && j.ok) {
+            try {
+              localStorage.setItem(FLAG, '1');
+              sessionStorage.setItem(FLAG, '1');
+            } catch (e) {}
+            el.textContent = j.already ? '' : 'Registration saved.';
+          } else {
+            el.textContent = '';
+          }
         })
         .catch(function () { el.textContent = ''; });
     })();
