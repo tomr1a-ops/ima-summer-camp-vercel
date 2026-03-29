@@ -561,7 +561,7 @@
         type="button"
         class="btn-ghost"
         id="btn-goto-checkout"
-        title="Opens the main camp registration page (same site). Your children and week/day picks from this portal are copied over so they are not lost."
+        title="Opens the main camp registration page (same site). Week and day selections stay on this page until you check out here or re-select on the registration page."
       >
         Main registration page →
       </button>
@@ -746,6 +746,17 @@
 
   async function reloadPortalDataFromServer() {
     if (!state.session || !state.session.access_token) return;
+    state.enrollments = [];
+    try {
+      const sb = await IMA.getSupabase();
+      const uid = state.session.user.id;
+      const { data: campers, error: ce } = await sb.from('campers').select('*').eq('parent_id', uid).order('created_at');
+      if (!ce) {
+        state.campers = campers || [];
+        renderCamperCards();
+        updateBookingButtonsEnabled();
+      }
+    } catch (eC) {}
     try {
       const wr = await imaNoStoreFetch('/api/weeks');
       if (wr.ok) {
@@ -877,38 +888,6 @@
     return 'Camper';
   }
 
-  function migrateLegacyDailyToPerDay(o) {
-    if (!o || !o.sw || typeof o.sw !== 'object') return;
-    Object.keys(o.sw).forEach(function (wid) {
-      var days = o.sw[wid];
-      var kids = (o.dw && o.dw[wid]) || [];
-      if (!days || !days.length || !kids.length) return;
-      var map = ensureDailyWeekDayMap(wid);
-      days.forEach(function (dk) {
-        map[String(dk)] = new Set(kids.map(String));
-      });
-    });
-  }
-
-  function serializeDailyPerDay() {
-    const pdc = {};
-    Object.keys(state.dailyPerDayCampers).forEach(function (wid) {
-      const inner = state.dailyPerDayCampers[wid];
-      if (!inner) return;
-      pdc[wid] = {};
-      Object.keys(inner).forEach(function (dk) {
-        const s = inner[dk];
-        if (s && s.size) pdc[wid][dk] = Array.from(s).map(String);
-      });
-      if (!Object.keys(pdc[wid]).length) delete pdc[wid];
-    });
-    return pdc;
-  }
-
-  const PORTAL_ENROLL_PREFIX = 'ima_portal_enroll_v1:';
-  /** Same prefix as index.html signed-in draft (ima_reg_enroll_v1) */
-  const INDEX_ENROLL_PREFIX = 'ima_reg_enroll_v1:';
-
   function getPortalVisibleBookMode() {
     try {
       var vf = document.getElementById('view-full');
@@ -919,218 +898,18 @@
     return 'dashboard';
   }
 
-  /** Copy portal draft into index.html storage so /index.html sees the same week/day + reg fee choices. */
-  function pushPortalDraftToIndexCheckout() {
-    if (!state.session || !state.session.user || !state.session.user.id) return;
-    var uid = String(state.session.user.id);
-    var sk = INDEX_ENROLL_PREFIX + uid;
-    var fw = {};
-    Object.keys(state.fullWeekCampersByWeek).forEach(function (wid) {
-      fw[String(wid)] = Array.from(state.fullWeekCampersByWeek[wid] || []).map(String);
-    });
-    var pdc = serializeDailyPerDay();
-    var regFeeIncludeByCamper = {};
-    Object.keys(state.portalRegFeeInclude).forEach(function (k) {
-      regFeeIncludeByCamper[String(k)] = !!state.portalRegFeeInclude[k];
-    });
-    var hasDaily = Object.keys(pdc).some(function (w) {
-      var inner = pdc[w];
-      return inner && Object.keys(inner).some(function (dk) {
-        return (inner[dk] || []).length > 0;
-      });
-    });
-    var hasFull = Object.keys(fw).some(function (w) {
-      return (fw[w] || []).length > 0;
-    });
-    var ui = getPortalVisibleBookMode();
-    var enrollmentType = 'full';
-    if (ui === 'daily') enrollmentType = 'daily';
-    else if (ui === 'full') enrollmentType = 'full';
-    else {
-      if (hasDaily) enrollmentType = 'daily';
-      else if (hasFull) enrollmentType = 'full';
-    }
-    var payload = JSON.stringify({
-      fw: fw,
-      pdc: pdc,
-      dw: {},
-      sw: {},
-      fullWeekQty: {},
-      dailyKidsByWeek: {},
-      regFeeIncludeByCamper: regFeeIncludeByCamper,
-      enrollmentType: enrollmentType,
-      syncedFromPortal: true,
-      updatedAt: Date.now(),
-    });
-    try {
-      sessionStorage.setItem(sk, payload);
-    } catch (e) {}
-    try {
-      localStorage.setItem(sk, payload);
-    } catch (e2) {}
-    portalDbg('pushPortalDraftToIndexCheckout', { sk: sk.slice(-12), enrollmentType: enrollmentType, ui: ui });
-  }
-
-  function portalEnrollKey() {
-    if (!state.session || !state.session.user || !state.session.user.id) return null;
-    return PORTAL_ENROLL_PREFIX + String(state.session.user.id);
-  }
-
-  function persistPortalEnroll() {
-    try {
-      const k = portalEnrollKey();
-      if (!k) return;
-      const fw = {};
-      Object.keys(state.fullWeekCampersByWeek).forEach(function (wid) {
-        fw[String(wid)] = Array.from(state.fullWeekCampersByWeek[wid] || []).map(String);
-      });
-      const pdc = serializeDailyPerDay();
-      const reg = {};
-      Object.keys(state.portalRegFeeInclude).forEach(function (rk) {
-        reg[String(rk)] = !!state.portalRegFeeInclude[rk];
-      });
-      const payload = JSON.stringify({
-        fw: fw,
-        pdc: pdc,
-        reg: reg,
-        lastBookUi: getPortalVisibleBookMode(),
-        v: 4,
-        updatedAt: Date.now(),
-      });
-      portalDbg('persist', {
-        keySuffix: k.slice(-8),
-        fwWeeks: Object.keys(fw).length,
-        pdcWeeks: Object.keys(pdc).length,
-        regKeys: Object.keys(reg).length,
-      });
+  /** Remove legacy draft keys; confirmed rows always come from GET /api/enrollments (no local enrollment cache). */
+  function wipePortalDraftStorageForUser(userId) {
+    if (!userId) return;
+    var uid = String(userId);
+    ['ima_portal_enroll_v1:' + uid, 'ima_reg_enroll_v1:' + uid].forEach(function (k) {
       try {
-        sessionStorage.setItem(k, payload);
-      } catch (e1) {
-        portalDbg('sessionStorage.setItem failed', e1 && e1.message);
-      }
+        sessionStorage.removeItem(k);
+      } catch (e) {}
       try {
-        localStorage.setItem(k, payload);
-      } catch (e2) {
-        portalDbg('localStorage.setItem failed', e2 && e2.message);
-      }
-    } catch (e) {
-      portalDbg('persistPortalEnroll error', e);
-    }
-  }
-
-  function mergeRegFeesFromStorage(o) {
-    if (!o || !o.reg || typeof o.reg !== 'object') return;
-    Object.keys(o.reg).forEach(function (k) {
-      state.portalRegFeeInclude[String(k)] = !!o.reg[k];
+        localStorage.removeItem(k);
+      } catch (e2) {}
     });
-    portalDbg('mergeRegFeesFromStorage', o.reg);
-  }
-
-  function portalMemoryHasSelections() {
-    var fw = Object.keys(state.fullWeekCampersByWeek).some(function (wid) {
-      var s = state.fullWeekCampersByWeek[wid];
-      return s && s.size > 0;
-    });
-    var pd = Object.keys(state.dailyPerDayCampers).some(function (wid) {
-      var inner = state.dailyPerDayCampers[wid];
-      if (!inner) return false;
-      return Object.keys(inner).some(function (dk) {
-        var s = inner[dk];
-        return s && s.size > 0;
-      });
-    });
-    return fw || pd;
-  }
-
-  function portalStoredHasSelections(o) {
-    if (!o || typeof o !== 'object') return false;
-    var fw = Object.keys(o.fw || {}).some(function (wid) {
-      var arr = o.fw[wid];
-      return arr && arr.length > 0;
-    });
-    var pd = Object.keys(o.pdc || {}).some(function (wid) {
-      var inner = o.pdc[wid];
-      if (!inner || typeof inner !== 'object') return false;
-      return Object.keys(inner).some(function (dk) {
-        var arr = inner[dk];
-        return arr && arr.length > 0;
-      });
-    });
-    var dw = Object.keys(o.dw || {}).some(function (wid) {
-      var arr = o.dw[wid];
-      return arr && arr.length > 0;
-    });
-    var sw = Object.keys(o.sw || {}).some(function (wid) {
-      var arr = o.sw[wid];
-      return arr && arr.length > 0;
-    });
-    return fw || pd || dw || sw;
-  }
-
-  function readPortalEnrollRaw(k) {
-    if (!k) return null;
-    try {
-      var s = sessionStorage.getItem(k);
-      if (s) return s;
-    } catch (e) {}
-    try {
-      return localStorage.getItem(k);
-    } catch (e2) {}
-    return null;
-  }
-
-  function restorePortalEnroll() {
-    try {
-      const k = portalEnrollKey();
-      if (!k) {
-        portalDbg('restore: no key');
-        return;
-      }
-      const raw = readPortalEnrollRaw(k);
-      if (!raw) {
-        portalDbg('restore: no stored payload');
-        return;
-      }
-      const o = JSON.parse(raw);
-      mergeRegFeesFromStorage(o);
-
-      if (!portalStoredHasSelections(o) && portalMemoryHasSelections()) {
-        portalDbg('restore: keeping in-memory week/daily picks (storage has no week data)');
-        return;
-      }
-
-      Object.keys(state.fullWeekCampersByWeek).forEach(function (key) {
-        delete state.fullWeekCampersByWeek[key];
-      });
-      Object.keys(state.dailyPerDayCampers).forEach(function (key) {
-        delete state.dailyPerDayCampers[key];
-      });
-      Object.keys(o.fw || {}).forEach(function (wid) {
-        const arr = o.fw[wid];
-        if (arr && arr.length) state.fullWeekCampersByWeek[String(wid)] = new Set(arr.map(String));
-      });
-      if (o.pdc && typeof o.pdc === 'object') {
-        Object.keys(o.pdc).forEach(function (wid) {
-          const inner = o.pdc[wid];
-          if (!inner || typeof inner !== 'object') return;
-          const map = ensureDailyWeekDayMap(wid);
-          Object.keys(inner).forEach(function (dk) {
-            const arr = inner[dk];
-            if (arr && arr.length) map[String(dk)] = new Set(arr.map(String));
-          });
-        });
-      } else {
-        migrateLegacyDailyToPerDay(o);
-      }
-      portalDbg('restore: applied week/daily from storage', {
-        fw: Object.keys(o.fw || {}),
-        pdc: Object.keys(o.pdc || {}),
-        v: o.v,
-        updatedAt: o.updatedAt,
-      });
-    } catch (e) {
-      portalDbg('restorePortalEnroll error', e);
-    }
   }
 
   function maxCap(w) {
@@ -1271,7 +1050,6 @@
         var pid = el.getAttribute('data-portal-reg');
         if (pid) state.portalRegFeeInclude[String(pid)] = !el.checked;
         portalDbg('reg fee checkbox', String(pid), el.checked);
-        persistPortalEnroll();
         updateFullWeekSummary();
       });
     });
@@ -1519,7 +1297,6 @@
       btn.addEventListener('click', function () {
         const cid = btn.getAttribute('data-camper');
         state.addWeekCamperId = cid ? String(cid) : null;
-        persistPortalEnroll();
         showView('full');
         document.getElementById('full-context-hint').textContent =
           'Select an additional week for ' +
@@ -1683,8 +1460,7 @@
             if (cb.checked) st.add(cid);
             else st.delete(cid);
             if (!st.size) delete state.fullWeekCampersByWeek[wk];
-            persistPortalEnroll();
-            renderFullWeekCards();
+                renderFullWeekCards();
             updateFullWeekSummary();
           });
           const sp = document.createElement('span');
@@ -1911,8 +1687,7 @@
               pruneEmptyDailyWeek(wk);
             }
             refreshDayButtonState(wk, d, btnMain, btnSub, btn);
-            persistPortalEnroll();
-            updateDailyOrderSummary();
+                updateDailyOrderSummary();
             updateDailyCheckoutBtn();
           });
           const sp = document.createElement('span');
@@ -2124,6 +1899,8 @@
     const { data: campers, error: ce } = await sb.from('campers').select('*').eq('parent_id', uid).order('created_at');
     if (ce) throw ce;
     state.campers = campers || [];
+    state.enrollments = [];
+    wipePortalDraftStorageForUser(uid);
 
     try {
       const wr = await imaNoStoreFetch('/api/weeks');
@@ -2140,18 +1917,9 @@
       state.fullWeekCampersByWeek = {};
       state.dailyPerDayCampers = {};
       state.portalRegFeeInclude = {};
-      try {
-        var puid = String(session.user.id);
-        var pPk = 'ima_portal_enroll_v1:' + puid;
-        var pIk = 'ima_reg_enroll_v1:' + puid;
-        sessionStorage.removeItem(pPk);
-        localStorage.removeItem(pPk);
-        sessionStorage.removeItem(pIk);
-        localStorage.removeItem(pIk);
-      } catch (ePayClear) {}
+      wipePortalDraftStorageForUser(session.user.id);
     }
 
-    restorePortalEnroll();
     renderCamperCards();
     updateBookingButtonsEnabled();
     await refreshPortalBookings();
@@ -2169,8 +1937,6 @@
     IMA.signOut();
   };
   document.getElementById('btn-goto-checkout').onclick = function () {
-    persistPortalEnroll();
-    pushPortalDraftToIndexCheckout();
     location.href = '/index.html#schedule';
   };
 
@@ -2188,7 +1954,6 @@
     showView('full');
     renderFullWeekCards();
     refreshPortalPricingForFullWeek();
-    persistPortalEnroll();
   };
   document.getElementById('open-daily').onclick = function () {
     if (!state.campers.length) {
@@ -2198,7 +1963,6 @@
     state.addWeekCamperId = null;
     showView('daily');
     renderDailyWeeks();
-    persistPortalEnroll();
   };
   document.getElementById('back-from-full').onclick = function () {
     state.addWeekCamperId = null;
@@ -2207,11 +1971,9 @@
       fh.textContent =
         'For each week, check which children get a full-week spot. Your total updates below, then use checkout.';
     }
-    persistPortalEnroll();
     showView('dashboard');
   };
   document.getElementById('back-from-daily').onclick = function () {
-    persistPortalEnroll();
     showView('dashboard');
   };
   document.getElementById('btn-daily-checkout').onclick = startDailyCheckout;
@@ -2266,12 +2028,10 @@
       return;
     }
     if (h === 'full') {
-      restorePortalEnroll();
       showView('full');
       if (state.campers.length) renderFullWeekCards();
       refreshPortalPricingForFullWeek();
     } else if (h === 'daily') {
-      restorePortalEnroll();
       showView('daily');
       if (state.campers.length) renderDailyWeeks();
     } else showView('dashboard');
@@ -2280,6 +2040,7 @@
 
   window.addEventListener('pageshow', function (ev) {
     if (!state.session || !state.session.access_token) return;
+    /* bfcache / iOS WebView: session exists but DOM may be frozen stale */
     if (!(ev && ev.persisted)) return;
     void reloadPortalDataFromServer().then(function () {
       try {
@@ -2288,10 +2049,17 @@
     });
   });
 
-  window.addEventListener('hashchange', routeHash);
-  window.addEventListener('pagehide', function () {
-    persistPortalEnroll();
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState !== 'visible') return;
+    if (!state.session || !state.session.access_token) return;
+    void refreshPortalBookings().then(function () {
+      try {
+        renderPortalBookings();
+      } catch (eVis) {}
+    });
   });
+
+  window.addEventListener('hashchange', routeHash);
 
   load()
     .then(function () {
