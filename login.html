@@ -54,13 +54,32 @@
   var btn = document.getElementById('btn');
   var form = document.getElementById('form');
 
-  var ADMIN_EMAILS = ['tom@imaimpact.com', 'coachshick@imaimpact.com'];
+  var STAFF_LOGIN_EMAILS = ['tom@imaimpact.com', 'coachshick@imaimpact.com'];
+  /** Signed-in auth email always uses parent portal (even if profiles.role is admin). */
+  var ALWAYS_PARENT_PORTAL_EMAILS = ['tomr1a@gmail.com'];
 
-  function isStaffEmail(email) {
-    var e = String(email || '').trim().toLowerCase();
-    for (var i = 0; i < ADMIN_EMAILS.length; i++) {
-      if (ADMIN_EMAILS[i] === e) return true;
+  function normEmail(email) {
+    return String(email || '').trim().toLowerCase();
+  }
+
+  function isStaffLoginEmail(email) {
+    var e = normEmail(email);
+    for (var i = 0; i < STAFF_LOGIN_EMAILS.length; i++) {
+      if (STAFF_LOGIN_EMAILS[i] === e) return true;
     }
+    return false;
+  }
+
+  function alwaysParentPortal(email) {
+    return ALWAYS_PARENT_PORTAL_EMAILS.indexOf(normEmail(email)) !== -1;
+  }
+
+  /** true → /admin.html; uses profiles.role from Supabase + staff login emails only. */
+  function shouldGoToAdmin(profile, email) {
+    if (alwaysParentPortal(email)) return false;
+    var role = String((profile && profile.role) || '').trim().toLowerCase();
+    if (role === 'admin') return true;
+    if (isStaffLoginEmail(email)) return true;
     return false;
   }
 
@@ -157,8 +176,7 @@
       return profile;
     }).then(function (profile) {
       if (!profile) throw new Error('Profile not found. Complete registration or contact IMA.');
-      var admin = profile.role === 'admin' || isStaffEmail(email);
-      if (admin) window.location.replace('/admin.html');
+      if (shouldGoToAdmin(profile, email)) window.location.replace('/admin.html');
       else window.location.replace('/portal.html');
     });
   }
