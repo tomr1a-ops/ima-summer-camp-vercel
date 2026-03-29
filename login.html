@@ -2,21 +2,26 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sign In — IMA Summer Camp</title>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/ima-theme.css" />
 </head>
-<body>
+<body style="background:#050505;color:#f0f0f0">
+  <noscript>
+    <p style="max-width:420px;margin:24px auto;padding:20px;font-family:system-ui,sans-serif">
+      Turn on JavaScript to sign in, then reload.
+    </p>
+  </noscript>
   <div class="auth-wrap">
     <div class="auth-card">
       <div class="auth-card-head">
         <img class="auth-logo" src="/logo.png" alt="Impact Martial Athletics" />
         <div class="auth-title">Welcome Back</div>
-        <div class="auth-sub">Parent portal &amp; admin access</div>
+        <div class="auth-sub">Summer camp sign in</div>
       </div>
       <div class="auth-body">
         <div id="msg" class="msg"></div>
@@ -35,198 +40,166 @@
         <div class="link-row" style="margin-top:10px">
           <a href="/index.html">← Summer camp checkout</a>
         </div>
+        <div class="link-row" style="margin-top:14px;font-size:12px;opacity:0.75">
+          IMA staff? <a href="/admin-login.html" style="color:var(--cyan)">Staff sign-in</a>
+        </div>
       </div>
     </div>
   </div>
-  <script src="/js/ima-core.js"></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.48.1/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
   <script>
-    (function () {
-      const msg = document.getElementById('msg');
-      const btn = document.getElementById('btn');
-      const form = document.getElementById('form');
+(function () {
+  var msg = document.getElementById('msg');
+  var btn = document.getElementById('btn');
+  var form = document.getElementById('form');
 
-      function show(text, ok) {
-        msg.textContent = text;
-        msg.className = 'msg show ' + (ok ? 'ok' : 'error');
-      }
+  var ADMIN_EMAILS = ['tom@imaimpact.com', 'coachshick@imaimpact.com'];
 
-      var PENDING_REG_KEY = 'ima_pending_registration_v1';
+  function isStaffEmail(email) {
+    var e = String(email || '').trim().toLowerCase();
+    for (var i = 0; i < ADMIN_EMAILS.length; i++) {
+      if (ADMIN_EMAILS[i] === e) return true;
+    }
+    return false;
+  }
 
-      /**
-       * After email confirmation, parent signed up without server role: children were stored here.
-       */
-      async function flushPendingRegistration(email, accessToken) {
-        var raw;
-        try {
-          raw = localStorage.getItem(PENDING_REG_KEY);
-        } catch (e) {
-          return null;
+  function show(text, ok) {
+    if (!msg) return;
+    msg.textContent = text;
+    msg.className = 'msg show ' + (ok ? 'ok' : 'error');
+  }
+
+  function authStorage() {
+    try {
+      var k = '__ima_ls__';
+      localStorage.setItem(k, '1');
+      localStorage.removeItem(k);
+      return localStorage;
+    } catch (e) {
+      var mem = {};
+      return {
+        getItem: function (key) {
+          return Object.prototype.hasOwnProperty.call(mem, key) ? mem[key] : null;
+        },
+        setItem: function (key, val) {
+          mem[key] = String(val);
+        },
+        removeItem: function (key) {
+          delete mem[key];
         }
-        if (!raw) return null;
-        var pending;
-        try {
-          pending = JSON.parse(raw);
-        } catch (e) {
-          try {
-            localStorage.removeItem(PENDING_REG_KEY);
-          } catch (e2) {}
-          return null;
-        }
-        if (!pending || String(pending.email).toLowerCase() !== String(email).toLowerCase()) {
-          return null;
-        }
-        var maxAge = 1000 * 60 * 60 * 24 * 14;
-        if (!pending.ts || Date.now() - pending.ts > maxAge) {
-          try {
-            localStorage.removeItem(PENDING_REG_KEY);
-          } catch (e3) {}
-          return null;
-        }
-        var er = await fetch('/api/ensure-profile', {
+      };
+    }
+  }
+
+  var client = null;
+
+  function getClient() {
+    if (client) return Promise.resolve(client);
+    if (typeof supabase === 'undefined' || typeof supabase.createClient !== 'function') {
+      return Promise.reject(new Error('Sign-in library did not load. Refresh or try Safari/Chrome.'));
+    }
+    return fetch('/api/public-config')
+      .then(function (res) {
+        if (!res.ok) throw new Error('Could not load configuration.');
+        return res.json();
+      })
+      .then(function (cfg) {
+        if (!cfg.url || !cfg.anonKey) throw new Error('Site configuration is incomplete.');
+        client = supabase.createClient(cfg.url, cfg.anonKey, {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true,
+            storage: authStorage()
+          }
+        });
+        return client;
+      });
+  }
+
+  function loadProfileRole(sb, userId) {
+    return sb.from('profiles').select('role').eq('id', userId).maybeSingle();
+  }
+
+  function goAfterSignIn(sb, session) {
+    var email = session.user && session.user.email;
+    var token = session.access_token;
+    var userId = session.user && session.user.id;
+    return loadProfileRole(sb, userId).then(function (pr) {
+      if (pr.error) throw pr.error;
+      var profile = pr.data;
+      if (!profile && token) {
+        return fetch('/api/ensure-profile', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: 'Bearer ' + accessToken,
+            Authorization: 'Bearer ' + token
           },
-          body: JSON.stringify({
-            full_name: pending.fullName,
-            phone: pending.phone,
-          }),
-        });
-        var ej = {};
-        try {
-          ej = await er.json();
-        } catch (e4) {
-          ej = {};
-        }
-        if (!er.ok) {
-          return { error: (ej && ej.error) || 'Could not complete your profile. Try again or contact IMA.' };
-        }
-        var children = Array.isArray(pending.children) ? pending.children : [];
-        var errs = [];
-        for (var i = 0; i < children.length; i++) {
-          var ch = children[i];
-          var ar = await fetch('/api/add-camper', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: 'Bearer ' + accessToken,
-            },
-            body: JSON.stringify({
-              firstName: ch.firstName,
-              lastName: ch.lastName,
-              age: ch.age,
-            }),
-          });
-          var aj = {};
-          try {
-            aj = await ar.json();
-          } catch (e5) {
-            aj = {};
-          }
-          if (!ar.ok) {
-            errs.push(
-              (ch.firstName || '') +
-                ' ' +
-                (ch.lastName || '') +
-                ': ' +
-                ((aj && aj.error) || 'could not save')
-            );
-          }
-        }
-        try {
-          localStorage.removeItem(PENDING_REG_KEY);
-        } catch (e6) {}
-        if (errs.length) {
-          return { partialErrors: errs };
-        }
-        return { ok: true };
-      }
-
-      async function boot() {
-        try {
-          await IMA.getSupabase();
-          const session = await IMA.getSession();
-          if (session) {
-            const profile = await IMA.getProfile();
-            const ret = new URLSearchParams(window.location.search).get('return');
-            const safe = ret && ret.startsWith('/') && !ret.startsWith('//') ? ret : null;
-            if ((profile && profile.role === 'admin') || IMA.isAdminLoginEmail(session.user && session.user.email)) {
-              window.location.replace('/admin.html');
-            } else {
-              window.location.replace(safe || '/portal.html');
-            }
-          }
-        } catch (e) {
-          show(e.message || String(e), false);
-        }
-      }
-
-      form.addEventListener('submit', async function (ev) {
-        ev.preventDefault();
-        msg.className = 'msg';
-        btn.disabled = true;
-        try {
-          const sb = await IMA.getSupabase();
-          const email = document.getElementById('email').value.trim();
-          const password = document.getElementById('password').value;
-          const { data: signData, error } = await sb.auth.signInWithPassword({ email, password });
-          if (error) throw error;
-          const tok = signData.session && signData.session.access_token;
-          const flushed = tok ? await flushPendingRegistration(email, tok) : null;
-          if (flushed && flushed.error) {
-            show(flushed.error, false);
-            btn.disabled = false;
-            return;
-          }
-          if (flushed && flushed.partialErrors && flushed.partialErrors.length) {
-            show(
-              'Signed in. Some children could not be added automatically:\n' +
-                flushed.partialErrors.join('\n') +
-                '\n\nAdd them under your account in the portal.',
-              false
-            );
-          }
-          let profile = await IMA.getProfile();
-          if (!profile && signData.session && signData.session.access_token) {
-            const pr = await fetch('/api/ensure-profile', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: 'Bearer ' + signData.session.access_token,
+          body: JSON.stringify({})
+        }).then(function (er) {
+          if (!er.ok) {
+            return er.json().then(
+              function (pe) {
+                throw new Error((pe && pe.error) || 'Could not create your profile.');
               },
-              body: JSON.stringify({}),
-            });
-            if (pr.ok) {
-              profile = await IMA.getProfile();
-            } else {
-              var pe = {};
-              try {
-                pe = await pr.json();
-              } catch (ePr) {
-                pe = {};
+              function () {
+                throw new Error('Could not create your profile.');
               }
-              throw new Error(
-                (pe && pe.error) || 'Could not create your profile. Check that the site has SUPABASE_SERVICE_ROLE_KEY set, then try again.'
-              );
-            }
+            );
           }
-          if (!profile) throw new Error('Profile not found. Complete registration or contact IMA.');
-          const ret = new URLSearchParams(window.location.search).get('return');
-          const safe = ret && ret.startsWith('/') && !ret.startsWith('//') ? ret : null;
-          if (profile.role === 'admin' || IMA.isAdminLoginEmail(session.user && session.user.email)) {
-            window.location.replace('/admin.html');
-          } else {
-            window.location.replace(safe || '/portal.html');
-          }
-        } catch (e) {
+          return loadProfileRole(sb, userId);
+        }).then(function (pr2) {
+          if (pr2.error) throw pr2.error;
+          return pr2.data;
+        });
+      }
+      return profile;
+    }).then(function (profile) {
+      if (!profile) throw new Error('Profile not found. Complete registration or contact IMA.');
+      var admin = profile.role === 'admin' || isStaffEmail(email);
+      if (admin) window.location.replace('/admin.html');
+      else window.location.replace('/portal.html');
+    });
+  }
+
+  function tryRedirectIfSession() {
+    return getClient().then(function (sb) {
+      return sb.auth.getSession();
+    }).then(function (out) {
+      if (out.error) throw out.error;
+      if (!out.data.session) return;
+      return goAfterSignIn(client, out.data.session);
+    });
+  }
+
+  if (form && btn && msg) {
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      msg.className = 'msg';
+      btn.disabled = true;
+      var email = document.getElementById('email').value.trim();
+      var password = document.getElementById('password').value;
+      getClient()
+        .then(function (sb) {
+          return sb.auth.signInWithPassword({ email: email, password: password });
+        })
+        .then(function (sign) {
+          if (sign.error) throw sign.error;
+          if (!sign.data.session) throw new Error('No session returned.');
+          return goAfterSignIn(client, sign.data.session);
+        })
+        .catch(function (e) {
           show(e.message || 'Sign in failed', false);
           btn.disabled = false;
-        }
-      });
+        });
+    });
+  }
 
-      boot();
-    })();
+  tryRedirectIfSession().catch(function (e) {
+    show(e.message || String(e), false);
+  });
+})();
   </script>
 </body>
 </html>
