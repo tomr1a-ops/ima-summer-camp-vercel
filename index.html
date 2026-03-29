@@ -1792,7 +1792,6 @@
       <div class="includes-item"><span class="inc-icon">👕</span> Impact Training Shirt</div>
       <div class="includes-item"><span class="inc-icon">🥊</span> Protective Punching Gloves</div>
       <div class="includes-item"><span class="inc-icon">⚡</span> Full week (Mon–Fri) or pick individual days</div>
-      <div class="includes-item"><span class="inc-icon">🛡️</span> One-time $65 registration per child (first IMA camp only)</div>
     </div>
   </div>
 
@@ -3934,7 +3933,7 @@
       } else if (paidFullWeekHere) {
         cb.checked = true;
         cb.disabled = true;
-        row.title = 'Registered for this week — use Remove to cancel this booking.';
+        row.title = 'Registered for this week — use Cancel to drop this booking.';
       } else {
         cb.checked = !!(st && st.has(cid));
         cb.disabled = weekBlocked;
@@ -3984,8 +3983,8 @@
         const rm = document.createElement('button');
         rm.type = 'button';
         rm.className = 'week-kid-remove';
-        rm.textContent = 'Remove';
-        rm.setAttribute('aria-label', 'Remove ' + (c.first_name || '') + ' from this week');
+        rm.textContent = 'Cancel';
+        rm.setAttribute('aria-label', 'Cancel registration for ' + (c.first_name || '') + ' this week');
         rm.addEventListener('click', function (ev) {
           ev.preventDefault();
           ev.stopPropagation();
