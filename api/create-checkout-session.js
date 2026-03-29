@@ -306,7 +306,14 @@ module.exports = async (req, res) => {
   let campLineCents = [];
   if (bookingsArray.length) {
     try {
-      const { poolW, poolD, weekMetaMap } = await loadFloatingPrepaidPool(sb, parentId, bookingsArray, normCamperKey);
+      const prepaidCoverageKeys = Array.isArray(body.prepaidCoverageKeys) ? body.prepaidCoverageKeys : [];
+      const { poolW, poolD, weekMetaMap } = await loadFloatingPrepaidPool(
+        sb,
+        parentId,
+        bookingsArray,
+        normCamperKey,
+        prepaidCoverageKeys
+      );
       bookingsArray = sortBookingsForCreditApply(bookingsArray, weekMetaMap);
       const applied = applyPoolToBookings(bookingsArray, poolW, poolD, wr, dr);
       campLineCents = applied.campLineCents;

@@ -7,8 +7,8 @@
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
 <title>IMA Summer Camp 2026 — Register Now</title>
-<script src="https://js.stripe.com/v3/"></script>
-<script src="/js/ima-core.js?v=20260329"></script>
+<script src="https://js.stripe.com/v3/" defer></script>
+<script src="/js/ima-core.js?v=20260330"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1835,15 +1835,6 @@
     return fetch(busted, Object.assign({ cache: 'no-store', credentials: 'same-origin' }, init, { headers: h }));
   }
 
-  /** Refresh JWT before parent-only API calls (enrollments, preview-pricing) — avoids 401/500 when access_token expired on mobile. */
-  async function mergeParentSessionFromApi() {
-    if (!session) return;
-    try {
-      const auth = await IMA.refreshSessionForApi();
-      if (auth.session) session = auth.session;
-    } catch (eM) {}
-  }
-
   let testPriceMode = false;
   let weeksPayload = [];
   /** @type {Record<string, Set<string>>} */
@@ -2771,6 +2762,33 @@
     });
   }
 
+  /** Lowercase camper id for prepaid slot keys (must match server normCamperKey). */
+  function normCamperKeyForPrepaidApi(id) {
+    return String(id || '')
+      .trim()
+      .toLowerCase();
+  }
+
+  /**
+   * Confirmed (camper, week) slots already reflected in the grid — not "floating" prepaid on the server.
+   * Keeps Stripe totals aligned with the summary when paid weeks stay checked but are not in this cart.
+   */
+  function prepaidCoverageKeysForApi() {
+    var out = [];
+    if (!session || !parentCampers.length) return out;
+    parentCampers.forEach(function (c) {
+      var cid = String(c.id);
+      (confirmedEnrollmentsCache || []).forEach(function (row) {
+        if (!row || row.status !== 'confirmed') return;
+        if (String(row.camper_id) !== cid) return;
+        if (paidEnrollmentMatchesPicker(row, cid)) {
+          out.push(normCamperKeyForPrepaidApi(cid) + '|' + String(row.week_id));
+        }
+      });
+    });
+    return out;
+  }
+
   function daysCoveredByConfirmedForCamperWeek(weekId, camperId) {
     const covered = new Set();
     const w = weeksPayload.find(function (x) {
@@ -3195,8 +3213,6 @@
   async function refreshConfirmedEnrollmentsFromServer() {
     confirmedEnrollmentsCache = [];
     if (!session || !session.access_token) return;
-    await mergeParentSessionFromApi();
-    if (!session || !session.access_token) return;
     try {
       const res = await imaNoStoreFetch('/api/enrollments', {
         headers: { Authorization: 'Bearer ' + session.access_token },
@@ -3519,7 +3535,6 @@
   }
 
   async function refreshPricingPreview() {
-    if (session) await mergeParentSessionFromApi();
     const headers = {};
     if (session && session.access_token) headers['Authorization'] = 'Bearer ' + session.access_token;
     const params = new URLSearchParams();
@@ -4252,14 +4267,6 @@
       renderRegFeeCamperBoxes();
       return;
     }
-    await mergeParentSessionFromApi();
-    if (!session) {
-      parentCampers = [];
-      renderParentCamperList();
-      updateRegFlowClasses();
-      renderRegFeeCamperBoxes();
-      return;
-    }
     const sb = await IMA.getSupabase();
     const { data: campers, error } = await sb.from('campers').select('id,first_name,last_name').eq('parent_id', session.user.id);
     if (error) {
@@ -4308,7 +4315,6 @@
       }
     }
     if (session) {
-      await mergeParentSessionFromApi();
       await loadParentCampers();
       await refreshConfirmedEnrollmentsFromServer();
       applyPostCheckoutEnrollClearIfFlag();
@@ -4462,6 +4468,7 @@
       testPricing: testPriceMode,
       registrationFeeForCamper: regMap,
       extraShirtByCamper: shirtMap,
+      prepaidCoverageKeys: prepaidCoverageKeysForApi(),
       imaMember: ids.some(function (cid) {
         return !registrationFeeAppliesToCamper(cid);
       }),
@@ -4781,6 +4788,18 @@
     })
     .then(function () {
       return refreshPricingPreview();
+    })
+    .catch(function (e) {
+      console.error(e);
+      try {
+        showAuthPanels();
+        var errBanner = document.getElementById('auth-config-err');
+        if (errBanner) {
+          errBanner.textContent =
+            (e && e.message) || 'Could not finish loading this page. Pull to refresh or open the site in Safari/Chrome.';
+          errBanner.style.display = 'block';
+        }
+      } catch (e2) {}
     });
   initTestBar();
 })();

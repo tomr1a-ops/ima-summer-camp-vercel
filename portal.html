@@ -1111,6 +1111,66 @@
     });
   }
 
+  function portalEnrollmentCoversFullWeek(row, w) {
+    if (!w || !(w.days && w.days.length === 5)) return false;
+    var ids = new Set((row.day_ids || []).map(String));
+    var weekDayIds = w.days.map(function (d) {
+      return String(d.id);
+    });
+    return (
+      ids.size === 5 &&
+      weekDayIds.every(function (id) {
+        return ids.has(id);
+      })
+    );
+  }
+
+  function portalCamperSetForDay(wk, dayId) {
+    var inner = state.dailyPerDayCampers[wk];
+    if (!inner || !inner[String(dayId)]) return null;
+    return inner[String(dayId)];
+  }
+
+  function portalPaidEnrollmentMatchesPicker(row, cid) {
+    var w = portalWeekById(row.week_id);
+    if (!w) return false;
+    var wk = String(w.id);
+    var camperId = String(cid);
+    var onFullWeek = !!(state.fullWeekCampersByWeek[wk] && state.fullWeekCampersByWeek[wk].has(camperId));
+    if (portalEnrollmentCoversFullWeek(row, w)) {
+      return onFullWeek;
+    }
+    if (onFullWeek) return true;
+    var dayIds = (row.day_ids || []).map(String).filter(Boolean);
+    if (!dayIds.length) return false;
+    return dayIds.every(function (did) {
+      var s = portalCamperSetForDay(wk, did);
+      return s && s.has(camperId);
+    });
+  }
+
+  function portalNormCamperKeyForPrepaid(id) {
+    return String(id || '')
+      .trim()
+      .toLowerCase();
+  }
+
+  function portalPrepaidCoverageKeysForApi() {
+    var out = [];
+    if (!state.campers || !state.campers.length) return out;
+    state.campers.forEach(function (c) {
+      var cid = String(c.id);
+      (state.enrollments || []).forEach(function (row) {
+        if (!row || row.status !== 'confirmed') return;
+        if (String(row.camper_id) !== cid) return;
+        if (portalPaidEnrollmentMatchesPicker(row, cid)) {
+          out.push(portalNormCamperKeyForPrepaid(cid) + '|' + String(row.week_id));
+        }
+      });
+    });
+    return out;
+  }
+
   function formatEnrollmentSchedule(e) {
     const w = portalWeekById(e.week_id);
     if (!w || !(w.days && w.days.length)) {
@@ -1811,7 +1871,12 @@
     ids.forEach(function (cid) {
       registrationFeeForCamper[String(cid)] = getPortalRegFeeInclude(cid);
     });
-    return { bookings: bookings, imaMember: false, registrationFeeForCamper: registrationFeeForCamper };
+    return {
+      bookings: bookings,
+      imaMember: false,
+      registrationFeeForCamper: registrationFeeForCamper,
+      prepaidCoverageKeys: portalPrepaidCoverageKeysForApi(),
+    };
   }
 
   /** Match server totals: camp lines + per-camper registration when included. */
