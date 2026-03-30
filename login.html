@@ -177,7 +177,7 @@
     }).then(function (profile) {
       if (!profile) throw new Error('Profile not found. Complete registration or contact IMA.');
       if (shouldGoToAdmin(profile, email)) window.location.replace('/admin.html');
-      else window.location.replace('/portal.html');
+      else window.location.replace('/index.html?portal=1#schedule');
     });
   }
 
