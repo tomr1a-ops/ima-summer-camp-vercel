@@ -1,4 +1,4 @@
-const { clientForWeeksApi, resolveSupabaseUrl } = require('./lib/supabase');
+const { clientForWeeksApi, resolveSupabaseUrl, serviceClient } = require('./lib/supabase');
 const { setNoStoreJsonHeaders } = require('./lib/http-no-store');
 
 /**
@@ -10,7 +10,10 @@ const { setNoStoreJsonHeaders } = require('./lib/http-no-store');
  *    fallback if anon env vars are missing — same DB, bypasses RLS).
  * 2. Query public.weeks where is_active = true, ordered by week_number.
  * 3. Query public.days (all rows), ordered by date, bucketed by week_id in memory.
- * 4. Shape each week with days[], slots_left, at_capacity, disabled.
+ * 4. Shape each week with days[] (each includes max_capacity), slots_left, at_capacity, disabled.
+ *
+ * Sold-out uses **days.current_enrollment** vs **weeks.max_capacity** (per day: current >= max
+ * → at_capacity; week is full if any day’s enrollment reaches max, or weeks.is_full is true).
  *
  * Errors surface as JSON { error, requestId, ... } with HTTP 500; Vercel logs include
  * the same requestId for correlation.
@@ -131,32 +134,56 @@ module.exports = async (req, res) => {
       byWeek[d.week_id].push(d);
     });
 
-    /**
-     * Week sold-out / portal blocking uses **days.current_enrollment** only (same as admin capacity bar).
-     * Peak count across Mon–Fri for the week vs max_capacity; checkout still validates via capacity helpers.
-     */
+    /** Distinct confirmed campers per week (informational; capacity UI uses days.current_enrollment). */
+    let distinctByWeekId = {};
+    try {
+      const svc = serviceClient();
+      const { data: encRows, error: encErr } = await svc
+        .from('enrollments')
+        .select('camper_id, week_id')
+        .eq('status', 'confirmed');
+      if (!encErr && encRows) {
+        for (const row of encRows) {
+          const wid = String(row.week_id);
+          if (!distinctByWeekId[wid]) distinctByWeekId[wid] = new Set();
+          distinctByWeekId[wid].add(String(row.camper_id));
+        }
+      } else if (encErr) {
+        console.warn('[api/weeks]', requestId, 'distinct_camper_query', serializeSupabaseError(encErr));
+      }
+    } catch (svcErr) {
+      console.warn('[api/weeks]', requestId, 'distinct_camper_no_service', {
+        message: svcErr && svcErr.message,
+      });
+    }
+
     const capDefault = 35;
     const payload = (weeks || []).map((w) => {
-      const max = w.max_capacity || capDefault;
-      const wdays = (byWeek[w.id] || []).map((d) => ({
-        id: d.id,
-        date: d.date,
-        day_name: d.day_name,
-        current_enrollment: d.current_enrollment,
-        slots_left: Math.max(0, max - (d.current_enrollment || 0)),
-        at_capacity: (d.current_enrollment || 0) >= max,
-      }));
+      const max = Number(w.max_capacity) > 0 ? Number(w.max_capacity) : capDefault;
+      const wdays = (byWeek[w.id] || []).map((d) => {
+        const current = Number(d.current_enrollment) || 0;
+        return {
+          id: d.id,
+          date: d.date,
+          day_name: d.day_name,
+          current_enrollment: current,
+          max_capacity: max,
+          slots_left: Math.max(0, max - current),
+          at_capacity: current >= max,
+        };
+      });
       let peakEnrolled = 0;
       wdays.forEach((d) => {
         peakEnrolled = Math.max(peakEnrolled, Number(d.current_enrollment) || 0);
       });
-      const weekSoldOut = peakEnrolled >= max;
+      const weekSoldOut = wdays.some((d) => Number(d.current_enrollment) >= max);
       const mergedFull = !!(w.is_full || weekSoldOut);
+      const set = distinctByWeekId[String(w.id)];
       return {
         ...w,
         is_full: mergedFull,
         week_peak_enrollment: peakEnrolled,
-        distinct_camper_count: peakEnrolled,
+        distinct_camper_count: set ? set.size : 0,
         days: wdays,
         disabled: mergedFull || !w.is_active,
       };

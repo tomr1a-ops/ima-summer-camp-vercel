@@ -2004,7 +2004,28 @@
   }
 
   function maxCap(w) {
-    return w.max_capacity || 35;
+    const n = Number(w.max_capacity);
+    return n > 0 ? n : 35;
+  }
+
+  /** Align week/day sold-out flags with days.current_enrollment vs capacity (matches /api/weeks). */
+  function normalizeWeekCapacityFromDays(w) {
+    const cap = maxCap(w);
+    (w.days || []).forEach(function (d) {
+      const mc = Number(d.max_capacity) > 0 ? Number(d.max_capacity) : cap;
+      const cur = Number(d.current_enrollment) || 0;
+      d.max_capacity = mc;
+      d.at_capacity = cur >= mc;
+      d.slots_left = Math.max(0, mc - cur);
+    });
+    const weekNumericFull = (w.days || []).some(function (d) {
+      const mc = Number(d.max_capacity) > 0 ? Number(d.max_capacity) : cap;
+      return (Number(d.current_enrollment) || 0) >= mc;
+    });
+    if (weekNumericFull || w.is_full) {
+      w.is_full = true;
+      w.disabled = true;
+    }
   }
 
   function formatDayLabel(d) {
@@ -4676,9 +4697,9 @@
       chips.className = 'day-chips';
       if (signedInParent) {
         (w.days || []).forEach(function (d) {
-          const cap = maxCap(w);
-          const enrolled = d.current_enrollment || 0;
-          const atCap = d.at_capacity || enrolled >= cap;
+          const cap = Number(d.max_capacity) > 0 ? Number(d.max_capacity) : maxCap(w);
+          const enrolled = Number(d.current_enrollment) || 0;
+          const atCap = !!(d.at_capacity || enrolled >= cap);
           const col = document.createElement('div');
           col.className = 'day-chip-wrap daily-perday-col';
           const dayBlocked = weekFull || atCap;
@@ -4888,9 +4909,10 @@
           btn.type = 'button';
           btn.className = 'day-chip';
           btn.textContent = formatDayLabel(d);
-          const cap = maxCap(w);
-          const enrolled = d.current_enrollment || 0;
-          btn.disabled = weekFull || d.at_capacity || kids < 1;
+          const cap = Number(d.max_capacity) > 0 ? Number(d.max_capacity) : maxCap(w);
+          const enrolled = Number(d.current_enrollment) || 0;
+          const dayFull = !!(d.at_capacity || enrolled >= cap);
+          btn.disabled = weekFull || dayFull || kids < 1;
           if (btn.disabled && !weekFull && kids >= 1) btn.title = 'This day is full';
           btn.addEventListener('click', function () {
             if (btn.disabled) return;
@@ -4917,6 +4939,7 @@
       const data = await res.json();
       weeksPayload = data.weeks || [];
       weeksPayload.forEach(function (w) {
+        normalizeWeekCapacityFromDays(w);
         if (fullWeekQty[w.id] == null) fullWeekQty[w.id] = 0;
         if (dailyKidsByWeek[w.id] == null) dailyKidsByWeek[w.id] = 1;
       });

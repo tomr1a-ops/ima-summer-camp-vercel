@@ -96,6 +96,24 @@ async function loadOrderedDaysForWeek(sb, weekId) {
 }
 
 /**
+ * Per-day headcount from public.days.current_enrollment (source of truth for sold-out; matches /api/weeks).
+ */
+async function dayOccupancyFromDaysTable(sb, weekId) {
+  const days = await loadOrderedDaysForWeek(sb, weekId);
+  const byDay = {};
+  let peak = 0;
+  const weekDayIds = new Set();
+  for (const d of days) {
+    const sid = String(d.id);
+    weekDayIds.add(sid);
+    const n = Number(d.current_enrollment) || 0;
+    byDay[sid] = n;
+    peak = Math.max(peak, n);
+  }
+  return { byDay, peak, weekDayIds };
+}
+
+/**
  * Full validation for a proposed week + days + camper (new checkout or replacement set).
  * @param {object} opts
  * @param {'full_week'|'daily'} [opts.pricingMode='daily'] — full_week requires all Mon–Fri days for the week.
@@ -120,7 +138,10 @@ async function validateBooking(sb, { weekId, dayIds, camperId, excludeEnrollment
     err.statusCode = 400;
     throw err;
   }
-  if (week.is_full) {
+
+  const max = week.max_capacity || 35;
+  const { byDay, peak } = await dayOccupancyFromDaysTable(sb, weekId);
+  if (peak >= max) {
     const err = new Error('Week is full: ' + week.label);
     err.statusCode = 400;
     throw err;
@@ -149,14 +170,14 @@ async function validateBooking(sb, { weekId, dayIds, camperId, excludeEnrollment
     throw err;
   }
 
-  const max = week.max_capacity || 35;
   for (const d of dayRows) {
     if (normUuid(d.week_id) !== normUuid(weekId)) {
       const err = new Error('Day does not belong to selected week');
       err.statusCode = 400;
       throw err;
     }
-    if ((d.current_enrollment || 0) >= max) {
+    const n = byDay[String(d.id)] || 0;
+    if (n >= max) {
       const err = new Error('A selected day is at capacity');
       err.statusCode = 400;
       throw err;
@@ -205,14 +226,16 @@ async function validateAddedDaysOnly(sb, weekId, addedDayIds) {
     throw err;
   }
   const max = week.max_capacity || 35;
+  const { byDay, weekDayIds } = await dayOccupancyFromDaysTable(sb, weekId);
   for (const dayId of addedDayIds) {
-    const { data: d, error: de } = await sb.from('days').select('current_enrollment').eq('id', dayId).single();
-    if (de || !d) {
+    const sid = String(dayId);
+    if (!weekDayIds.has(sid)) {
       const err = new Error('Invalid day');
       err.statusCode = 400;
       throw err;
     }
-    if ((d.current_enrollment || 0) >= max) {
+    const n = byDay[sid] || 0;
+    if (n >= max) {
       const err = new Error('A day is at capacity');
       err.statusCode = 400;
       throw err;
