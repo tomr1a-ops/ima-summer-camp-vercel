@@ -1004,6 +1004,15 @@
     opacity: 0.45;
     pointer-events: none;
   }
+  /* Sold-out daily: parent must still open day panels and tap Remove / paid checkboxes */
+  .week-block.full .day-chips {
+    pointer-events: auto;
+  }
+  .week-block.full .day-per-kids-panel .week-kid-remove {
+    position: relative;
+    z-index: 2;
+    pointer-events: auto;
+  }
   .week-block-head {
     display: flex;
     justify-content: space-between;
@@ -1364,6 +1373,22 @@
     background: rgba(0, 0, 0, 0.28);
   }
   .day-per-kids-panel.open { display: block; }
+  .day-per-kids-panel .week-kid-cb {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-size: 14px;
+    color: var(--text);
+  }
+  .day-per-kids-panel .week-kid-cb-inner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+  }
 
   .daily-week-kids {
     display: flex;
@@ -2945,6 +2970,14 @@
     });
   }
 
+  /** Any confirmed enrollment (full or partial days) for this camper + camp week. */
+  function camperHasConfirmedEnrollmentInWeek(weekId, camperId) {
+    return (
+      camperWeekHasConfirmedFullWeek(weekId, camperId) ||
+      daysCoveredByConfirmedForCamperWeek(weekId, camperId).size > 0
+    );
+  }
+
   /** Earliest already-paid day in week order (for messaging). */
   function firstPaidDayObjForFullWeekConflict(weekId, camperId) {
     if (camperWeekHasConfirmedFullWeek(weekId, camperId)) return null;
@@ -3354,24 +3387,78 @@
     }
   }
 
-  /** Confirmed full-week enrollment row ids for this camper+week (raw + deduped cache; matches sold-out Cancel UI). */
+  /** All confirmed enrollment row ids for this camper+week (full or daily; sold-out Remove cancels every row). */
   function confirmedEnrollmentIdsForCamperWeek(weekId, camperId) {
-    const w = weeksPayload.find(function (x) {
-      return String(x.id) === String(weekId);
-    });
-    if (!w) return [];
     const idSet = new Set();
     function considerRow(r) {
       if (!r || r.id == null) return;
       if (r.status !== 'confirmed') return;
       if (String(r.camper_id) !== String(camperId)) return;
       if (String(r.week_id) !== String(weekId)) return;
-      if (!enrollmentCoversFullWeek(r, w)) return;
       idSet.add(String(r.id));
     }
     (confirmedEnrollmentsRaw || []).forEach(considerRow);
     (confirmedEnrollmentsCache || []).forEach(considerRow);
     return Array.from(idSet);
+  }
+
+  /** Remove one camp day from confirmed rows (PUT trim or DELETE); opens capacity on that day. */
+  async function removePaidDayFromConfirmedEnrollments(weekId, dayId, camperId) {
+    if (!session || !session.access_token) return { ok: false, error: 'Not signed in' };
+    const dk = String(dayId);
+    const rows = (confirmedEnrollmentsRaw || []).filter(function (r) {
+      return (
+        r &&
+        r.status === 'confirmed' &&
+        String(r.camper_id) === String(camperId) &&
+        String(r.week_id) === String(weekId) &&
+        (r.day_ids || []).some(function (id) {
+          return String(id) === dk;
+        })
+      );
+    });
+    if (!rows.length) return { ok: false, error: 'No enrollment found' };
+    for (var i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const oldIds = row.day_ids || [];
+      const newIds = oldIds.filter(function (id) {
+        return String(id) !== dk;
+      });
+      if (!newIds.length) {
+        const res = await imaNoStoreFetch('/api/enrollments', {
+          method: 'DELETE',
+          headers: {
+            Authorization: 'Bearer ' + session.access_token,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ id: String(row.id) }),
+        });
+        if (!res.ok) {
+          var et = '';
+          try {
+            et = await res.text();
+          } catch (e1) {}
+          return { ok: false, error: et || res.statusText };
+        }
+      } else {
+        const res = await imaNoStoreFetch('/api/enrollments', {
+          method: 'PUT',
+          headers: {
+            Authorization: 'Bearer ' + session.access_token,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ id: String(row.id), day_ids: newIds }),
+        });
+        if (!res.ok) {
+          var et2 = '';
+          try {
+            et2 = await res.text();
+          } catch (e2) {}
+          return { ok: false, error: et2 || res.statusText };
+        }
+      }
+    }
+    return { ok: true };
   }
 
   async function cancelConfirmedEnrollmentsForCamperWeek(weekId, camperId) {
@@ -4094,9 +4181,9 @@
       cb.type = 'checkbox';
       let st = map[wk];
       const conflictMsg = mode === 'full' ? fullWeekPaidDayConflictMessage(weekId, cid) : '';
-      const paidFullWeekHere =
-        mode === 'full' && weekBlocked && camperWeekHasConfirmedFullWeek(weekId, cid);
-      if (mode === 'full' && conflictMsg) {
+      const paidWeekOwnChild =
+        mode === 'full' && weekBlocked && camperHasConfirmedEnrollmentInWeek(weekId, cid);
+      if (mode === 'full' && conflictMsg && !paidWeekOwnChild) {
         if (st && st.has(cid)) {
           st.delete(cid);
           if (!st.size) delete map[wk];
@@ -4106,14 +4193,14 @@
         cb.disabled = true;
         cb.checked = false;
         row.title = conflictMsg;
-      } else if (paidFullWeekHere) {
+      } else if (paidWeekOwnChild) {
         cb.checked = true;
         cb.disabled = true;
-        row.title = 'Registered for this week — use Cancel to drop this booking.';
+        row.title = 'Registered for this week — use Remove to cancel this booking.';
       } else {
         cb.checked = !!(st && st.has(cid));
         cb.disabled = weekBlocked;
-        row.title = weekBlocked ? 'This week is full — you cannot add more children here.' : '';
+        row.title = weekBlocked ? 'This week is sold out — you cannot add children here.' : '';
       }
       cb.addEventListener('change', function () {
         if (enrollDomApplyLock || weekBlocked) return;
@@ -4155,12 +4242,15 @@
       inner.appendChild(cb);
       inner.appendChild(sp);
       row.appendChild(inner);
-      if (paidFullWeekHere) {
+      if (paidWeekOwnChild) {
         const rm = document.createElement('button');
         rm.type = 'button';
         rm.className = 'week-kid-remove';
-        rm.textContent = 'Cancel';
-        rm.setAttribute('aria-label', 'Cancel registration for ' + (c.first_name || '') + ' this week');
+        rm.textContent = 'Remove';
+        rm.setAttribute(
+          'aria-label',
+          'Remove ' + (c.first_name || '') + ' from this week (cancel enrollment)'
+        );
         rm.addEventListener('click', function (ev) {
           ev.preventDefault();
           ev.stopPropagation();
@@ -4170,7 +4260,7 @@
             !confirm(
               'Remove ' +
                 nm +
-                ' from this week? Their spot will open up. Contact IMA if you need a refund.'
+                ' from this week? Their enrollment will be cancelled and the spot will open up. Contact IMA if you need a refund.'
             )
           ) {
             return;
@@ -4194,6 +4284,7 @@
                 s2.delete(cid);
                 if (!s2.size) delete fullWeekCampersByWeek[wk];
               }
+              clearDailyForCamperWeek(wk, cid);
               clearFullWeekHydrateDismiss(wk, cid);
               await refreshConfirmedEnrollmentsFromServer();
               await loadWeeks();
@@ -4222,7 +4313,7 @@
         });
         row.appendChild(rm);
       }
-      if (mode === 'full' && conflictMsg) {
+      if (mode === 'full' && conflictMsg && !paidWeekOwnChild) {
         const hint = document.createElement('small');
         hint.className = 'week-kid-cb-conflict';
         hint.textContent = conflictMsg;
@@ -4464,6 +4555,20 @@
           const col = document.createElement('div');
           col.className = 'day-chip-wrap daily-perday-col';
           const dayBlocked = weekFull || atCap;
+          function parentHasPaidOnThisDay() {
+            return parentCampers.some(function (pc) {
+              return daysCoveredByConfirmedForCamperWeek(w.id, pc.id).has(String(d.id));
+            });
+          }
+          function parentHasDraftOnThisDay() {
+            const s = getDayCamperSetMain(wk, d.id);
+            if (!s || !s.size) return false;
+            return parentCampers.some(function (pc) {
+              return s.has(String(pc.id));
+            });
+          }
+          const canOpenThisDay =
+            (!weekFull && !atCap) || parentHasPaidOnThisDay() || parentHasDraftOnThisDay();
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'day-chip daily-perday-btn';
@@ -4494,8 +4599,9 @@
             } else dps.textContent = n + ' children';
           }
           refreshMainDayBtn();
-          btn.disabled = dayBlocked;
+          btn.disabled = !canOpenThisDay;
           if (atCap && !weekFull) btn.title = 'This day is full';
+          else if (weekFull && !canOpenThisDay) btn.title = 'Sold out — no children registered this day';
           btn.addEventListener('click', function () {
             if (btn.disabled) return;
             if (dailyExpandedKeysMain.has(ek)) {
@@ -4509,18 +4615,30 @@
           });
           parentCampers.forEach(function (c) {
             const cid = String(c.id);
-            const row = document.createElement('label');
+            const covered = daysCoveredByConfirmedForCamperWeek(w.id, cid);
+            const paidDayHere = covered.has(String(d.id));
+            const st0 = getDayCamperSetMain(wk, d.id);
+            const inDraft = !!(st0 && st0.has(cid));
+            const row = document.createElement('div');
             row.className = 'week-kid-cb';
+            const inner = document.createElement('label');
+            inner.className = 'week-kid-cb-inner';
             const cb = document.createElement('input');
             cb.type = 'checkbox';
-            const st0 = getDayCamperSetMain(wk, d.id);
-            cb.checked = !!(st0 && st0.has(cid));
-            cb.disabled = dayBlocked;
+            cb.checked = paidDayHere || inDraft;
+            cb.disabled = paidDayHere || (dayBlocked && !inDraft);
+            row.title = paidDayHere
+              ? 'Paid registration this day — use × to remove.'
+              : dayBlocked
+                ? 'Sold out — cannot add children here.'
+                : '';
             cb.addEventListener('click', function (ev) {
               ev.stopPropagation();
             });
             cb.addEventListener('change', function () {
               if (enrollDomApplyLock) return;
+              if (paidDayHere) return;
+              if (dayBlocked && !inDraft) return;
               const set = ensureDayCamperSetMain(wk, d.id);
               const dk = String(d.id);
               if (cb.checked) {
@@ -4544,13 +4662,91 @@
               }
               refreshMainDayBtn();
               persistEnrollLocal();
+              renderFullWeeks();
+              renderDailyWeeks();
               updateSummary();
               refreshPricingPreview();
             });
             const sp = document.createElement('span');
             sp.textContent = c.first_name + ' ' + c.last_name;
-            row.appendChild(cb);
-            row.appendChild(sp);
+            inner.appendChild(cb);
+            inner.appendChild(sp);
+            row.appendChild(inner);
+            if (paidDayHere && weekFull) {
+              const rm = document.createElement('button');
+              rm.type = 'button';
+              rm.className = 'week-kid-remove';
+              rm.textContent = '×';
+              rm.setAttribute(
+                'aria-label',
+                'Remove ' + (c.first_name || '') + ' from ' + formatDayLabel(d) + ' (cancel paid day)'
+              );
+              rm.addEventListener('click', function (ev) {
+                ev.preventDefault();
+                ev.stopPropagation();
+                if (!session || !session.access_token) return;
+                var nm = (c.first_name + ' ' + c.last_name).trim() || 'This child';
+                if (
+                  !confirm(
+                    'Remove ' +
+                      nm +
+                      ' from ' +
+                      formatDayLabel(d) +
+                      '? Their paid spot for this day will be cancelled and may open to others.'
+                  )
+                ) {
+                  return;
+                }
+                rm.disabled = true;
+                void (async function () {
+                  try {
+                    var result = await removePaidDayFromConfirmedEnrollments(w.id, d.id, cid);
+                    if (!result.ok) {
+                      var msgEl = document.getElementById('msg');
+                      if (msgEl) {
+                        msgEl.className = 'msg error';
+                        msgEl.textContent =
+                          'Could not remove that registration. Try again or contact IMA.';
+                      }
+                      rm.disabled = false;
+                      return;
+                    }
+                    var setR = ensureDayCamperSetMain(wk, d.id);
+                    setR.delete(cid);
+                    if (!setR.size) {
+                      var mapR = ensureDailyPerDayMapMain(wk);
+                      delete mapR[String(d.id)];
+                      pruneEmptyDailyWeekMain(wk);
+                    }
+                    clearDailyHydrateDismiss(wk, String(d.id), cid);
+                    await refreshConfirmedEnrollmentsFromServer();
+                    await loadWeeks();
+                    hydrateSelectionFromConfirmedEnrollments();
+                    refreshScheduleUiAfterEnrollStorageChange();
+                    try {
+                      persistEnrollLocal();
+                    } catch (ePl) {}
+                    refreshPricingPreview();
+                    updateSummary();
+                    var msgOk = document.getElementById('msg');
+                    if (msgOk) {
+                      msgOk.className = 'msg';
+                      msgOk.textContent = '';
+                    }
+                  } catch (eRem) {
+                    rm.disabled = false;
+                    var msgEx = document.getElementById('msg');
+                    if (msgEx) {
+                      msgEx.className = 'msg error';
+                      msgEx.textContent =
+                        (eRem && eRem.message) ||
+                        'Could not remove that registration. Try again or contact IMA.';
+                    }
+                  }
+                })();
+              });
+              row.appendChild(rm);
+            }
             panel.appendChild(row);
           });
           col.appendChild(btn);
