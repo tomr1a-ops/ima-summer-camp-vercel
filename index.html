@@ -2009,23 +2009,25 @@
   }
 
   /**
-   * Align week/day sold-out with days.current_enrollment vs capacity (matches /api/weeks).
-   * Always writes w.is_full / w.disabled so re-renders after checkbox toggles cannot leave stale false.
-   * _imaDbFull = API weeks.is_full at last fetch (manual/admin flag); merged with numeric capacity.
+   * Align week/day sold-out with server enrollment + this parent’s draft picks (not yet paid).
+   * Server count is in d._imaServerEnr (set on each /api/weeks fetch). Draft adds only campers
+   * not already confirmed on that day so we don’t double-count paid spots.
    */
   function normalizeWeekCapacityFromDays(w) {
     if (!w) return;
     const cap = maxCap(w);
     (w.days || []).forEach(function (d) {
       const mc = Number(d.max_capacity) > 0 ? Number(d.max_capacity) : cap;
-      const cur = Number(d.current_enrollment) || 0;
+      const serverEnr = d._imaServerEnr != null ? Number(d._imaServerEnr) || 0 : Number(d.current_enrollment) || 0;
+      const draftExtra =
+        typeof draftExtraHeadcountForDay === 'function' ? draftExtraHeadcountForDay(w.id, d.id) : 0;
+      const cur = serverEnr + draftExtra;
       d.max_capacity = mc;
       d.at_capacity = cur >= mc;
       d.slots_left = Math.max(0, mc - cur);
     });
     const numericFull = (w.days || []).some(function (d) {
-      const mc = Number(d.max_capacity) > 0 ? Number(d.max_capacity) : cap;
-      return (Number(d.current_enrollment) || 0) >= mc;
+      return !!d.at_capacity;
     });
     const inactive = w.is_active === false;
     const dbFull = !!w._imaDbFull;
@@ -3008,6 +3010,33 @@
       }
     });
     return covered;
+  }
+
+  /**
+   * How many of this parent’s draft selections add a body on this day (not already in server count).
+   * Full-week draft counts on every weekday the child isn’t already confirmed for; daily draft per day chip.
+   */
+  function draftExtraHeadcountForDay(weekId, dayId) {
+    if (!session) return 0;
+    const wk = String(weekId);
+    const dk = String(dayId);
+    const adding = new Set();
+    const fw = fullWeekCampersByWeek[wk];
+    if (fw && fw.size) {
+      fw.forEach(function (cid) {
+        const covered = daysCoveredByConfirmedForCamperWeek(weekId, cid);
+        if (!covered.has(dk)) adding.add(String(cid));
+      });
+    }
+    const daySet = getDayCamperSetMain(wk, dk);
+    if (daySet && daySet.size) {
+      daySet.forEach(function (cid) {
+        if (fw && fw.has(String(cid))) return;
+        const covered = daysCoveredByConfirmedForCamperWeek(weekId, cid);
+        if (!covered.has(dk)) adding.add(String(cid));
+      });
+    }
+    return adding.size;
   }
 
   function camperWeekHasConfirmedFullWeek(weekId, camperId) {
@@ -4947,6 +4976,9 @@
       weeksPayload = data.weeks || [];
       weeksPayload.forEach(function (w) {
         w._imaDbFull = !!w.is_full;
+        (w.days || []).forEach(function (d) {
+          d._imaServerEnr = Number(d.current_enrollment) || 0;
+        });
         normalizeWeekCapacityFromDays(w);
         if (fullWeekQty[w.id] == null) fullWeekQty[w.id] = 0;
         if (dailyKidsByWeek[w.id] == null) dailyKidsByWeek[w.id] = 1;
