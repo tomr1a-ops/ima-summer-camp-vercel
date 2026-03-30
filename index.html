@@ -2133,18 +2133,21 @@
   function collectActiveCamperIds() {
     const ids = new Set();
     if (!session) return [];
-    weeksPayload.forEach(function (w) {
-      const s = fullWeekCampersByWeek[String(w.id)];
-      if (s) s.forEach(function (cid) { ids.add(String(cid)); });
-    });
-    Object.keys(dailyPerDayCampers).forEach(function (wid) {
-      const inner = dailyPerDayCampers[wid];
-      if (!inner) return;
-      Object.keys(inner).forEach(function (dk) {
-        const s = inner[dk];
+    if (enrollmentType === 'full') {
+      weeksPayload.forEach(function (w) {
+        const s = fullWeekCampersByWeek[String(w.id)];
         if (s) s.forEach(function (cid) { ids.add(String(cid)); });
       });
-    });
+    } else {
+      Object.keys(dailyPerDayCampers).forEach(function (wid) {
+        const inner = dailyPerDayCampers[wid];
+        if (!inner) return;
+        Object.keys(inner).forEach(function (dk) {
+          const s = inner[dk];
+          if (s) s.forEach(function (cid) { ids.add(String(cid)); });
+        });
+      });
+    }
     return Array.from(ids);
   }
 
@@ -3022,19 +3025,21 @@
     const dk = String(dayId);
     const adding = new Set();
     const fw = fullWeekCampersByWeek[wk];
-    if (fw && fw.size) {
+    if (enrollmentType === 'full' && fw && fw.size) {
       fw.forEach(function (cid) {
         const covered = daysCoveredByConfirmedForCamperWeek(weekId, cid);
         if (!covered.has(dk)) adding.add(String(cid));
       });
     }
-    const daySet = getDayCamperSetMain(wk, dk);
-    if (daySet && daySet.size) {
-      daySet.forEach(function (cid) {
-        if (fw && fw.has(String(cid))) return;
-        const covered = daysCoveredByConfirmedForCamperWeek(weekId, cid);
-        if (!covered.has(dk)) adding.add(String(cid));
-      });
+    if (enrollmentType === 'daily') {
+      const daySet = getDayCamperSetMain(wk, dk);
+      if (daySet && daySet.size) {
+        daySet.forEach(function (cid) {
+          if (fw && fw.has(String(cid))) return;
+          const covered = daysCoveredByConfirmedForCamperWeek(weekId, cid);
+          if (!covered.has(dk)) adding.add(String(cid));
+        });
+      }
     }
     return adding.size;
   }
@@ -3359,6 +3364,11 @@
 
     if (!session) return out;
 
+    /**
+     * Only the active registration tab (weekly vs daily) contributes draft lines to checkout.
+     * Otherwise hidden daily picks stay in localStorage and still charged while “Weekly” shows empty boxes.
+     * We always record fullWeekKey for camper+week when they have a full-week draft so daily mode cannot double-count.
+     */
     weeksPayload.forEach(function (w) {
       const ids = (w.days || []).map(function (d) {
         return d.id;
@@ -3371,9 +3381,13 @@
         if (daysCoveredByConfirmedForCamperWeek(w.id, cid).size > 0) return;
         const k = String(cid) + ':' + String(w.id);
         fullWeekKey.add(k);
-        out.push({ weekId: w.id, dayIds: ids, pricingMode: 'full_week', camperId: cid });
+        if (enrollmentType === 'full') {
+          out.push({ weekId: w.id, dayIds: ids, pricingMode: 'full_week', camperId: cid });
+        }
       });
     });
+
+    if (enrollmentType !== 'daily') return out;
 
     weeksPayload.forEach(function (w) {
       const wk = String(w.id);
