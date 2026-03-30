@@ -303,10 +303,12 @@ module.exports = async (req, res) => {
 
   /** Family pooled prepaid credits (confirmed weeks/days not in this cart) → reduce camp line charges. */
   let campLineCents = [];
+  /** Cents drawn from family_camp_credit_ledger (cancelled-enrollment credits) this checkout. */
+  let ledgerConsumedCents = 0;
   if (bookingsArray.length) {
     try {
       const prepaidCoverageKeys = Array.isArray(body.prepaidCoverageKeys) ? body.prepaidCoverageKeys : [];
-      const { poolW, poolD, weekMetaMap } = await loadFloatingPrepaidPool(
+      const { poolW, poolD, weekMetaMap, ledgerCents } = await loadFloatingPrepaidPool(
         sb,
         parentId,
         bookingsArray,
@@ -314,8 +316,9 @@ module.exports = async (req, res) => {
         prepaidCoverageKeys
       );
       bookingsArray = sortBookingsForCreditApply(bookingsArray, weekMetaMap);
-      const applied = applyPoolToBookings(bookingsArray, poolW, poolD, wr, dr);
+      const applied = applyPoolToBookings(bookingsArray, poolW, poolD, wr, dr, ledgerCents);
       campLineCents = applied.campLineCents;
+      ledgerConsumedCents = applied.ledgerConsumedCents || 0;
     } catch (poolErr) {
       console.error('[create-checkout-session] prepaid pool', poolErr);
       return failCheckout(res, 500, 'PREPAID_POOL', 'Could not apply prepaid credits. Try again or contact IMA.', poolErr && poolErr.message);
@@ -548,6 +551,8 @@ module.exports = async (req, res) => {
           registrationCamperIds,
           extraShirtCents: String(shirtCentsTotal),
           extraShirtCamperIds: shirtCamperIds,
+          ledgerConsumeCents: ledgerConsumedCents,
+          ledgerParentId: parentId,
         });
       } catch (fz) {
         console.error('[create-checkout-session] zero-dollar finalize failed', fz);
@@ -602,6 +607,7 @@ module.exports = async (req, res) => {
         ima_member: imaMember ? 'true' : 'false',
         extra_shirt_cents: String(shirtCentsTotal),
         extra_shirt_camper_ids: shirtCamperIds.join(','),
+        ledger_consume_cents: String(ledgerConsumedCents || 0),
       },
     };
     if (emailForStripe) sessionParams.customer_email = emailForStripe;

@@ -2,6 +2,7 @@ const { serviceClient } = require('./lib/supabase');
 const { getUserFromRequest, getProfileForUser } = require('./lib/auth');
 const { setNoStoreJsonHeaders } = require('./lib/http-no-store');
 const { dayRate, weekRate, registrationFee, extraCampShirt } = require('./lib/pricing');
+const { getFamilyCampLedgerCents } = require('./lib/family-camp-ledger');
 
 function uniqueCamperIdsFromQuery(url) {
   const raw = url.searchParams.get('camperIds') || url.searchParams.get('camperId') || '';
@@ -30,6 +31,7 @@ module.exports = async (req, res) => {
     /** True when this camper already paid the optional extra T-shirt add-on (no repeat charge). */
     const perCamperExtraShirtPaid = {};
     let profile = null;
+    let prepaidCampBalanceCents = 0;
 
     if (user && token && camperIds.length) {
       let sb;
@@ -47,6 +49,12 @@ module.exports = async (req, res) => {
       }
 
       if (profile && sb) {
+        try {
+          prepaidCampBalanceCents = await getFamilyCampLedgerCents(sb, user.id);
+        } catch (le) {
+          console.warn('[preview-pricing] ledger balance:', le.message);
+          prepaidCampBalanceCents = 0;
+        }
         for (const camperId of camperIds) {
           const { data: camper, error: ce } = await sb
             .from('campers')
@@ -93,6 +101,7 @@ module.exports = async (req, res) => {
         needsRegistration,
         perCamperNeedsReg,
         perCamperExtraShirtPaid,
+        prepaidCampBalanceCents,
       })
     );
   } catch (e) {

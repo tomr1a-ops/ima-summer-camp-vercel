@@ -1,5 +1,6 @@
 const { serviceClient } = require('./supabase');
 const { dayRate, weekRate, registrationFee } = require('./pricing');
+const { subtractFamilyCampLedgerCents } = require('./family-camp-ledger');
 
 /**
  * Idempotent: confirms pending enrollments for session.metadata.checkout_batch_id
@@ -45,6 +46,7 @@ async function confirmStripeSession(stripe, session) {
     session.customer_email ||
     '';
 
+  let didConfirmAny = false;
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     if (row.status === 'confirmed' && row.stripe_session_id === session.id) {
@@ -73,6 +75,7 @@ async function confirmStripeSession(stripe, session) {
 
     if (ue) throw ue;
     if (!updated) continue;
+    didConfirmAny = true;
 
     for (const dayId of row.day_ids || []) {
       const { data: d0, error: de } = await sb.from('days').select('id, current_enrollment').eq('id', dayId).single();
@@ -81,6 +84,11 @@ async function confirmStripeSession(stripe, session) {
       const { error: incErr } = await sb.from('days').update({ current_enrollment: next }).eq('id', dayId);
       if (incErr) throw incErr;
     }
+  }
+
+  const lc = Math.max(0, Math.round(Number(session.metadata && session.metadata.ledger_consume_cents) || 0));
+  if (didConfirmAny && lc > 0 && rows[0].parent_id) {
+    await subtractFamilyCampLedgerCents(sb, rows[0].parent_id, lc);
   }
 
   return { ok: true, count: rows.length, email: customerEmail };

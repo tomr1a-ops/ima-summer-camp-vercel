@@ -7,6 +7,7 @@ const {
   syncConfirmedDayCounts,
   loadOrderedDaysForWeek,
 } = require('./lib/capacity');
+const { campCreditCentsForConfirmedRow, addFamilyCampLedgerCents } = require('./lib/family-camp-ledger');
 
 async function readJsonBody(req) {
   if (req.body !== undefined && req.body !== null) {
@@ -228,7 +229,7 @@ module.exports = async (req, res) => {
       }
       const { data: row, error: fe } = await sb
         .from('enrollments')
-        .select('id,parent_id,status,day_ids')
+        .select('id,parent_id,status,day_ids,week_id')
         .eq('id', enrollmentId)
         .single();
       if (fe || !row || String(row.parent_id) !== String(user.id)) {
@@ -241,6 +242,12 @@ module.exports = async (req, res) => {
       }
       if (row.status === 'confirmed') {
         await syncConfirmedDayCounts(sb, row.day_ids || [], []);
+        try {
+          const cents = await campCreditCentsForConfirmedRow(sb, row, false);
+          if (cents > 0) await addFamilyCampLedgerCents(sb, user.id, cents);
+        } catch (credErr) {
+          console.error('[enrollments DELETE] family_camp_credit_ledger', credErr && credErr.message);
+        }
       }
       const { error: ue } = await sb.from('enrollments').update({ status: 'cancelled' }).eq('id', enrollmentId);
       if (ue) throw ue;
