@@ -1619,8 +1619,9 @@
     line-height: 1.45;
     color: var(--muted);
   }
-  .reg-fee-shirt-row-paid:not(:has(> input:checked)) .reg-fee-shirt-paid-badge {
-    opacity: 0.75;
+  .reg-fee-shirt-row input[type='checkbox']:disabled {
+    opacity: 0.85;
+    cursor: not-allowed;
   }
 
   /* Keep checkbox + label + price on a single line on narrow screens (no wrap). */
@@ -2271,6 +2272,12 @@
 
     section.style.display = '';
     parentCampers.forEach(function (c) {
+      if (extraShirtAddonAlreadyPaid(c.id)) {
+        delete extraShirtByCamper[String(c.id)];
+        delete extraShirtByCamper[c.id];
+      }
+    });
+    parentCampers.forEach(function (c) {
       const ck = String(c.id);
       if (regFeeIncludeByCamper[ck] === undefined && regFeeIncludeByCamper[c.id] === undefined) {
         const pref = readImaMemberPrefs()[ck];
@@ -2297,15 +2304,17 @@
         const feeRight = feeApplies
           ? '<span class="reg-fee-amt">' + escapeHtml(fmt(rfNum)) + '</span>'
           : '<span class="reg-fee-amt reg-fee-waived-badge">No charge</span>';
-        const shirtChk = extraShirtByCamper[c.id] || extraShirtByCamper[String(c.id)] ? ' checked' : '';
         const shirtPaid = extraShirtAddonAlreadyPaid(c.id);
+        const shirtUserPick = !!(extraShirtByCamper[c.id] || extraShirtByCamper[String(c.id)]);
+        const shirtChk = shirtPaid || shirtUserPick ? ' checked' : '';
+        const shirtDisabled = shirtPaid ? ' disabled' : '';
         const shirtRight = shirtPaid
           ? '<span class="reg-fee-amt reg-fee-shirt-paid-badge">Paid</span>'
           : '<span class="reg-fee-amt">' + escapeHtml(fmt(shirtNum)) + '</span>';
         const shirtRowClass =
           'reg-fee-camper-row reg-fee-shirt-row' + (shirtPaid ? ' reg-fee-shirt-row-paid' : '');
         const shirtHint = shirtPaid
-          ? '<p class="reg-fee-shirt-paid-hint">Already purchased — we won’t charge again. You can keep this checked; it’s saved with your draft.</p>'
+          ? '<p class="reg-fee-shirt-paid-hint">Extra shirt add-on already paid for this child — no additional charge.</p>'
           : '';
         return (
           '<div class="reg-fee-camper-block">' +
@@ -2336,6 +2345,7 @@
           id +
           '"' +
           shirtChk +
+          shirtDisabled +
           ' />' +
           '<span class="reg-fee-lbl"><strong>Extra camp T-shirt</strong> — add another shirt for this child</span>' +
           shirtRight +
@@ -2359,6 +2369,7 @@
     });
     mount.querySelectorAll('input[data-shirt-camper]').forEach(function (el) {
       el.addEventListener('change', function () {
+        if (el.disabled) return;
         const id = el.getAttribute('data-shirt-camper');
         if (id) {
           if (el.checked) extraShirtByCamper[String(id)] = true;
