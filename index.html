@@ -3744,11 +3744,20 @@
         for (var gi = 0; gi < group.length; gi++) out.push(group[gi]);
         return;
       }
-      const fullRow = group.find(function (r) {
+      const fullRows = group.filter(function (r) {
         return enrollmentCoversFullWeek(r, w);
       });
-      if (fullRow) {
-        out.push(fullRow);
+      if (fullRows.length) {
+        var pickFull = fullRows[0];
+        var bestCamp = Number(pickFull.price_paid) || 0;
+        for (var fi = 1; fi < fullRows.length; fi++) {
+          var nc = Number(fullRows[fi].price_paid) || 0;
+          if (nc > bestCamp) {
+            bestCamp = nc;
+            pickFull = fullRows[fi];
+          }
+        }
+        out.push(pickFull);
         return;
       }
       var daySet = new Set();
@@ -3758,6 +3767,14 @@
         });
       });
       var base = group[0];
+      var bestPaid = Number(base && base.price_paid) || 0;
+      for (var gi = 1; gi < group.length; gi++) {
+        var gp = Number(group[gi].price_paid) || 0;
+        if (gp > bestPaid) {
+          bestPaid = gp;
+          base = group[gi];
+        }
+      }
       out.push(Object.assign({}, base, { day_ids: Array.from(daySet) }));
     });
     return out;
@@ -3921,9 +3938,9 @@
         persistEnrollLocal();
       } catch (ePl) {}
     } catch (e) {
-      confirmedEnrollmentsCache = [];
-      confirmedEnrollmentsRaw = [];
-      pendingEnrollmentWeekKeys = new Set();
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn('[IMA camp] refreshConfirmedEnrollmentsFromServer failed — keeping last known enrollments', e && e.message ? e.message : e);
+      }
     }
   }
 
@@ -4109,14 +4126,37 @@
     return deleteEnrollmentIdsByApi(tokCx, ids);
   }
 
-  /** Camp line + registration fee (if still due) for Step Up holds — matches server mark_paid math. */
+  /** When DB price_paid is missing/0 (stale row, merge glitch), infer camp $ from week + days. */
+  function estimateStepUpCampTuitionDollars(row) {
+    if (!row || !row.week_id) return 0;
+    var w = weeksPayload.find(function (x) {
+      return String(x.id) === String(row.week_id);
+    });
+    if (!w) return 0;
+    var wr = Number(testPriceMode ? 1 : pricingPreview.weekRate != null ? pricingPreview.weekRate : weekRateClient());
+    var dr = Number(testPriceMode ? 1 : pricingPreview.dayRate != null ? pricingPreview.dayRate : dayRateClient());
+    if (enrollmentCoversFullWeek(row, w)) return wr;
+    var n = (row.day_ids || []).length;
+    return Math.max(0, n) * dr;
+  }
+
+  /**
+   * Step Up “owed” for schedule copy — use enrollment + camper/server reg state only.
+   * Do not use registrationFeeAppliesToCamper (IMA member checkbox); that can hide the fee after the hold.
+   */
   function pendingStepUpAmountOwedDollars(row) {
     if (!row || row.status !== 'pending_step_up') return null;
-    var camp = Number(row.price_paid);
-    if (!Number.isFinite(camp) || camp < 0) camp = 0;
+    var fromDb = Number(row.price_paid);
+    var camp =
+      Number.isFinite(fromDb) && fromDb > 0 ? fromDb : estimateStepUpCampTuitionDollars(row);
     var reg = 0;
-    if (!row.registration_fee_paid && row.camper_id && registrationFeeAppliesToCamper(row.camper_id)) {
-      reg = regFeeClient();
+    if (!row.registration_fee_paid && row.camper_id) {
+      var cid = row.camper_id;
+      var c = parentCampers.find(function (x) {
+        return String(x.id) === String(cid);
+      });
+      var regSatisfiedGlobally = !!(c && c.registration_fee_paid === true) || registrationAlreadyPaidPerPreview(cid);
+      if (!regSatisfiedGlobally) reg = regFeeClient();
     }
     return camp + reg;
   }
