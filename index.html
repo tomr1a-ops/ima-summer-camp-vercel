@@ -4000,11 +4000,11 @@
       });
       confirmedEnrollmentsRaw = confirmed;
       confirmedEnrollmentsCache = dedupeConfirmedEnrollmentsForDisplay(confirmed);
-      if (
-        (confirmedEnrollmentsRaw || []).some(function (r) {
-          return r && r.status === 'pending_step_up';
-        })
-      ) {
+      var hasPendingStepUp = (confirmedEnrollmentsRaw || []).some(function (r) {
+        return r && r.status === 'pending_step_up';
+      });
+      /* Keep checkout totals snapshot while holds exist so the summary total does not flash 0 / low until row math matches the server. Clear when no Step Up holds remain. */
+      if (!hasPendingStepUp) {
         stepUpHoldSummarySnapshot = null;
       }
       try {
@@ -4873,13 +4873,13 @@
     if (!bookings.length) {
       if (gen !== serverPrepaidFetchGen) return;
       serverPrepaidApply = null;
-      updateSummaryImmediate();
+      /* Skip extra summary pass — updateSummary() already ran; this 130ms callback caused visible total flicker (e.g. Step Up holds). */
       return;
     }
     try {
       var tok = await freshAccessTokenForApi();
       if (!tok) {
-        if (gen === serverPrepaidFetchGen) updateSummaryImmediate();
+        if (gen === serverPrepaidFetchGen) scheduleUpdateSummaryImmediate();
         return;
       }
       var res = await imaNoStoreFetch('/api/preview-prepaid-apply', {
@@ -4903,12 +4903,21 @@
     } catch (e) {
       if (gen === serverPrepaidFetchGen) serverPrepaidApply = null;
     }
-    if (gen === serverPrepaidFetchGen) updateSummaryImmediate();
+    if (gen === serverPrepaidFetchGen) scheduleUpdateSummaryImmediate();
+  }
+
+  var summaryImmediateRaf = null;
+  function scheduleUpdateSummaryImmediate() {
+    if (summaryImmediateRaf != null) return;
+    summaryImmediateRaf = requestAnimationFrame(function () {
+      summaryImmediateRaf = null;
+      updateSummaryImmediate();
+    });
   }
 
   function updateSummary() {
     scheduleServerPrepaidApply();
-    updateSummaryImmediate();
+    scheduleUpdateSummaryImmediate();
   }
 
   var campAgreementScrollUnlocked = false;
@@ -5129,6 +5138,9 @@
     const dr = Number(testPriceMode ? 1 : pricingPreview.dayRate != null ? pricingPreview.dayRate : dayRateClient());
     const wr = Number(testPriceMode ? 1 : pricingPreview.weekRate != null ? pricingPreview.weekRate : weekRateClient());
     const bookings = collectBookings();
+    if (!bookings.length) {
+      serverPrepaidApply = null;
+    }
     if (bookings.length && stepUpHoldSummarySnapshot) {
       stepUpHoldSummarySnapshot = null;
     }
@@ -5244,8 +5256,12 @@
             '</span></div>';
         }
         lines.innerHTML = htmlSU;
-        lastSummaryGrandDollars = grandSU;
-        document.getElementById('total-amount').textContent = fmt(grandSU);
+        var displayGrandSU = grandSU;
+        if (snapTot != null && Number.isFinite(snapTot) && snapTot >= 0 && displayGrandSU < snapTot - 0.02) {
+          displayGrandSU = snapTot;
+        }
+        lastSummaryGrandDollars = displayGrandSU;
+        document.getElementById('total-amount').textContent = fmt(displayGrandSU);
 
         var btnMainSU = document.querySelector('#checkout-btn .btn-text');
         var secureNoteSU = document.querySelector('.order-summary .secure-note');
