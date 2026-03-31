@@ -5709,7 +5709,16 @@
     const data = await res.json().catch(function () {
       return {};
     });
-    if (!res.ok) return { error: data.error || 'Server error ' + res.status || 'Server error', data: data };
+    if (!res.ok) {
+      var errParts = [];
+      if (data && data.code) errParts.push(String(data.code));
+      if (data && data.error) errParts.push(String(data.error));
+      var errMsg =
+        errParts.length > 0
+          ? errParts.join(' — ')
+          : 'Server error ' + res.status;
+      return { error: errMsg, data: data };
+    }
     return { data: data };
   }
 

@@ -1,7 +1,6 @@
 const { randomUUID } = require('crypto');
-/** Basil: required for wallet_options.link.display (reduces Link UI churn / amount flicker on hosted Checkout). */
-const STRIPE_API_VERSION = '2025-04-30.basil';
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY, { apiVersion: STRIPE_API_VERSION });
+/** Use Stripe Node SDK default API version (kept in sync with package; avoids mismatched Basil pins). */
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { serviceClient } = require('./lib/supabase');
 const { getUserFromRequest, upsertParentProfile } = require('./lib/auth');
 const { dayRate, weekRate, registrationFee, extraCampShirt } = require('./lib/pricing');
@@ -140,10 +139,11 @@ module.exports = async (req, res) => {
   }
 
   try {
-    console.log('[create-checkout-session] request body', JSON.stringify(body));
-  } catch (stringifyErr) {
-    console.log('[create-checkout-session] request body (could not stringify)', typeof body, stringifyErr && stringifyErr.message);
-  }
+    try {
+      console.log('[create-checkout-session] request body', JSON.stringify(body));
+    } catch (stringifyErr) {
+      console.log('[create-checkout-session] request body (could not stringify)', typeof body, stringifyErr && stringifyErr.message);
+    }
 
   if (!process.env.STRIPE_SECRET_KEY || !String(process.env.STRIPE_SECRET_KEY).trim()) {
     return failCheckout(
@@ -708,6 +708,31 @@ module.exports = async (req, res) => {
       if (stripeMetadata[k] === '') delete stripeMetadata[k];
     });
 
+    const STRIPE_META_MAX = 500;
+    if (
+      stripeMetadata.camp_line_cents != null &&
+      String(stripeMetadata.camp_line_cents).length > STRIPE_META_MAX
+    ) {
+      console.warn('[create-checkout-session] omitting camp_line_cents (over Stripe metadata limit; confirm uses DB/pricing)');
+      delete stripeMetadata.camp_line_cents;
+    }
+    for (const mk of Object.keys(stripeMetadata)) {
+      const mv = stripeMetadata[mk];
+      if (mv == null) continue;
+      if (String(mv).length > STRIPE_META_MAX) {
+        try {
+          await sb.from('enrollments').delete().eq('checkout_batch_id', batchId);
+        } catch (delMeta) {}
+        return failCheckout(
+          res,
+          400,
+          'STRIPE_METADATA_LIMIT',
+          `Checkout is too large for the payment provider (${mk}). Try fewer weeks in one order or contact IMA.`,
+          { len: String(mv).length }
+        );
+      }
+    }
+
     const sessionParams = {
       ui_mode: 'hosted',
       payment_method_types: ['card'],
@@ -771,5 +796,20 @@ module.exports = async (req, res) => {
       console.error('[create-checkout-session] rollback delete failed', delErr);
     }
     return failCheckout(res, 500, 'STRIPE_ERROR', err && err.message ? err.message : String(err));
+  }
+
+  } catch (fatal) {
+    console.error(
+      '[create-checkout-session] unhandled exception',
+      fatal && fatal.message ? fatal.message : fatal,
+      fatal && fatal.stack ? fatal.stack : ''
+    );
+    return failCheckout(
+      res,
+      500,
+      'CHECKOUT_UNHANDLED',
+      fatal && fatal.message ? fatal.message : String(fatal),
+      ''
+    );
   }
 };
