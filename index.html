@@ -1010,6 +1010,17 @@
     margin-bottom: 10px;
   }
   .add-camper-toggle:hover { border-color: var(--cyan); }
+  .btn-register-now {
+    width: 100%;
+    margin-top: 14px;
+    box-sizing: border-box;
+  }
+  .register-now-gate-msg {
+    margin-top: 10px;
+    line-height: 1.5;
+    color: #fbbf24;
+    font-size: 13px;
+  }
   .add-camper-panel {
     display: none;
     padding: 14px;
@@ -1923,6 +1934,8 @@
           <ul id="parent-camper-list" class="parent-camper-list" aria-label="Children on file"></ul>
           <p id="parent-camper-empty" class="week-dates-label" style="display:none;margin-top:10px;line-height:1.5">No campers on file yet. Add one here (uses your account securely).</p>
           <button type="button" class="add-camper-toggle" id="btn-toggle-add-camper" aria-expanded="false">+ Add a child</button>
+          <button type="button" class="btn-primary btn-register-now" id="btn-register-now">Register Now</button>
+          <p id="register-now-gate-msg" class="week-dates-label register-now-gate-msg" hidden></p>
           <div class="add-camper-panel" id="add-camper-panel">
             <div class="add-camper-grid">
               <input type="text" id="new-camper-first" placeholder="First name" autocomplete="given-name" />
@@ -6191,6 +6204,11 @@
         updateSummary();
         updateRegFlowClasses();
         msg.textContent = '';
+        var rg = document.getElementById('register-now-gate-msg');
+        if (rg) {
+          rg.hidden = true;
+          rg.textContent = '';
+        }
       } catch (err) {
         msg.textContent = err.message || 'Could not add camper.';
       }
@@ -6667,6 +6685,30 @@
     }
     if (t2) {
       t2.addEventListener('click', function () {
+        setRegTab('schedule');
+      });
+    }
+    var btnRegNow = document.getElementById('btn-register-now');
+    if (btnRegNow) {
+      btnRegNow.addEventListener('click', function () {
+        var gate = document.getElementById('register-now-gate-msg');
+        if (!canUseCampScheduleTab()) {
+          if (gate) {
+            gate.hidden = false;
+            gate.textContent = 'Add at least one child above first, then tap Register Now again.';
+          }
+          var addPanel = document.getElementById('add-camper-panel');
+          var addToggle = document.getElementById('btn-toggle-add-camper');
+          if (addPanel && !addPanel.classList.contains('is-open')) {
+            addPanel.classList.add('is-open');
+            if (addToggle) addToggle.setAttribute('aria-expanded', 'true');
+          }
+          return;
+        }
+        if (gate) {
+          gate.hidden = true;
+          gate.textContent = '';
+        }
         setRegTab('schedule');
       });
     }
