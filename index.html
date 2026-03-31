@@ -3416,6 +3416,37 @@
     if (!Object.keys(inner).length) delete dailyHydrateDismissed[wk];
   }
 
+  /**
+   * When an enrollment disappears from the parent-visible set (e.g. admin released a Step Up hold → cancelled),
+   * remove the mirrored week/day checkboxes and hydrate-dismiss flags. Otherwise local draft + restoreEnrollLocal
+   * keep showing a “reservation” that no longer exists on the server.
+   */
+  function removePickerStateForDroppedEnrollment(row) {
+    if (!row) return;
+    const wk = String(row.week_id);
+    const cid = String(row.camper_id);
+    clearFullWeekHydrateDismiss(wk, cid);
+    (row.day_ids || []).forEach(function (d) {
+      clearDailyHydrateDismiss(wk, String(d), cid);
+    });
+    const sFw = fullWeekCampersByWeek[wk];
+    if (sFw && sFw.has(cid)) {
+      sFw.delete(cid);
+      if (!sFw.size) delete fullWeekCampersByWeek[wk];
+    }
+    clearDailyForCamperWeek(wk, cid);
+    if (enrollmentType === 'daily') {
+      const inner = dailyPerDayCampers[wk];
+      var anyCamper = false;
+      if (inner) {
+        Object.keys(inner).forEach(function (dk) {
+          if (inner[dk] && inner[dk].size) anyCamper = true;
+        });
+      }
+      if (!anyCamper) delete selectedByWeek[wk];
+    }
+  }
+
   function pruneFullWeekHydrateDismissals() {
     Object.keys(fullWeekHydrateDismissed).forEach(function (wk) {
       const s = fullWeekHydrateDismissed[wk];
@@ -3641,6 +3672,7 @@
   }
 
   async function refreshConfirmedEnrollmentsFromServer() {
+    const prevActive = (confirmedEnrollmentsRaw || []).slice();
     confirmedEnrollmentsCache = [];
     confirmedEnrollmentsRaw = [];
     if (!session) return;
@@ -3663,11 +3695,74 @@
       const confirmed = rows.filter(function (r) {
         return r && (r.status === 'confirmed' || r.status === 'pending_step_up');
       });
+      const nextIds = new Set(
+        confirmed
+          .map(function (r) {
+            return r && r.id != null ? String(r.id) : '';
+          })
+          .filter(Boolean)
+      );
+      prevActive.forEach(function (r) {
+        if (!r || r.id == null) return;
+        if (nextIds.has(String(r.id))) return;
+        removePickerStateForDroppedEnrollment(r);
+      });
       confirmedEnrollmentsRaw = confirmed;
       confirmedEnrollmentsCache = dedupeConfirmedEnrollmentsForDisplay(confirmed);
+      try {
+        persistEnrollLocal();
+      } catch (ePl) {}
     } catch (e) {
       confirmedEnrollmentsCache = [];
       confirmedEnrollmentsRaw = [];
+    }
+  }
+
+  var parentEnrollmentsRealtimeBound = false;
+  var parentEnrollmentsRefreshTimer = null;
+  function scheduleParentEnrollmentRefreshFromRealtime() {
+    if (parentEnrollmentsRefreshTimer) clearTimeout(parentEnrollmentsRefreshTimer);
+    parentEnrollmentsRefreshTimer = setTimeout(function () {
+      parentEnrollmentsRefreshTimer = null;
+      if (!session) return;
+      void refreshConfirmedEnrollmentsFromServer()
+        .then(function () {
+          try {
+            hydrateSelectionFromConfirmedEnrollments();
+          } catch (eH) {}
+          try {
+            refreshScheduleUiAfterEnrollStorageChange();
+          } catch (eR) {}
+          try {
+            persistEnrollLocal();
+          } catch (eP) {}
+        })
+        .catch(function () {});
+    }, 400);
+  }
+
+  async function subscribeParentEnrollmentsRealtime() {
+    if (parentEnrollmentsRealtimeBound || !session) return;
+    try {
+      var sb = await IMA.getSupabase();
+      parentEnrollmentsRealtimeBound = true;
+      var ch = sb.channel('ima-parent-my-enrollments');
+      ch.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'enrollments' },
+        function () {
+          scheduleParentEnrollmentRefreshFromRealtime();
+        }
+      );
+      ch.subscribe(function (status, err) {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          if (typeof console !== 'undefined' && console.warn) {
+            console.warn('[IMA camp] enrollments realtime:', status, err || '');
+          }
+        }
+      });
+    } catch (eSub) {
+      parentEnrollmentsRealtimeBound = false;
     }
   }
 
@@ -5558,6 +5653,7 @@
       try {
         persistEnrollLocal();
       } catch (ePe) {}
+      void subscribeParentEnrollmentsRealtime();
     } else {
       confirmedEnrollmentsCache = [];
       confirmedEnrollmentsRaw = [];
