@@ -2227,6 +2227,8 @@
   let lastSummaryGrandDollars = 0;
   /** True during any create-checkout-session call (manual or $0 auto-save) — avoids duplicate POSTs. */
   let checkoutSessionInFlight = false;
+  /** After Step Up hold succeeds, keep checkout CTA as hold-success until cart has items again (survives refetch). */
+  let showStepUpHoldSuccessCheckoutUi = false;
   let zeroBalanceAutoSaveTimer = null;
   /** Last POST /api/preview-prepaid-apply — camp credit lines must match Supabase (not client enrollment cache). */
   let serverPrepaidApply = null;
@@ -4815,6 +4817,10 @@
       shirtTotal += shirtUnit;
     });
 
+    if (bookings.length > 0 || shirtTotal > 0) {
+      showStepUpHoldSuccessCheckoutUi = false;
+    }
+
     if (!camperOk) {
       if (session && !parentCampers.length) {
         empty.textContent =
@@ -4853,12 +4859,23 @@
       } else {
         empty.textContent = '';
         empty.style.display = 'none';
-        msg.textContent = '';
+        if (!showStepUpHoldSuccessCheckoutUi) {
+          msg.textContent = '';
+        }
       }
       lines.style.display = 'none';
       totalRow.style.display = 'none';
       btn.disabled = true;
       hideCampAgreementSection();
+      if (showStepUpHoldSuccessCheckoutUi) {
+        var btnStep = document.querySelector('#checkout-btn .btn-text');
+        var noteStep = document.querySelector('.order-summary .secure-note');
+        if (btnStep) btnStep.textContent = 'Hold successful';
+        if (noteStep) {
+          noteStep.textContent =
+            'Waiting on Step Up funding — check your email; staff will confirm when allocation is received.';
+        }
+      }
       persistEnrollLocal();
       return;
     }
@@ -6259,6 +6276,7 @@
 
   function applyStepUpRegistrationSavedUi() {
     try {
+      showStepUpHoldSuccessCheckoutUi = true;
       clearEnrollmentSelections();
       refreshScheduleUiAfterEnrollStorageChange();
       schedulePostCheckoutEnrollmentRefetchRetries();
