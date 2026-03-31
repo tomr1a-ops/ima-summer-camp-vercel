@@ -597,6 +597,8 @@ module.exports = async (req, res) => {
       cancel_url: `${baseUrl}/index.html`,
       metadata: {
         checkout_batch_id: batchId,
+        /** Lets confirm-stripe-session verify extra-shirt campers when there are zero enrollment rows (shirt-only checkout). */
+        checkout_parent_id: String(parentId),
         test_pricing: tp ? 'true' : 'false',
         registration_fee_cents: String(regCentsTotal),
         /** Comma-separated camper UUIDs charged registration this checkout (confirm marks all their rows in batch). */

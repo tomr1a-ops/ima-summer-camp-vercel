@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inventory — IMA Summer Camp</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/ima-theme.css" />
+  <style>
+    tr.inv-row-low td {
+      background: linear-gradient(90deg, rgba(245, 158, 11, 0.35), rgba(245, 158, 11, 0.14)) !important;
+      box-shadow: inset 4px 0 0 #f59e0b;
+    }
+    tr.inv-row-low td:first-child {
+      border-top-left-radius: 6px;
+      border-bottom-left-radius: 6px;
+    }
+    tr.inv-row-low td:last-child {
+      border-top-right-radius: 6px;
+      border-bottom-right-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="/admin.html">
+      <img src="/logo.png" alt="" />
+      <span>Admin · Inventory</span>
+    </a>
+    <div class="app-actions">
+      <a class="btn-ghost" href="/admin.html">Dashboard</a>
+      <a class="btn-ghost" href="/admin/gear-distribution.html">Gear</a>
+      <a class="btn-ghost" href="/admin/backup">Backup</a>
+      <a class="btn-ghost" href="/admin/system-health">System Health</a>
+      <button type="button" class="btn-ghost" id="btn-portal">Camp site</button>
+      <button type="button" class="btn-ghost" id="btn-out">Log out</button>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <div id="banner" class="msg" style="margin-bottom:18px"></div>
+
+    <div class="panel">
+      <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+        <span>Physical inventory</span>
+        <span style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <input type="search" class="input input-inline" id="flt-q" placeholder="Search SKU, name, size, color, location…" style="min-width:220px;margin:0" />
+          <button type="button" class="btn-primary" id="btn-add" style="width:auto;margin:0;padding:10px 18px;font-size:14px;letter-spacing:1px">Add item</button>
+        </span>
+      </div>
+      <div class="panel-body table-wrap">
+        <table class="data" id="tbl">
+          <thead>
+            <tr>
+              <th>SKU</th>
+              <th>Name</th>
+              <th>Size</th>
+              <th>Color</th>
+              <th>Category</th>
+              <th>Location</th>
+              <th>On hand</th>
+              <th>Reorder at</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p id="empty-hint" class="empty-hint" style="display:none;margin-top:12px">No lines yet. Add gear, supplies, or uniforms here.</p>
+      </div>
+    </div>
+  </main>
+
+  <div id="modal-item" class="admin-modal" aria-hidden="true">
+    <button type="button" class="admin-modal-backdrop" id="modal-item-backdrop" aria-label="Close"></button>
+    <div class="admin-modal-panel" role="dialog" aria-modal="true" aria-labelledby="modal-item-title">
+      <div class="admin-modal-head">
+        <h2 class="admin-modal-title" id="modal-item-title">Item</h2>
+        <button type="button" class="btn-ghost" id="modal-item-close">Close</button>
+      </div>
+      <div class="admin-modal-body">
+        <form id="form-item">
+          <input type="hidden" id="fi-id" />
+          <label class="label" for="fi-sku">SKU</label>
+          <input type="text" class="input" id="fi-sku" autocomplete="off" />
+          <label class="label" for="fi-name">Name</label>
+          <input type="text" class="input" id="fi-name" required autocomplete="off" />
+          <label class="label" for="fi-size">Size</label>
+          <select class="input" id="fi-size">
+            <option value="">— Select size (optional) —</option>
+            <optgroup label="Youth — toddler &amp; little kids">
+              <option value="2T">2T</option>
+              <option value="3T">3T</option>
+              <option value="4T">4T</option>
+              <option value="5">5 (Youth)</option>
+              <option value="6">6 (Youth)</option>
+              <option value="7">7 (Youth)</option>
+              <option value="8">8 (Youth)</option>
+              <option value="10">10 (Youth)</option>
+              <option value="12">12 (Youth)</option>
+              <option value="14">14 (Youth)</option>
+              <option value="16">16 (Youth)</option>
+            </optgroup>
+            <optgroup label="Youth — letter sizes">
+              <option value="YXS">YXS</option>
+              <option value="YS">YS</option>
+              <option value="YM">YM</option>
+              <option value="YL">YL</option>
+              <option value="YXL">YXL</option>
+            </optgroup>
+            <optgroup label="Adult">
+              <option value="XS">XS</option>
+              <option value="S">S</option>
+              <option value="M">M</option>
+              <option value="L">L</option>
+              <option value="XL">XL</option>
+              <option value="XXL">XXL</option>
+              <option value="XXXL">XXXL</option>
+              <option value="4XL">4XL</option>
+            </optgroup>
+            <option value="__other__">Other (type below)</option>
+          </select>
+          <label class="label" for="fi-size-custom" id="fi-size-custom-label" style="display:none;margin-top:4px">Custom size</label>
+          <input type="text" class="input" id="fi-size-custom" style="display:none" placeholder="e.g. one-size, OSFA, custom" autocomplete="off" />
+          <label class="label" for="fi-color">Color</label>
+          <input type="text" class="input" id="fi-color" placeholder="e.g. White, Black, Blue" autocomplete="off" />
+          <label class="label" for="fi-category">Category</label>
+          <input type="text" class="input" id="fi-category" placeholder="e.g. Uniforms" autocomplete="off" />
+          <label class="label" for="fi-location">Location</label>
+          <input type="text" class="input" id="fi-location" placeholder="e.g. Shed A" autocomplete="off" />
+          <label class="label" for="fi-qty">Quantity on hand</label>
+          <input type="number" class="input" id="fi-qty" min="0" step="1" value="0" required />
+          <label class="label" for="fi-reorder">Reorder point</label>
+          <input type="number" class="input" id="fi-reorder" min="0" step="1" placeholder="optional" />
+          <label class="label" for="fi-notes">Notes</label>
+          <textarea class="input" id="fi-notes" rows="3"></textarea>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+            <button type="submit" class="btn-primary" id="fi-save" style="width:auto;margin-top:8px;padding:12px 22px;font-size:15px">Save</button>
+            <button type="button" class="btn-ghost" id="fi-cancel">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-count" class="admin-modal" aria-hidden="true">
+    <button type="button" class="admin-modal-backdrop" id="modal-count-backdrop" aria-label="Close"></button>
+    <div class="admin-modal-panel" role="dialog" aria-modal="true" aria-labelledby="modal-count-title">
+      <div class="admin-modal-head">
+        <h2 class="admin-modal-title" id="modal-count-title">Quantity on hand</h2>
+        <button type="button" class="btn-ghost" id="modal-count-close">Close</button>
+      </div>
+      <div class="admin-modal-body">
+        <p class="empty-hint" id="count-line-label" style="margin-bottom:12px"></p>
+        <form id="form-count">
+          <input type="hidden" id="fc-id" />
+          <label class="label" for="fc-total">Total on hand</label>
+          <input type="number" class="input" id="fc-total" min="0" step="1" value="0" required />
+          <p class="empty-hint" id="fc-preview" style="margin-top:-6px;margin-bottom:10px"></p>
+          <label class="label" for="fc-note">Note (optional)</label>
+          <input type="text" class="input" id="fc-note" placeholder="e.g. Shipment received" autocomplete="off" />
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+            <button type="submit" class="btn-primary" style="width:auto;margin-top:8px;padding:12px 22px;font-size:15px">Save</button>
+            <button type="button" class="btn-ghost" id="fc-cancel">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/ima-core.js?v=20260330"></script>
+  <script>
+    (function () {
+      const banner = document.getElementById('banner');
+
+      document.getElementById('btn-out').onclick = function () {
+        IMA.signOut('/admin-login.html');
+      };
+      document.getElementById('btn-portal').onclick = function () { window.location.href = '/index.html#schedule'; };
+
+      function showBanner(text, ok) {
+        if (!text) {
+          banner.className = 'msg';
+          banner.textContent = '';
+          return;
+        }
+        banner.textContent = text;
+        banner.className = 'msg show ' + (ok ? 'ok' : 'error');
+      }
+
+      function escapeHtml(s) {
+        return String(s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      var state = { rows: [], sb: null };
+
+      async function requireAdmin() {
+        const session = await IMA.requireAuth('/admin-login.html');
+        if (!session) return null;
+        const profile = await IMA.getProfile();
+        if (!profile) {
+          showBanner('No profile found.', false);
+          window.location.replace('/index.html#schedule');
+          return null;
+        }
+        const em = String(session.user && session.user.email ? session.user.email : '').toLowerCase();
+        if (profile.role !== 'admin' && !IMA.isAdminLoginEmail(em)) {
+          showBanner('Admin access only.', false);
+          window.location.replace('/index.html#schedule');
+          return null;
+        }
+        return { session: session, profile: profile };
+      }
+
+      function modalOpen(el, open) {
+        el.classList.toggle('open', open);
+        el.setAttribute('aria-hidden', open ? 'false' : 'true');
+      }
+
+      function bindModal(id, onClose) {
+        const root = document.getElementById(id);
+        root.querySelector('[id$="-backdrop"]').addEventListener('click', onClose);
+        root.querySelector('[id$="-close"]').addEventListener('click', onClose);
+        return root;
+      }
+
+      function filteredRows() {
+        const q = document.getElementById('flt-q').value.trim().toLowerCase();
+        if (!q) return state.rows.slice();
+        return state.rows.filter(function (r) {
+          const blob = [r.sku, r.name, r.size, r.color, r.category, r.location, r.notes]
+            .map(function (x) { return String(x || '').toLowerCase(); })
+            .join(' ');
+          return blob.indexOf(q) !== -1;
+        });
+      }
+
+      function lowStock(r) {
+        if (r.reorder_point == null || r.reorder_point === '') return false;
+        const rp = Number(r.reorder_point);
+        if (!Number.isFinite(rp)) return false;
+        return Number(r.quantity_on_hand) <= rp;
+      }
+
+      function render() {
+        const body = document.querySelector('#tbl tbody');
+        const list = filteredRows();
+        list.sort(function (a, b) {
+          const la = String(a.location || '').toLowerCase();
+          const lb = String(b.location || '').toLowerCase();
+          if (la !== lb) return la.localeCompare(lb);
+          return String(a.name || '').localeCompare(String(b.name || ''));
+        });
+        document.getElementById('empty-hint').style.display = list.length ? 'none' : 'block';
+        body.innerHTML = list.map(function (r) {
+          const lowCls = lowStock(r) ? ' class="inv-row-low"' : '';
+          const sku = escapeHtml(r.sku || '—');
+          const nm = escapeHtml(r.name || '');
+          const sz = escapeHtml(r.size || '—');
+          const col = escapeHtml(r.color || '—');
+          const cat = escapeHtml(r.category || '—');
+          const loc = escapeHtml(r.location || '—');
+          const qty = escapeHtml(String(r.quantity_on_hand));
+          const ro = r.reorder_point != null && r.reorder_point !== '' ? escapeHtml(String(r.reorder_point)) : '—';
+          return (
+            '<tr data-id="' +
+            escapeHtml(String(r.id)) +
+            '"' +
+            lowCls +
+            '><td>' +
+            sku +
+            '</td><td>' +
+            nm +
+            '</td><td>' +
+            sz +
+            '</td><td>' +
+            col +
+            '</td><td>' +
+            cat +
+            '</td><td>' +
+            loc +
+            '</td><td><strong>' +
+            qty +
+            '</strong></td><td>' +
+            ro +
+            '</td><td style="white-space:nowrap">' +
+            '<button type="button" class="btn-ghost" data-act="count">Count</button> ' +
+            '<button type="button" class="btn-ghost" data-act="edit">Edit</button> ' +
+            '<button type="button" class="btn-ghost" data-act="del">Delete</button>' +
+            '</td></tr>'
+          );
+        }).join('');
+      }
+
+      function findSizeSelectMatch(stored) {
+        const sel = document.getElementById('fi-size');
+        const v = String(stored || '').trim();
+        if (!v) return '';
+        for (let i = 0; i < sel.options.length; i++) {
+          const o = sel.options[i];
+          if (!o.value || o.value === '__other__') continue;
+          if (o.value === v) return o.value;
+        }
+        const vl = v.toLowerCase();
+        for (let i = 0; i < sel.options.length; i++) {
+          const o = sel.options[i];
+          if (!o.value || o.value === '__other__') continue;
+          if (o.value.toLowerCase() === vl) return o.value;
+        }
+        return null;
+      }
+
+      function toggleSizeCustomVisibility() {
+        const sel = document.getElementById('fi-size');
+        const custom = document.getElementById('fi-size-custom');
+        const lab = document.getElementById('fi-size-custom-label');
+        const on = sel.value === '__other__';
+        custom.style.display = on ? 'block' : 'none';
+        lab.style.display = on ? 'block' : 'none';
+        if (on) custom.removeAttribute('aria-hidden');
+        else custom.setAttribute('aria-hidden', 'true');
+      }
+
+      function applySizeToForm(stored) {
+        const sel = document.getElementById('fi-size');
+        const custom = document.getElementById('fi-size-custom');
+        const v = String(stored || '').trim();
+        if (!v) {
+          sel.value = '';
+          custom.value = '';
+          toggleSizeCustomVisibility();
+          return;
+        }
+        const match = findSizeSelectMatch(v);
+        if (match) {
+          sel.value = match;
+          custom.value = '';
+        } else {
+          sel.value = '__other__';
+          custom.value = v;
+        }
+        toggleSizeCustomVisibility();
+      }
+
+      function readSizeFromForm() {
+        const sel = document.getElementById('fi-size').value;
+        if (!sel) return null;
+        if (sel === '__other__') {
+          const c = document.getElementById('fi-size-custom').value.trim();
+          return c || null;
+        }
+        return sel;
+      }
+
+      function openItemModal(editRow) {
+        document.getElementById('modal-item-title').textContent = editRow ? 'Edit item' : 'Add item';
+        document.getElementById('fi-id').value = editRow ? editRow.id : '';
+        document.getElementById('fi-sku').value = editRow ? (editRow.sku || '') : '';
+        document.getElementById('fi-name').value = editRow ? (editRow.name || '') : '';
+        applySizeToForm(editRow ? editRow.size : '');
+        document.getElementById('fi-color').value = editRow ? (editRow.color || '') : '';
+        document.getElementById('fi-category').value = editRow ? (editRow.category || '') : '';
+        document.getElementById('fi-location').value = editRow ? (editRow.location || '') : '';
+        document.getElementById('fi-qty').value = editRow ? String(editRow.quantity_on_hand != null ? editRow.quantity_on_hand : 0) : '0';
+        document.getElementById('fi-reorder').value =
+          editRow && editRow.reorder_point != null && editRow.reorder_point !== '' ? String(editRow.reorder_point) : '';
+        document.getElementById('fi-notes').value = editRow ? (editRow.notes || '') : '';
+        modalOpen(document.getElementById('modal-item'), true);
+        document.getElementById('fi-name').focus();
+      }
+
+      function closeItemModal() {
+        modalOpen(document.getElementById('modal-item'), false);
+      }
+
+      function parseCountTotal() {
+        const raw = document.getElementById('fc-total').value.trim();
+        if (raw === '' || raw === '+' || raw === '-') return NaN;
+        const n = parseInt(raw, 10);
+        if (!Number.isFinite(n) || n < 0) return NaN;
+        return n;
+      }
+
+      function countModalPreview() {
+        const row = state.rows.find(function (r) {
+          return String(r.id) === String(document.getElementById('fc-id').value);
+        });
+        if (!row) return;
+        const prev = Math.max(0, Number(row.quantity_on_hand) || 0);
+        const next = parseCountTotal();
+        let hint;
+        if (!Number.isFinite(next)) {
+          hint = 'Enter a whole number <strong>0</strong> or higher.';
+        } else if (next === prev) {
+          hint = 'Same as current on hand.';
+        } else {
+          const ch = next - prev;
+          hint =
+            'Change: <strong>' +
+            (ch > 0 ? '+' : '') +
+            ch +
+            '</strong> · New total: <strong>' +
+            next +
+            '</strong>';
+        }
+        document.getElementById('fc-preview').innerHTML = hint;
+      }
+
+      function openCountModal(row) {
+        document.getElementById('fc-id').value = row.id;
+        const cur = Math.max(0, Number(row.quantity_on_hand) || 0);
+        document.getElementById('fc-total').value = String(cur);
+        document.getElementById('fc-note').value = '';
+        document.getElementById('count-line-label').innerHTML =
+          escapeHtml(row.name || '') +
+          (row.sku ? ' · SKU ' + escapeHtml(row.sku) : '') +
+          ' · was <strong>' +
+          escapeHtml(String(row.quantity_on_hand != null ? row.quantity_on_hand : 0)) +
+          '</strong> on hand';
+        countModalPreview();
+        modalOpen(document.getElementById('modal-count'), true);
+        document.getElementById('fc-total').focus();
+        document.getElementById('fc-total').select();
+      }
+
+      function closeCountModal() {
+        modalOpen(document.getElementById('modal-count'), false);
+      }
+
+      async function reload() {
+        const { data, error } = await state.sb
+          .from('inventory_items')
+          .select('*')
+          .order('name');
+        if (error) throw error;
+        state.rows = data || [];
+        render();
+      }
+
+      async function boot() {
+        const ctx = await requireAdmin();
+        if (!ctx) return;
+        state.sb = await IMA.getSupabase();
+
+        const mItem = bindModal('modal-item', closeItemModal);
+        const mCount = bindModal('modal-count', closeCountModal);
+        document.getElementById('fi-cancel').onclick = closeItemModal;
+        document.getElementById('fc-cancel').onclick = closeCountModal;
+
+        document.getElementById('btn-add').onclick = function () {
+          openItemModal(null);
+        };
+
+        document.getElementById('fi-size').addEventListener('change', toggleSizeCustomVisibility);
+
+        document.getElementById('flt-q').addEventListener('input', render);
+
+        document.getElementById('form-item').onsubmit = async function (ev) {
+          ev.preventDefault();
+          const id = document.getElementById('fi-id').value.trim();
+          const sku = document.getElementById('fi-sku').value.trim() || null;
+          const name = document.getElementById('fi-name').value.trim();
+          const size = readSizeFromForm();
+          const color = document.getElementById('fi-color').value.trim() || null;
+          const category = document.getElementById('fi-category').value.trim() || null;
+          const location = document.getElementById('fi-location').value.trim() || null;
+          const quantity_on_hand = Math.max(0, parseInt(document.getElementById('fi-qty').value, 10) || 0);
+          const rv = document.getElementById('fi-reorder').value.trim();
+          const reorder_point = rv === '' ? null : Math.max(0, parseInt(rv, 10) || 0);
+          const notes = document.getElementById('fi-notes').value.trim() || null;
+          const payload = {
+            sku: sku,
+            name: name,
+            size: size,
+            color: color,
+            category: category,
+            location: location,
+            quantity_on_hand: quantity_on_hand,
+            reorder_point: reorder_point,
+            notes: notes,
+          };
+          try {
+            if (id) {
+              const { error } = await state.sb.from('inventory_items').update(payload).eq('id', id);
+              if (error) throw error;
+              showBanner('Item updated.', true);
+            } else {
+              const { error } = await state.sb.from('inventory_items').insert(payload);
+              if (error) throw error;
+              showBanner('Item added.', true);
+            }
+            closeItemModal();
+            await reload();
+          } catch (e) {
+            showBanner(e.message || String(e), false);
+          }
+        };
+
+        document.getElementById('form-count').onsubmit = async function (ev) {
+          ev.preventDefault();
+          const id = document.getElementById('fc-id').value;
+          const newQty = parseCountTotal();
+          if (!Number.isFinite(newQty)) {
+            showBanner('Enter a whole number 0 or higher for total on hand.', false);
+            return;
+          }
+          const note = document.getElementById('fc-note').value.trim();
+          const row = state.rows.find(function (r) { return String(r.id) === String(id); });
+          const prev = Math.max(0, row ? Number(row.quantity_on_hand) : 0);
+          if (newQty === prev && !note) {
+            closeCountModal();
+            return;
+          }
+          let notes = row && row.notes ? String(row.notes) : '';
+          const stamp = new Date().toISOString().slice(0, 10);
+          var line;
+          if (newQty !== prev) {
+            line = 'Set ' + stamp + ': ' + prev + ' → ' + newQty + (note ? ' (' + note + ')' : '');
+          } else {
+            line = 'Note ' + stamp + ': ' + note;
+          }
+          notes = notes ? notes + '\n' + line : line;
+          try {
+            const { error } = await state.sb
+              .from('inventory_items')
+              .update({ quantity_on_hand: newQty, notes: notes })
+              .eq('id', id);
+            if (error) throw error;
+            showBanner('Quantity updated.', true);
+            closeCountModal();
+            await reload();
+          } catch (e) {
+            showBanner(e.message || String(e), false);
+          }
+        };
+
+        document.getElementById('fc-total').addEventListener('input', countModalPreview);
+
+        document.querySelector('#tbl tbody').addEventListener('click', async function (ev) {
+          const btn = ev.target.closest('[data-act]');
+          if (!btn) return;
+          const tr = btn.closest('tr[data-id]');
+          if (!tr) return;
+          const id = tr.getAttribute('data-id');
+          const row = state.rows.find(function (r) { return String(r.id) === String(id); });
+          if (!row) return;
+          const act = btn.getAttribute('data-act');
+          if (act === 'edit') openItemModal(row);
+          if (act === 'count') openCountModal(row);
+          if (act === 'del') {
+            if (!confirm('Delete “' + (row.name || 'item') + '” from inventory?')) return;
+            try {
+              const { error } = await state.sb.from('inventory_items').delete().eq('id', id);
+              if (error) throw error;
+              showBanner('Deleted.', true);
+              await reload();
+            } catch (e) {
+              showBanner(e.message || String(e), false);
+            }
+          }
+        });
+
+        document.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Escape') {
+            if (mItem.classList.contains('open')) closeItemModal();
+            if (mCount.classList.contains('open')) closeCountModal();
+          }
+        });
+
+        await reload();
+      }
+
+      boot().catch(function (e) {
+        showBanner(e.message || String(e), false);
+      });
+    })();
+  </script>
+</body>
+</html>

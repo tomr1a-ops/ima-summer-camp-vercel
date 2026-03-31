@@ -180,102 +180,6 @@ async function markCampPaymentEmailsSent(stripe, sessionId) {
 }
 
 /**
- * When a parent opens Checkout (before payment): notify staff only.
- * Callers should await this inside try/catch so serverless runtimes finish the HTTP work before freeze.
- */
-async function sendCheckoutStartedAdminNotify(payload) {
-  try {
-    return await sendCheckoutStartedAdminNotifyInner(payload);
-  } catch (e) {
-    const msg = e && e.message ? e.message : String(e);
-    console.error('[email] sendCheckoutStartedAdminNotify unexpected error:', msg, e && e.stack ? e.stack : '');
-    return [{ to: 'all', ok: false, error: msg }];
-  }
-}
-
-async function sendCheckoutStartedAdminNotifyInner(payload) {
-  const {
-    parentName,
-    parentEmail,
-    sessionId,
-    batchId,
-    cartLines,
-    intendedTotal,
-    registrationIncluded,
-  } = payload;
-  const keyPresent = !!resolveResendApiKey();
-  console.log('[email] checkout-started notify begin', {
-    sessionId: sessionId || null,
-    batchId: batchId || null,
-    adminEmailsTomAndCoach: CAMP_STAFF_NOTIFY,
-    resendApiKeyConfigured: keyPresent,
-  });
-  console.log(
-    '[email] checkout-started — calling sendResendToStaff → tom@imaimpact.com & coachshick@imaimpact.com'
-  );
-  const subject = '🥊 IMA Camp — Checkout started (payment pending)';
-  const lines = [
-    'A parent opened Stripe Checkout — payment is not confirmed until Stripe completes the session.',
-    '',
-    `Parent: ${parentName || '—'} <${parentEmail || 'n/a'}>`,
-    `Stripe Checkout session: ${sessionId}`,
-    `Batch (pending enrollments): ${batchId}`,
-    '',
-    'Items in cart:',
-  ];
-  (cartLines && cartLines.length ? cartLines : ['(none)']).forEach(function (l) {
-    lines.push(`• ${l}`);
-  });
-  lines.push('');
-  lines.push(`Cart total if paid as shown: ${formatMoney(intendedTotal)}`);
-  lines.push(registrationIncluded ? 'Registration fee is included in this cart.' : 'No registration fee line in this cart.');
-  lines.push('');
-  lines.push(`View in admin: ${ADMIN_DASHBOARD_URL}`);
-  const text = lines.join('\n');
-
-  const listItems = (cartLines && cartLines.length ? cartLines : ['(none)'])
-    .map((l) => `<li>${escapeHtml(l)}</li>`)
-    .join('');
-  const html = `<div style="font-family:system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.5;color:#111">
-  <p><strong>Checkout started</strong> — payment still pending.</p>
-  <p><strong>Parent:</strong> ${escapeHtml(parentName || '—')} &lt;${escapeHtml(parentEmail || 'n/a')}&gt;</p>
-  <p><strong>Session:</strong> ${escapeHtml(sessionId)}<br/><strong>Batch:</strong> ${escapeHtml(batchId)}</p>
-  <p><strong>Cart:</strong></p>
-  <ul style="margin:8px 0;padding-left:20px">${listItems}</ul>
-  <p><strong>Total if paid:</strong> ${escapeHtml(formatMoney(intendedTotal))}</p>
-  <p>${registrationIncluded ? 'Registration fee included.' : 'No registration fee in cart.'}</p>
-  <p><a href="${escapeHtml(ADMIN_DASHBOARD_URL)}" style="color:#0d9488">View in admin</a></p>
-</div>`;
-
-  const results = await sendResendToStaff(subject, text, html);
-  const okCount = results.filter(function (r) {
-    return r.ok && !r.skipped;
-  }).length;
-  const skipped = results.some(function (r) {
-    return r.skipped;
-  });
-  if (skipped) {
-    console.error('[email] checkout-started notify finished: SKIPPED (missing RESEND_API_KEY)', { sessionId });
-  } else if (okCount === results.length) {
-    console.log('[email] checkout-started notify success', {
-      sessionId,
-      sent: okCount,
-      resendIds: results.map(function (r) {
-        return r.id || null;
-      }),
-    });
-  } else {
-    console.error('[email] checkout-started notify partial or full failure', {
-      sessionId,
-      results: results.map(function (r) {
-        return { to: r.to, ok: r.ok, skipped: r.skipped, error: r.error || null };
-      }),
-    });
-  }
-  return results;
-}
-
-/**
  * Customer receipt + staff paid-booking alerts after payment succeeds (confirm-checkout or webhook).
  * Idempotent via Stripe session metadata camp_payment_emails_sent.
  */
@@ -440,7 +344,6 @@ module.exports = {
   sendResend,
   sendCampPaymentEmails,
   sendResendToStaff,
-  sendCheckoutStartedAdminNotify,
   resolveResendApiKey,
   CAMP_STAFF_NOTIFY,
   DEFAULT_RESEND_FROM,

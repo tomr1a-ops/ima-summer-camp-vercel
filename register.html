@@ -12,48 +12,40 @@
 </head>
 <body>
   <div class="auth-wrap">
-    <div class="auth-card auth-card-wide">
+    <div class="auth-card">
       <div class="auth-card-head">
         <img class="auth-logo" src="/logo.png" alt="Impact Martial Athletics" />
         <div class="auth-title">Parent Account</div>
-        <div class="auth-sub">Register to manage camp bookings</div>
+        <div class="auth-sub">Name, email &amp; password — add children after you sign in</div>
       </div>
       <div class="auth-body">
         <div id="msg" class="msg"></div>
         <form id="form">
-          <label class="label" for="full_name">Your full name (parent)</label>
+          <label class="label" for="full_name">Your full name</label>
           <input class="input" id="full_name" name="full_name" type="text" autocomplete="name" required />
-
-          <label class="label" for="phone">Phone</label>
-          <input class="input" id="phone" name="phone" type="tel" autocomplete="tel" required />
 
           <label class="label" for="email">Email</label>
           <input class="input" id="email" name="email" type="email" autocomplete="email" required />
 
           <label class="label" for="password">Password</label>
-          <input class="input" id="password" name="password" type="password" autocomplete="new-password" minlength="8" required />
-
-          <label class="label" for="child-count">How many children are you enrolling?</label>
-          <select class="input" id="child-count" name="child_count" required aria-describedby="child-count-hint">
-            <option value="1">1&nbsp;child</option>
-            <option value="2">2&nbsp;children</option>
-            <option value="3">3&nbsp;children</option>
-            <option value="4">4&nbsp;children</option>
-            <option value="5">5&nbsp;children</option>
-            <option value="6">6&nbsp;children</option>
-            <option value="7">7&nbsp;children</option>
-            <option value="8">8&nbsp;children</option>
-            <option value="9">9&nbsp;children</option>
-            <option value="10">10&nbsp;children</option>
-          </select>
-          <p id="child-count-hint" class="reg-kids-intro">Enter each child’s name and age below. You can add or edit children later in the parent portal.</p>
-
-          <div id="children-mount" aria-live="polite"></div>
+          <div class="auth-password-wrap">
+            <input class="input" id="password" name="password" type="password" autocomplete="new-password" minlength="8" required />
+            <button type="button" class="auth-password-toggle" id="toggle-password" aria-label="Show password" aria-pressed="false" title="Show password">
+              <svg class="icon-eye" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              <svg class="icon-eye-off" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                <line x1="1" y1="1" x2="23" y2="23" />
+              </svg>
+            </button>
+          </div>
 
           <button class="btn-primary" type="submit" id="btn">Create account</button>
         </form>
         <div class="link-row">
-          Already have an account? <a href="/login.html">Sign in</a>
+          Already have an account? <a href="/login.html" id="signin-link">Sign in</a>
         </div>
         <div class="link-row" style="margin-top:10px">
           <a href="/index.html">← Summer camp checkout</a>
@@ -61,14 +53,15 @@
       </div>
     </div>
   </div>
-  <script src="/js/ima-core.js"></script>
+  <script src="/js/ima-core.js?v=20260330"></script>
   <script>
     (function () {
       const msg = document.getElementById('msg');
       const btn = document.getElementById('btn');
       const form = document.getElementById('form');
-      const mount = document.getElementById('children-mount');
-      const countEl = document.getElementById('child-count');
+      const passwordInput = document.getElementById('password');
+      const togglePw = document.getElementById('toggle-password');
+      const signinLink = document.getElementById('signin-link');
 
       function shouldOfferAuthHelp(errText) {
         var t = String(errText || '');
@@ -104,91 +97,32 @@
       function safeReturnPath() {
         var ret = new URLSearchParams(window.location.search).get('return');
         if (ret && ret.startsWith('/') && !ret.startsWith('//')) return ret;
-        return '/portal.html';
+        return '/index.html#schedule';
       }
 
-      function renderChildFields() {
-        var n = parseInt(countEl.value, 10) || 1;
-        n = Math.max(1, Math.min(10, n));
-        mount.innerHTML = '';
-        for (var i = 0; i < n; i++) {
-          var block = document.createElement('div');
-          block.className = 'reg-child-block';
-          var h = document.createElement('h3');
-          h.textContent = 'Child\u00a0' + (i + 1);
-          block.appendChild(h);
-
-          var lf = document.createElement('label');
-          lf.className = 'label';
-          lf.setAttribute('for', 'kid-' + i + '-first');
-          lf.textContent = 'First name';
-          block.appendChild(lf);
-          var inf = document.createElement('input');
-          inf.className = 'input';
-          inf.type = 'text';
-          inf.id = 'kid-' + i + '-first';
-          inf.name = 'kid_' + i + '_first';
-          inf.autocomplete = 'off';
-          inf.required = true;
-          block.appendChild(inf);
-
-          var ll = document.createElement('label');
-          ll.className = 'label';
-          ll.setAttribute('for', 'kid-' + i + '-last');
-          ll.textContent = 'Last name';
-          block.appendChild(ll);
-          var inl = document.createElement('input');
-          inl.className = 'input';
-          inl.type = 'text';
-          inl.id = 'kid-' + i + '-last';
-          inl.name = 'kid_' + i + '_last';
-          inl.autocomplete = 'off';
-          inl.required = true;
-          block.appendChild(inl);
-
-          var la = document.createElement('label');
-          la.className = 'label';
-          la.setAttribute('for', 'kid-' + i + '-age');
-          la.textContent = 'Age';
-          block.appendChild(la);
-          var ina = document.createElement('input');
-          ina.className = 'input';
-          ina.type = 'number';
-          ina.id = 'kid-' + i + '-age';
-          ina.name = 'kid_' + i + '_age';
-          ina.min = '3';
-          ina.max = '18';
-          ina.required = true;
-          block.appendChild(ina);
-
-          mount.appendChild(block);
+      function wireSignInLink() {
+        var ret = new URLSearchParams(window.location.search).get('return');
+        if (ret && ret.startsWith('/') && !ret.startsWith('//') && signinLink) {
+          signinLink.href = '/login.html?return=' + encodeURIComponent(ret);
         }
       }
 
-      function collectChildren(n) {
-        var list = [];
-        for (var i = 0; i < n; i++) {
-          var fn = document.getElementById('kid-' + i + '-first').value.trim();
-          var ln = document.getElementById('kid-' + i + '-last').value.trim();
-          var age = parseInt(document.getElementById('kid-' + i + '-age').value, 10);
-          if (!fn || !ln) {
-            throw new Error('Please enter first and last name for child ' + (i + 1) + '.');
-          }
-          if (!Number.isFinite(age) || age < 3 || age > 18) {
-            throw new Error('Please enter a valid age (3–18) for child ' + (i + 1) + '.');
-          }
-          list.push({ firstName: fn, lastName: ln, age: age });
-        }
-        return list;
+      if (togglePw && passwordInput) {
+        togglePw.addEventListener('click', function () {
+          var showPw = passwordInput.type === 'password';
+          passwordInput.type = showPw ? 'text' : 'password';
+          togglePw.setAttribute('aria-pressed', showPw ? 'true' : 'false');
+          togglePw.setAttribute('aria-label', showPw ? 'Hide password' : 'Show password');
+          togglePw.title = showPw ? 'Hide password' : 'Show password';
+        });
       }
-
-      countEl.addEventListener('change', renderChildFields);
 
       async function boot() {
+        wireSignInLink();
         try {
           await IMA.getSupabase();
           const session = await IMA.getSession();
-          if (session) window.location.replace('/portal.html');
+          if (session) window.location.replace(safeReturnPath());
         } catch (e) {
           var em = e.message || String(e);
           var hu = window.IMA && IMA.authProvidersHelpUrl && shouldOfferAuthHelp(em) ? IMA.authProvidersHelpUrl : null;
@@ -205,10 +139,6 @@
           const email = document.getElementById('email').value.trim();
           const password = document.getElementById('password').value;
           const full_name = document.getElementById('full_name').value.trim();
-          const phone = document.getElementById('phone').value.trim();
-          var nKids = parseInt(countEl.value, 10) || 1;
-          nKids = Math.max(1, Math.min(10, nKids));
-          var children = collectChildren(nKids);
 
           const res = await fetch('/api/register-parent', {
             method: 'POST',
@@ -217,7 +147,6 @@
               email: email,
               password: password,
               fullName: full_name,
-              phone: phone,
             }),
           });
           const raw = await res.text();
@@ -245,39 +174,7 @@
           var tok = signData.session && signData.session.access_token;
           if (!tok) throw new Error('Signed in but no session token. Try signing in manually.');
 
-          var saveErrors = [];
-          for (var c = 0; c < children.length; c++) {
-            var ch = children[c];
-            var ar = await fetch('/api/add-camper', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: 'Bearer ' + tok,
-              },
-              body: JSON.stringify({
-                firstName: ch.firstName,
-                lastName: ch.lastName,
-                age: ch.age,
-              }),
-            });
-            var aj = await ar.json().catch(function () {
-              return {};
-            });
-            if (!ar.ok) {
-              saveErrors.push(ch.firstName + ' ' + ch.lastName + ': ' + (aj.error || 'could not save'));
-            }
-          }
-
-          if (saveErrors.length) {
-            show(
-              'Account created, but some children could not be saved: ' + saveErrors.join(' · ') + ' You can add them in the portal.',
-              false
-            );
-            btn.disabled = false;
-            return;
-          }
-
-          window.location.replace('/portal.html');
+          window.location.replace(safeReturnPath());
         } catch (e) {
           var em2 = e.message || 'Registration failed';
           var hu2 = window.IMA && IMA.authProvidersHelpUrl && shouldOfferAuthHelp(em2) ? IMA.authProvidersHelpUrl : null;
@@ -286,7 +183,6 @@
         btn.disabled = false;
       });
 
-      renderChildFields();
       boot();
     })();
   </script>

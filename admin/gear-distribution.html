@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gear distribution — IMA Summer Camp</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/ima-theme.css" />
+  <style>
+    tr.gear-row-done td {
+      background: linear-gradient(90deg, rgba(34, 197, 94, 0.32), rgba(34, 197, 94, 0.1)) !important;
+      box-shadow: inset 4px 0 0 #22c55e;
+    }
+    tr.gear-row-done td:first-child {
+      border-top-left-radius: 6px;
+      border-bottom-left-radius: 6px;
+    }
+    tr.gear-row-done td:last-child {
+      border-top-right-radius: 6px;
+      border-bottom-right-radius: 6px;
+    }
+    .gear-filter-btn.gear-filter-active {
+      border-color: var(--cyan);
+      color: var(--cyan);
+    }
+    .gear-progress-wrap {
+      margin-bottom: 18px;
+    }
+    .gear-progress-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 13px;
+      margin-bottom: 8px;
+      color: var(--muted);
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .gear-progress-meta strong {
+      color: var(--text);
+    }
+    select.gear-inline-size {
+      min-width: 76px;
+      padding: 8px 10px;
+      font-size: 13px;
+      margin: 0;
+    }
+    .gear-bag-cell {
+      text-align: center;
+    }
+    .gear-bag-cell input {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="/admin.html">
+      <img src="/logo.png" alt="" />
+      <span>Admin · Gear</span>
+    </a>
+    <div class="app-actions">
+      <a class="btn-ghost" href="/admin.html">Dashboard</a>
+      <a class="btn-ghost" href="/admin/inventory.html">Inventory</a>
+      <a class="btn-ghost" href="/admin/system-health">System Health</a>
+      <a class="btn-ghost" href="/admin/backup">Backup</a>
+      <button type="button" class="btn-ghost" id="btn-portal">Camp site</button>
+      <button type="button" class="btn-ghost" id="btn-out">Log out</button>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <div id="banner" class="msg" style="margin-bottom:18px"></div>
+
+    <div class="panel">
+      <div class="panel-head" style="display:flex;flex-direction:column;align-items:stretch;gap:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+          <span>Gear distribution</span>
+          <span style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <input type="search" class="input input-inline" id="flt-q" placeholder="Search by member name…" style="min-width:200px;margin:0" />
+            <button type="button" class="btn-primary" id="btn-add" style="width:auto;margin:0;padding:10px 18px;font-size:14px;letter-spacing:1px">Add member</button>
+          </span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <span class="panel-hint" style="margin:0;margin-right:6px">Show:</span>
+          <button type="button" class="btn-ghost gear-filter-btn gear-filter-active" data-filter="all">All</button>
+          <button type="button" class="btn-ghost gear-filter-btn" data-filter="sizes_needed">Sizes needed</button>
+          <button type="button" class="btn-ghost gear-filter-btn" data-filter="ready">Ready to distribute</button>
+          <button type="button" class="btn-ghost gear-filter-btn" data-filter="distributed">Distributed</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="gear-progress-wrap">
+          <div class="gear-progress-meta">
+            <span id="gear-progress-label"><strong>0</strong> of 222 members distributed</span>
+            <span id="gear-progress-pct">0%</span>
+          </div>
+          <div class="progress-bar"><i id="gear-progress-fill" style="width:0%"></i></div>
+        </div>
+        <div class="table-wrap">
+          <table class="data" id="tbl">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Gloves size</th>
+                <th>Shirt size</th>
+                <th>Shorts size</th>
+                <th>Bag</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p id="empty-hint" class="empty-hint" style="display:none;margin-top:12px">No members match this view.</p>
+      </div>
+    </div>
+  </main>
+
+  <div id="modal-edit" class="admin-modal" aria-hidden="true">
+    <button type="button" class="admin-modal-backdrop" id="modal-edit-backdrop" aria-label="Close"></button>
+    <div class="admin-modal-panel" role="dialog" aria-modal="true" aria-labelledby="modal-edit-title">
+      <div class="admin-modal-head">
+        <h2 class="admin-modal-title" id="modal-edit-title">Edit member</h2>
+        <button type="button" class="btn-ghost" id="modal-edit-close">Close</button>
+      </div>
+      <div class="admin-modal-body">
+        <form id="form-edit">
+          <input type="hidden" id="fe-id" />
+          <label class="label" for="fe-name">Name</label>
+          <input type="text" class="input" id="fe-name" required autocomplete="off" />
+          <label class="label" for="fe-gloves">Gloves size</label>
+          <select class="input" id="fe-gloves"></select>
+          <label class="label" for="fe-shirt">Shirt size</label>
+          <select class="input" id="fe-shirt"></select>
+          <label class="label" for="fe-shorts">Shorts size</label>
+          <select class="input" id="fe-shorts"></select>
+          <label class="label" style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;letter-spacing:normal;font-size:15px;color:var(--text)">
+            <input type="checkbox" id="fe-bag" style="width:auto;margin:0" /> Bag included
+          </label>
+          <label class="label" for="fe-notes">Notes</label>
+          <textarea class="input" id="fe-notes" rows="3"></textarea>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+            <button type="submit" class="btn-primary" style="width:auto;margin-top:8px;padding:12px 22px;font-size:15px">Save</button>
+            <button type="button" class="btn-ghost" id="fe-cancel">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-add" class="admin-modal" aria-hidden="true">
+    <button type="button" class="admin-modal-backdrop" id="modal-add-backdrop" aria-label="Close"></button>
+    <div class="admin-modal-panel" role="dialog" aria-modal="true" aria-labelledby="modal-add-title">
+      <div class="admin-modal-head">
+        <h2 class="admin-modal-title" id="modal-add-title">Add member</h2>
+        <button type="button" class="btn-ghost" id="modal-add-close">Close</button>
+      </div>
+      <div class="admin-modal-body">
+        <form id="form-add">
+          <label class="label" for="fa-name">Name</label>
+          <input type="text" class="input" id="fa-name" required autocomplete="off" />
+          <label class="label" for="fa-gloves">Gloves size</label>
+          <select class="input" id="fa-gloves"></select>
+          <label class="label" for="fa-shirt">Shirt size</label>
+          <select class="input" id="fa-shirt"></select>
+          <label class="label" for="fa-shorts">Shorts size</label>
+          <select class="input" id="fa-shorts"></select>
+          <label class="label" style="display:flex;align-items:center;gap:10px;cursor:pointer;text-transform:none;letter-spacing:normal;font-size:15px;color:var(--text)">
+            <input type="checkbox" id="fa-bag" style="width:auto;margin:0" /> Bag included
+          </label>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+            <button type="submit" class="btn-primary" style="width:auto;margin-top:8px;padding:12px 22px;font-size:15px">Add</button>
+            <button type="button" class="btn-ghost" id="fa-cancel">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/ima-core.js?v=20260330"></script>
+  <script>
+    (function () {
+      const STUDIO_ID = 'ec356e58-a649-4fd3-a098-ebe91f396d84';
+      const TOTAL_MEMBERS = 222;
+      const SIZE_OPTS = ['YS', 'YM', 'YL', 'S', 'M', 'L', 'XL', 'XXL'];
+
+      const banner = document.getElementById('banner');
+
+      document.getElementById('btn-out').onclick = function () {
+        IMA.signOut('/admin-login.html');
+      };
+      document.getElementById('btn-portal').onclick = function () {
+        window.location.href = '/index.html#schedule';
+      };
+
+      function showBanner(text, ok) {
+        if (!text) {
+          banner.className = 'msg';
+          banner.textContent = '';
+          return;
+        }
+        banner.textContent = text;
+        banner.className = 'msg show ' + (ok ? 'ok' : 'error');
+      }
+
+      function escapeHtml(s) {
+        return String(s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      function modalOpen(el, open) {
+        el.classList.toggle('open', open);
+        el.setAttribute('aria-hidden', open ? 'false' : 'true');
+      }
+
+      function bindModal(id, onClose) {
+        const root = document.getElementById(id);
+        root.querySelector('[id$="-backdrop"]').addEventListener('click', onClose);
+        root.querySelector('[id$="-close"]').addEventListener('click', onClose);
+        return root;
+      }
+
+      function sizeOptionsHtml(selected) {
+        const sel = selected ? String(selected).trim() : '';
+        const selU = sel.toUpperCase();
+        let h = '<option value="">—</option>';
+        SIZE_OPTS.forEach(function (s) {
+          const pick = s === sel || s.toUpperCase() === selU;
+          h += '<option value="' + s + '"' + (pick ? ' selected' : '') + '>' + s + '</option>';
+        });
+        return h;
+      }
+
+      function fillStaticSelects() {
+        ['fe-gloves', 'fe-shirt', 'fe-shorts', 'fa-gloves', 'fa-shirt', 'fa-shorts'].forEach(function (id) {
+          const el = document.getElementById(id);
+          el.innerHTML = sizeOptionsHtml('');
+        });
+      }
+
+      function setSelectValue(el, val) {
+        const v = val ? String(val).trim() : '';
+        if (!v) {
+          el.value = '';
+          return;
+        }
+        const u = v.toUpperCase();
+        var hit = '';
+        for (var si = 0; si < SIZE_OPTS.length; si++) {
+          if (SIZE_OPTS[si].toUpperCase() === u) {
+            hit = SIZE_OPTS[si];
+            break;
+          }
+        }
+        el.value = hit;
+      }
+
+      var state = { rows: [], sb: null, filter: 'all' };
+
+      async function requireAdmin() {
+        const session = await IMA.requireAuth('/admin-login.html');
+        if (!session) return null;
+        const profile = await IMA.getProfile();
+        if (!profile) {
+          showBanner('No profile found.', false);
+          window.location.replace('/index.html#schedule');
+          return null;
+        }
+        const em = String(session.user && session.user.email ? session.user.email : '').toLowerCase();
+        if (profile.role !== 'admin' && !IMA.isAdminLoginEmail(em)) {
+          showBanner('Admin access only.', false);
+          window.location.replace('/index.html#schedule');
+          return null;
+        }
+        return { session: session, profile: profile };
+      }
+
+      function hasSize(v) {
+        return !!(v && String(v).trim());
+      }
+
+      function sizesComplete(r) {
+        return hasSize(r.gloves_size) && hasSize(r.shirt_size) && hasSize(r.shorts_size);
+      }
+
+      function rowStatus(r) {
+        if (r.distributed) return 'distributed';
+        if (sizesComplete(r)) return 'ready';
+        return 'needed';
+      }
+
+      function passesFilter(r) {
+        const st = rowStatus(r);
+        if (state.filter === 'all') return true;
+        if (state.filter === 'sizes_needed') return st === 'needed';
+        if (state.filter === 'ready') return st === 'ready';
+        if (state.filter === 'distributed') return st === 'distributed';
+        return true;
+      }
+
+      function filteredRows() {
+        const q = document.getElementById('flt-q').value.trim().toLowerCase();
+        return state.rows.filter(function (r) {
+          if (!passesFilter(r)) return false;
+          if (!q) return true;
+          return String(r.member_name || '')
+            .toLowerCase()
+            .indexOf(q) !== -1;
+        });
+      }
+
+      function renderProgress() {
+        const n = state.rows.filter(function (r) {
+          return r.distributed;
+        }).length;
+        const pct = Math.min(100, Math.round((n / TOTAL_MEMBERS) * 100));
+        document.getElementById('gear-progress-label').innerHTML =
+          '<strong>' + n + '</strong> of ' + TOTAL_MEMBERS + ' members distributed';
+        document.getElementById('gear-progress-pct').textContent = pct + '%';
+        document.getElementById('gear-progress-fill').style.width = pct + '%';
+      }
+
+      function statusLabel(r) {
+        if (r.distributed) {
+          const iso = r.distributed_at;
+          const d = iso ? IMA.formatDate(iso) : '—';
+          return '<span style="color:#4ade80">Distributed</span><br /><span style="font-size:12px;color:#888">' + escapeHtml(d) + '</span>';
+        }
+        if (sizesComplete(r)) {
+          return '<span style="color:var(--cyan)">Ready</span>';
+        }
+        return '<span style="color:#fbbf24">Sizes needed</span>';
+      }
+
+      function render() {
+        renderProgress();
+        const body = document.querySelector('#tbl tbody');
+        const list = filteredRows();
+        list.sort(function (a, b) {
+          return String(a.member_name || '').localeCompare(String(b.member_name || ''), undefined, { sensitivity: 'base' });
+        });
+        document.getElementById('empty-hint').style.display = list.length ? 'none' : 'block';
+        body.innerHTML = list
+          .map(function (r) {
+            const done = r.distributed ? ' class="gear-row-done"' : '';
+            const gid = escapeHtml(String(r.id));
+            const g = r.gloves_size && String(r.gloves_size).trim() ? String(r.gloves_size).trim() : '';
+            const sh = r.shirt_size && String(r.shirt_size).trim() ? String(r.shirt_size).trim() : '';
+            const so = r.shorts_size && String(r.shorts_size).trim() ? String(r.shorts_size).trim() : '';
+            const bag = r.bag_included ? ' checked' : '';
+            const distBtn = r.distributed
+              ? '<span style="color:#888;font-size:12px">Done</span>'
+              : '<button type="button" class="btn-ghost" data-act="distribute">Mark distributed</button>';
+            return (
+              '<tr data-id="' +
+              gid +
+              '"' +
+              done +
+              '><td>' +
+              escapeHtml(r.member_name || '') +
+              '</td><td><select class="input input-inline gear-inline-size" data-field="gloves_size" data-id="' +
+              gid +
+              '" ' +
+              (r.distributed ? 'disabled' : '') +
+              '>' +
+              sizeOptionsHtml(g) +
+              '</select></td><td><select class="input input-inline gear-inline-size" data-field="shirt_size" data-id="' +
+              gid +
+              '" ' +
+              (r.distributed ? 'disabled' : '') +
+              '>' +
+              sizeOptionsHtml(sh) +
+              '</select></td><td><select class="input input-inline gear-inline-size" data-field="shorts_size" data-id="' +
+              gid +
+              '" ' +
+              (r.distributed ? 'disabled' : '') +
+              '>' +
+              sizeOptionsHtml(so) +
+              '</select></td><td class="gear-bag-cell"><input type="checkbox" class="gear-inline-bag" data-id="' +
+              gid +
+              '" ' +
+              bag +
+              (r.distributed ? ' disabled' : '') +
+              ' /></td><td>' +
+              statusLabel(r) +
+              '</td><td style="white-space:nowrap">' +
+              '<button type="button" class="btn-ghost" data-act="edit">Edit</button> ' +
+              distBtn +
+              '</td></tr>'
+            );
+          })
+          .join('');
+      }
+
+      async function patchRow(id, patch) {
+        const { error } = await state.sb.from('gear_distribution').update(patch).eq('id', id);
+        if (error) throw error;
+        await reload();
+      }
+
+      async function reload() {
+        const { data, error } = await state.sb
+          .from('gear_distribution')
+          .select('*')
+          .eq('studio_id', STUDIO_ID)
+          .order('member_name');
+        if (error) throw error;
+        state.rows = data || [];
+        render();
+      }
+
+      function openEditModal(row) {
+        document.getElementById('fe-id').value = row.id;
+        document.getElementById('fe-name').value = row.member_name || '';
+        setSelectValue(document.getElementById('fe-gloves'), row.gloves_size);
+        setSelectValue(document.getElementById('fe-shirt'), row.shirt_size);
+        setSelectValue(document.getElementById('fe-shorts'), row.shorts_size);
+        document.getElementById('fe-bag').checked = !!row.bag_included;
+        document.getElementById('fe-notes').value = row.notes || '';
+        modalOpen(document.getElementById('modal-edit'), true);
+        document.getElementById('fe-name').focus();
+      }
+
+      function closeEditModal() {
+        modalOpen(document.getElementById('modal-edit'), false);
+      }
+
+      function openAddModal() {
+        document.getElementById('fa-name').value = '';
+        setSelectValue(document.getElementById('fa-gloves'), '');
+        setSelectValue(document.getElementById('fa-shirt'), '');
+        setSelectValue(document.getElementById('fa-shorts'), '');
+        document.getElementById('fa-bag').checked = false;
+        modalOpen(document.getElementById('modal-add'), true);
+        document.getElementById('fa-name').focus();
+      }
+
+      function closeAddModal() {
+        modalOpen(document.getElementById('modal-add'), false);
+      }
+
+      async function boot() {
+        const ctx = await requireAdmin();
+        if (!ctx) return;
+        state.sb = await IMA.getSupabase();
+        fillStaticSelects();
+
+        const mEdit = bindModal('modal-edit', closeEditModal);
+        const mAdd = bindModal('modal-add', closeAddModal);
+        document.getElementById('fe-cancel').onclick = closeEditModal;
+        document.getElementById('fa-cancel').onclick = closeAddModal;
+
+        document.getElementById('btn-add').onclick = openAddModal;
+
+        document.querySelectorAll('.gear-filter-btn').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            state.filter = btn.getAttribute('data-filter') || 'all';
+            document.querySelectorAll('.gear-filter-btn').forEach(function (b) {
+              b.classList.toggle('gear-filter-active', b.getAttribute('data-filter') === state.filter);
+            });
+            render();
+          });
+        });
+
+        document.getElementById('flt-q').addEventListener('input', render);
+
+        document.getElementById('form-edit').onsubmit = async function (ev) {
+          ev.preventDefault();
+          const id = document.getElementById('fe-id').value;
+          const name = document.getElementById('fe-name').value.trim();
+          const g = document.getElementById('fe-gloves').value.trim() || null;
+          const sh = document.getElementById('fe-shirt').value.trim() || null;
+          const so = document.getElementById('fe-shorts').value.trim() || null;
+          const bag = document.getElementById('fe-bag').checked;
+          const notes = document.getElementById('fe-notes').value.trim() || null;
+          try {
+            const { error } = await state.sb
+              .from('gear_distribution')
+              .update({
+                member_name: name,
+                gloves_size: g,
+                shirt_size: sh,
+                shorts_size: so,
+                bag_included: bag,
+                notes: notes,
+              })
+              .eq('id', id);
+            if (error) throw error;
+            showBanner('Saved.', true);
+            closeEditModal();
+            await reload();
+          } catch (e) {
+            showBanner(e.message || String(e), false);
+          }
+        };
+
+        document.getElementById('form-add').onsubmit = async function (ev) {
+          ev.preventDefault();
+          const name = document.getElementById('fa-name').value.trim();
+          const g = document.getElementById('fa-gloves').value.trim() || null;
+          const sh = document.getElementById('fa-shirt').value.trim() || null;
+          const so = document.getElementById('fa-shorts').value.trim() || null;
+          const bag = document.getElementById('fa-bag').checked;
+          try {
+            const { error } = await state.sb.from('gear_distribution').insert({
+              studio_id: STUDIO_ID,
+              member_name: name,
+              gloves_size: g,
+              shirt_size: sh,
+              shorts_size: so,
+              bag_included: bag,
+              distributed: false,
+            });
+            if (error) throw error;
+            showBanner('Member added.', true);
+            closeAddModal();
+            await reload();
+          } catch (e) {
+            showBanner(e.message || String(e), false);
+          }
+        };
+
+        document.querySelector('#tbl tbody').addEventListener('change', async function (ev) {
+          const sel = ev.target.closest('.gear-inline-size');
+          if (sel && !sel.disabled) {
+            const id = sel.getAttribute('data-id');
+            const field = sel.getAttribute('data-field');
+            const val = sel.value.trim() || null;
+            try {
+              await patchRow(id, (function () {
+                const p = {};
+                p[field] = val;
+                return p;
+              })());
+            } catch (e) {
+              showBanner(e.message || String(e), false);
+              await reload();
+            }
+            return;
+          }
+          const bagEl = ev.target.closest('.gear-inline-bag');
+          if (bagEl && !bagEl.disabled) {
+            const id = bagEl.getAttribute('data-id');
+            try {
+              await patchRow(id, { bag_included: bagEl.checked });
+            } catch (e) {
+              showBanner(e.message || String(e), false);
+              await reload();
+            }
+          }
+        });
+
+        document.querySelector('#tbl tbody').addEventListener('click', async function (ev) {
+          const btn = ev.target.closest('[data-act]');
+          if (!btn) return;
+          const tr = btn.closest('tr[data-id]');
+          if (!tr) return;
+          const id = tr.getAttribute('data-id');
+          const row = state.rows.find(function (r) {
+            return String(r.id) === String(id);
+          });
+          if (!row) return;
+          const act = btn.getAttribute('data-act');
+          if (act === 'edit') openEditModal(row);
+          if (act === 'distribute') {
+            if (row.distributed) return;
+            if (!confirm('Mark gear as distributed for “' + (row.member_name || 'member') + '” ?')) return;
+            try {
+              await patchRow(id, { distributed: true, distributed_at: new Date().toISOString() });
+              showBanner('Marked distributed.', true);
+            } catch (e) {
+              showBanner(e.message || String(e), false);
+            }
+          }
+        });
+
+        document.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Escape') {
+            if (mEdit.classList.contains('open')) closeEditModal();
+            if (mAdd.classList.contains('open')) closeAddModal();
+          }
+        });
+
+        await reload();
+      }
+
+      boot().catch(function (e) {
+        showBanner(e.message || String(e), false);
+      });
+    })();
+  </script>
+</body>
+</html>

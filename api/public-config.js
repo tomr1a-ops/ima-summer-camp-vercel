@@ -40,10 +40,15 @@ module.exports = async (req, res) => {
   ).trim();
 
   setNoStoreJsonHeaders(res);
+  const studioId = String(
+    process.env.NEXT_PUBLIC_STUDIO_ID || process.env.STUDIO_ID || process.env.PUBLIC_STUDIO_ID || ''
+  ).trim();
+
   res.status(200).json({
     url: u,
     anonKey: anonKey.trim(),
     authProvidersHelpUrl: authProvidersHelpUrl(u),
     stripePublishableKey,
+    studioId,
   });
 };

@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>System Health — IMA Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/ima-theme.css" />
+  <style>
+    .admin-layout {
+      display: flex;
+      min-height: calc(100vh - 64px);
+      position: relative;
+      z-index: 1;
+    }
+    .admin-sidebar {
+      width: 220px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      background: var(--card2);
+      padding: 20px 0;
+    }
+    .admin-sidebar a {
+      display: block;
+      padding: 10px 20px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      font-family: var(--font-cond);
+    }
+    .admin-sidebar a:hover { color: var(--cyan); }
+    .admin-sidebar a.active {
+      color: var(--cyan);
+      box-shadow: inset 3px 0 0 var(--cyan);
+      background: var(--cyan-gl);
+    }
+    .admin-content {
+      flex: 1;
+      padding: 24px 20px 48px;
+      max-width: 960px;
+    }
+    .health-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .health-check-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 10px;
+      background: var(--card);
+    }
+    .health-check-row.bad { border-color: rgba(255, 107, 107, 0.45); }
+    .health-check-row.good { border-color: rgba(34, 197, 94, 0.35); }
+    .health-emoji { font-size: 20px; line-height: 1.2; }
+    .health-meta { flex: 1; min-width: 0; }
+    .health-name { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+    .health-count { font-size: 13px; color: var(--muted); }
+    .health-ai {
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--text);
+      padding: 8px 10px;
+      background: rgba(51, 68, 255, 0.12);
+      border-radius: 6px;
+      border-left: 3px solid var(--blue);
+    }
+    .badge-recurring {
+      display: inline-flex;
+      align-items: center;
+      margin-left: 8px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      background: rgba(245, 158, 11, 0.25);
+      color: #fbbf24;
+    }
+    .settings-grid {
+      display: grid;
+      gap: 16px;
+      max-width: 520px;
+    }
+    .settings-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .settings-row label { font-size: 14px; color: var(--text); }
+    @media (max-width: 720px) {
+      .admin-layout { flex-direction: column; }
+      .admin-sidebar {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0;
+        padding: 12px;
+      }
+      .admin-sidebar a { padding: 8px 14px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="/admin.html">
+      <img src="/logo.png" alt="" />
+      <span>Admin · System Health</span>
+    </a>
+    <div class="app-actions">
+      <button type="button" class="btn-ghost" id="btn-portal">Camp site</button>
+      <button type="button" class="btn-ghost" id="btn-out">Log out</button>
+    </div>
+  </header>
+
+  <div class="admin-layout">
+    <aside class="admin-sidebar" aria-label="Admin navigation">
+      <a href="/admin.html">Dashboard</a>
+      <a href="/admin/inventory.html">Inventory</a>
+      <a href="/admin/gear-distribution.html">Gear</a>
+      <a class="active" href="/admin/system-health">System Health</a>
+    </aside>
+    <div class="admin-content">
+      <div id="banner" class="msg" style="margin-bottom:18px"></div>
+
+      <div class="panel" id="panel-recurring" style="margin-bottom:18px;display:none">
+        <div class="panel-head">Recurring issues</div>
+        <div class="panel-body" id="recurring-body"></div>
+      </div>
+
+      <div class="panel" style="margin-bottom:18px">
+        <div class="panel-head">Recently resolved</div>
+        <div class="panel-body" id="resolved-body">
+          <p class="empty-hint" style="margin:0">No resolved entries yet.</p>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:18px">
+        <div class="panel-head">Checks</div>
+        <div class="panel-body">
+          <div class="health-actions">
+            <button type="button" class="btn-primary" id="btn-quick" style="width:auto;margin:0;padding:12px 22px;font-size:15px">Quick Health Check</button>
+            <button type="button" class="btn-ghost" id="btn-full" style="border-color:var(--cyan);color:var(--cyan)">Full Diagnostic</button>
+          </div>
+          <p class="panel-hint" style="margin-bottom:14px">Quick runs SQL counts only. Full adds flow simulations and up to 10 Claude Haiku hints for failed checks.</p>
+          <div id="results-wrap"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">Schedule &amp; alerts</div>
+        <div class="panel-body">
+          <p class="panel-hint" style="margin-bottom:16px">Saved to <code style="color:var(--cyan)">app_settings.system_health_schedule</code>. Supabase pg_cron can POST to <code style="color:var(--cyan)">/api/system-health</code> hourly; the API applies these intervals.</p>
+          <div class="settings-grid">
+            <div class="settings-row">
+              <label for="sch-quick-on">Auto-run Quick Check</label>
+              <input type="checkbox" id="sch-quick-on" />
+            </div>
+            <div class="settings-row">
+              <label for="sch-quick-freq">Quick frequency</label>
+              <select class="input input-inline" id="sch-quick-freq" style="margin:0;min-width:200px">
+                <option value="hourly">Every hour</option>
+                <option value="6h">Every 6 hours</option>
+                <option value="12h">Every 12 hours</option>
+                <option value="daily">Daily</option>
+                <option value="manual">Manual only</option>
+              </select>
+            </div>
+            <div class="settings-row">
+              <label for="sch-full-on">Auto-run Full Diagnostic</label>
+              <input type="checkbox" id="sch-full-on" />
+            </div>
+            <div class="settings-row">
+              <label for="sch-full-freq">Full frequency</label>
+              <select class="input input-inline" id="sch-full-freq" style="margin:0;min-width:200px">
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="manual">Manual only</option>
+              </select>
+            </div>
+            <div class="settings-row">
+              <label for="sch-email-on">Email alert on failure</label>
+              <input type="checkbox" id="sch-email-on" />
+            </div>
+            <div>
+              <label class="label" for="sch-email-addr">Alert email</label>
+              <input type="email" class="input" id="sch-email-addr" placeholder="ops@example.com" autocomplete="email" />
+            </div>
+            <button type="button" class="btn-primary" id="btn-save-schedule" style="width:auto;margin-top:8px;padding:12px 22px;font-size:15px">Save schedule</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/ima-core.js?v=20260408"></script>
+  <script>
+    (function () {
+      var banner = document.getElementById('banner');
+      var recurringPanel = document.getElementById('panel-recurring');
+      var recurringBody = document.getElementById('recurring-body');
+      var resolvedBody = document.getElementById('resolved-body');
+      var resultsWrap = document.getElementById('results-wrap');
+      var state = { schedule: {}, recurring: [], cache: null };
+
+      function showBanner(text, ok) {
+        if (!text) {
+          banner.className = 'msg';
+          banner.textContent = '';
+          return;
+        }
+        banner.textContent = text;
+        banner.className = 'msg show ' + (ok ? 'ok' : 'error');
+      }
+
+      function escapeHtml(s) {
+        return String(s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      async function api(method, body) {
+        var tok = await IMA.refreshSessionForApi();
+        var at = tok && tok.accessToken ? tok.accessToken : null;
+        if (!at) throw new Error('Not signed in');
+        var opts = { method: method, headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' }, cache: 'no-store' };
+        if (body != null) opts.body = JSON.stringify(body);
+        var res = await fetch('/api/system-health', opts);
+        var j = {};
+        try { j = await res.json(); } catch (e) { void e; }
+        if (!res.ok) throw new Error(j.error || res.statusText || 'Request failed');
+        return j;
+      }
+
+      function applyScheduleToForm(sch) {
+        document.getElementById('sch-quick-on').checked = !!sch.quickEnabled;
+        document.getElementById('sch-full-on').checked = !!sch.fullEnabled;
+        document.getElementById('sch-email-on').checked = !!sch.emailOnFailure;
+        document.getElementById('sch-quick-freq').value = sch.quickFrequency || 'manual';
+        document.getElementById('sch-full-freq').value = sch.fullFrequency || 'manual';
+        document.getElementById('sch-email-addr').value = sch.alertEmail || '';
+      }
+
+      function readScheduleFromForm() {
+        return {
+          quickEnabled: document.getElementById('sch-quick-on').checked,
+          quickFrequency: document.getElementById('sch-quick-freq').value,
+          fullEnabled: document.getElementById('sch-full-on').checked,
+          fullFrequency: document.getElementById('sch-full-freq').value,
+          emailOnFailure: document.getElementById('sch-email-on').checked,
+          alertEmail: document.getElementById('sch-email-addr').value.trim(),
+        };
+      }
+
+      function recurringSet() {
+        var m = {};
+        (state.recurring || []).forEach(function (r) {
+          m[r.check_name] = r.failure_count;
+        });
+        return m;
+      }
+
+      function renderRecurring() {
+        var list = state.recurring || [];
+        if (!list.length) {
+          recurringPanel.style.display = 'none';
+          return;
+        }
+        recurringPanel.style.display = '';
+        recurringBody.innerHTML = list
+          .map(function (r) {
+            return (
+              '<p style="margin:6px 0"><strong>' +
+              escapeHtml(r.check_name) +
+              '</strong> — ' +
+              String(r.failure_count) +
+              ' unresolved failures <span class="badge-recurring">Recurring</span></p>'
+            );
+          })
+          .join('');
+      }
+
+      function renderResolved(rows) {
+        if (!rows || !rows.length) {
+          resolvedBody.innerHTML = '<p class="empty-hint" style="margin:0">No resolved entries yet.</p>';
+          return;
+        }
+        resolvedBody.innerHTML = rows
+          .map(function (r) {
+            return (
+              '<p style="margin:6px 0;font-size:14px"><strong>' +
+              escapeHtml(r.check_name) +
+              '</strong> · count was ' +
+              escapeHtml(String(r.count_result != null ? r.count_result : '—')) +
+              ' · <span style="color:var(--muted)">' +
+              escapeHtml(r.resolved_at ? new Date(r.resolved_at).toLocaleString() : '') +
+              '</span></p>'
+            );
+          })
+          .join('');
+      }
+
+      function renderResults(payload, recurringMap) {
+        recurringMap = recurringMap || {};
+        if (!payload || !payload.checks) {
+          resultsWrap.innerHTML = '';
+          return;
+        }
+        var parts = [];
+        parts.push('<h4 style="margin:12px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted)">SQL checks</h4>');
+        payload.checks.forEach(function (c) {
+          parts.push(renderOneRow(c, recurringMap));
+        });
+        if (payload.flows && payload.flows.length) {
+          parts.push('<h4 style="margin:20px 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted)">Flow simulations</h4>');
+          payload.flows.forEach(function (c) {
+            parts.push(renderOneRow(c, recurringMap));
+          });
+        }
+        parts.push(
+          '<p style="margin-top:14px;font-size:12px;color:var(--muted)">Run at ' +
+            escapeHtml(payload.at || '') +
+            ' · type ' +
+            escapeHtml(payload.type || '') +
+            '</p>'
+        );
+        resultsWrap.innerHTML = parts.join('');
+      }
+
+      function renderOneRow(c, recurringMap) {
+        var ok = !!c.ok || !!c.skipped;
+        var cls = ok ? 'good' : 'bad';
+        var emoji = ok ? '✅' : '❌';
+        var countPart =
+          c.skipped && ok
+            ? 'skipped (prerequisite failed)'
+            : c.error
+              ? 'error: ' + escapeHtml(c.error)
+              : 'count: ' + (c.count == null ? '—' : escapeHtml(String(c.count)));
+        var rec =
+          !ok && recurringMap[c.name] >= 3
+            ? ' <span class="badge-recurring">Recurring issue</span>'
+            : '';
+        var ai =
+          !ok && c.ai_diagnosis
+            ? '<div class="health-ai">' + escapeHtml(c.ai_diagnosis) + '</div>'
+            : '';
+        return (
+          '<div class="health-check-row ' +
+          cls +
+          '"><span class="health-emoji">' +
+          emoji +
+          '</span><div class="health-meta"><div class="health-name">' +
+          escapeHtml(c.name) +
+          rec +
+          '</div><div class="health-count">' +
+          countPart +
+          ' · table <code style="color:var(--cyan)">' +
+          escapeHtml(c.table || '') +
+          '</code></div>' +
+          ai +
+          '</div></div>'
+        );
+      }
+
+      function showCached() {
+        var c = state.cache || {};
+        var quick = c.quick;
+        var full = c.full;
+        var show = full && full.at && (!quick || new Date(full.at) >= new Date(quick.at || 0)) ? full : quick;
+        if (show && show.checks) {
+          renderResults(show, recurringSet());
+        } else {
+          resultsWrap.innerHTML = '<p class="empty-hint" style="margin:0">Run a check to see results. Cached data loads from the server.</p>';
+        }
+      }
+
+      async function loadDashboard() {
+        var data = await api('GET');
+        state.schedule = data.schedule || {};
+        state.cache = data.cache || {};
+        state.recurring = data.recurringIssues || [];
+        applyScheduleToForm(state.schedule);
+        renderRecurring();
+        renderResolved(data.recentlyResolved || []);
+        showCached();
+      }
+
+      async function requireAdmin() {
+        var session = await IMA.requireAuth('/admin-login.html');
+        if (!session) return null;
+        var profile = await IMA.getProfile();
+        if (!profile) {
+          showBanner('No profile found.', false);
+          window.location.replace('/index.html#schedule');
+          return null;
+        }
+        var em = String(session.user && session.user.email ? session.user.email : '').toLowerCase();
+        if (profile.role !== 'admin' && !IMA.isAdminLoginEmail(em)) {
+          showBanner('Admin access only.', false);
+          window.location.replace('/index.html#schedule');
+          return null;
+        }
+        return true;
+      }
+
+      document.getElementById('btn-out').onclick = function () {
+        IMA.signOut('/admin-login.html');
+      };
+      document.getElementById('btn-portal').onclick = function () {
+        window.location.href = '/index.html#schedule';
+      };
+
+      document.getElementById('btn-quick').onclick = async function () {
+        var btn = this;
+        btn.disabled = true;
+        showBanner('', true);
+        try {
+          var out = await api('POST', { type: 'quick' });
+          state.recurring = (out.result && out.result.recurring) || state.recurring;
+          renderResults(out.result, recurringSet());
+          renderRecurring();
+          renderResolved((out.result && out.result.recentlyResolved) || []);
+          var d = await api('GET');
+          state.cache = d.cache;
+          state.recurring = d.recurringIssues || [];
+          renderRecurring();
+          renderResolved(d.recentlyResolved || []);
+          showCached();
+          showBanner('Quick check complete.', true);
+        } catch (e) {
+          showBanner(e.message || 'Failed', false);
+        }
+        btn.disabled = false;
+      };
+
+      document.getElementById('btn-full').onclick = async function () {
+        var btn = this;
+        btn.disabled = true;
+        showBanner('', true);
+        try {
+          var out = await api('POST', { type: 'full' });
+          state.recurring = (out.result && out.result.recurring) || state.recurring;
+          renderResults(out.result, recurringSet());
+          renderRecurring();
+          renderResolved((out.result && out.result.recentlyResolved) || []);
+          var d = await api('GET');
+          state.cache = d.cache;
+          state.recurring = d.recurringIssues || [];
+          renderRecurring();
+          renderResolved(d.recentlyResolved || []);
+          showCached();
+          showBanner('Full diagnostic complete.', true);
+        } catch (e) {
+          showBanner(e.message || 'Failed', false);
+        }
+        btn.disabled = false;
+      };
+
+      document.getElementById('btn-save-schedule').onclick = async function () {
+        var btn = this;
+        btn.disabled = true;
+        try {
+          var sch = readScheduleFromForm();
+          await api('POST', { action: 'saveSchedule', schedule: sch });
+          state.schedule = sch;
+          showBanner('Schedule saved.', true);
+        } catch (e) {
+          showBanner(e.message || 'Failed', false);
+        }
+        btn.disabled = false;
+      };
+
+      (async function init() {
+        if (!(await requireAdmin())) return;
+        try {
+          await IMA.loadPublicConfig();
+          await loadDashboard();
+        } catch (e) {
+          showBanner(e.message || 'Could not load', false);
+        }
+      })();
+    })();
+  </script>
+</body>
+</html>

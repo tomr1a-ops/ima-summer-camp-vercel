@@ -5,6 +5,40 @@
   let clientPromise = null;
   let createClientFn = null;
   let publicConfigPromise = null;
+  let loadSupabasePromise = null;
+
+  const SUPABASE_ESM_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.48.1/+esm';
+  const SUPABASE_UMD_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.48.1/dist/umd/supabase.min.js';
+
+  function getCreateClientFromGlobal() {
+    const s = g.supabase;
+    if (!s) return null;
+    if (typeof s.createClient === 'function') return s.createClient;
+    return null;
+  }
+
+  /** localStorage is blocked in some private / strict mobile modes; use memory so sign-in still works for the session. */
+  function getAuthStorage() {
+    try {
+      const t = '__ima_sb_ls__';
+      g.localStorage.setItem(t, '1');
+      g.localStorage.removeItem(t);
+      return g.localStorage;
+    } catch (e) {
+      const mem = Object.create(null);
+      return {
+        getItem: function (k) {
+          return Object.prototype.hasOwnProperty.call(mem, k) ? mem[k] : null;
+        },
+        setItem: function (k, v) {
+          mem[k] = String(v);
+        },
+        removeItem: function (k) {
+          delete mem[k];
+        },
+      };
+    }
+  }
 
   g.IMA.loadPublicConfig = async function () {
     if (!publicConfigPromise) {
@@ -27,8 +61,48 @@
 
   g.IMA.loadSupabase = async function () {
     if (createClientFn) return;
-    const mod = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.48.1/+esm');
-    createClientFn = mod.createClient;
+    if (!loadSupabasePromise) {
+      loadSupabasePromise = (async function () {
+        try {
+          const mod = await import(SUPABASE_ESM_URL);
+          if (mod && typeof mod.createClient === 'function') {
+            createClientFn = mod.createClient;
+            return;
+          }
+        } catch (e1) {
+          void e1;
+        }
+        let fn = getCreateClientFromGlobal();
+        if (fn) {
+          createClientFn = fn;
+          return;
+        }
+        await new Promise(function (resolve, reject) {
+          const s = document.createElement('script');
+          s.src = SUPABASE_UMD_URL;
+          s.async = true;
+          s.crossOrigin = 'anonymous';
+          s.onload = function () {
+            fn = getCreateClientFromGlobal();
+            if (fn) {
+              createClientFn = fn;
+              resolve();
+            } else {
+              reject(new Error('Supabase loaded but sign-in library is incomplete.'));
+            }
+          };
+          s.onerror = function () {
+            reject(
+              new Error(
+                'Could not load sign-in (network or browser restriction). Try Safari/Chrome outside an in-app browser, or check your connection.'
+              )
+            );
+          };
+          document.head.appendChild(s);
+        });
+      })();
+    }
+    await loadSupabasePromise;
   };
 
   g.IMA.getSupabase = async function () {
@@ -46,7 +120,7 @@
           persistSession: true,
           autoRefreshToken: true,
           detectSessionInUrl: true,
-          storage: g.localStorage,
+          storage: getAuthStorage(),
         },
       });
     })();

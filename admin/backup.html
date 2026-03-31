@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Backup &amp; Recovery — IMA Summer Camp</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/ima-theme.css" />
+  <style>
+    .backup-grid { display: grid; gap: 20px; max-width: 960px; }
+    .backup-section { background: var(--panel-bg, #fff); border-radius: 12px; padding: 20px 22px; border: 1px solid rgba(0,0,0,.08); }
+    .backup-section h2 { margin: 0 0 8px; font-family: var(--font-display, 'Bebas Neue', sans-serif); font-size: 1.5rem; letter-spacing: .04em; }
+    .backup-hint { color: #6b7280; font-size: 13px; margin-bottom: 16px; line-height: 1.45; }
+    .table-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 16px; max-height: 220px; overflow: auto; padding: 12px; background: #f9fafb; border-radius: 8px; margin-top: 12px; }
+    .table-list label { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+    .progress-line { font-size: 13px; font-family: ui-monospace, monospace; margin: 4px 0; color: #374151; }
+    .progress-line.ok { color: #059669; }
+    .progress-line.err { color: #dc2626; }
+    #restore-preview { background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 14px; margin: 12px 0; font-size: 14px; }
+    .warn-box { background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; padding: 14px; margin: 12px 0; font-size: 14px; color: #92400e; }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <a class="brand" href="/admin.html">
+      <img src="/logo.png" alt="" />
+      <span>Admin · Backup</span>
+    </a>
+    <div class="app-actions">
+      <a class="btn-ghost" href="/admin.html">Dashboard</a>
+      <a class="btn-ghost" href="/admin/inventory.html">Inventory</a>
+      <a class="btn-ghost" href="/admin/gear-distribution.html">Gear</a>
+      <a class="btn-ghost" href="/admin/backup" style="font-weight:700">Backup</a>
+      <button type="button" class="btn-ghost" id="btn-portal">Camp site</button>
+      <button type="button" class="btn-ghost" id="btn-out">Log out</button>
+    </div>
+  </header>
+
+  <main class="app-main backup-grid">
+    <div id="banner" class="msg" style="margin-bottom:0"></div>
+
+    <div class="backup-section">
+      <h2>Create backup</h2>
+      <p class="backup-hint">Exports all configured business tables to one JSON file (server-side, service role). Large databases may take a moment.</p>
+      <button type="button" class="btn-primary" id="btn-create" style="width:auto;padding:12px 24px">Create backup</button>
+      <p id="create-status" style="margin-top:12px;font-size:13px;color:#6b7280"></p>
+    </div>
+
+    <div class="backup-section">
+      <h2>Backup history</h2>
+      <p class="backup-hint">Last 10 backups logged in Supabase. Download runs a fresh export (same as Create backup).</p>
+      <div class="table-wrap">
+        <table class="data" id="tbl-history">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Tables</th>
+              <th>Total rows</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="backup-section">
+      <h2>Auto-backup</h2>
+      <p class="backup-hint">Saved to <code>app_settings.backup_schedule</code>. Use Vercel Cron hitting <code>/api/backup-cron</code> with <code>Authorization: Bearer CRON_SECRET</code> (hourly recommended). Email requires <code>RESEND_API_KEY</code> on the server.</p>
+      <label style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <input type="checkbox" id="sch-enabled" />
+        <span>Enable auto-backup</span>
+      </label>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:12px">
+        <label>Frequency
+          <select class="input input-inline" id="sch-frequency" style="margin-left:8px">
+            <option value="manual">Manual only</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+          </select>
+        </label>
+        <label>Time (UTC)
+          <select class="input input-inline" id="sch-time" style="margin-left:8px">
+            <option value="00:00">Midnight</option>
+            <option value="02:00">2:00</option>
+            <option value="06:00">6:00</option>
+          </select>
+        </label>
+      </div>
+      <label style="display:block;margin-bottom:8px">Email backup file to</label>
+      <input type="email" class="input" id="sch-email" placeholder="ops@example.com" style="max-width:360px;margin-bottom:12px" />
+      <button type="button" class="btn-primary" id="btn-save-schedule" style="width:auto;padding:10px 20px">Save settings</button>
+      <p id="sch-status" style="margin-top:10px;font-size:13px;color:#6b7280"></p>
+    </div>
+
+    <div class="backup-section">
+      <h2>Restore from backup</h2>
+      <p class="backup-hint">Upload a JSON file produced by this tool. Restore uses UPSERT (existing rows updated, new rows inserted). Nothing is deleted.</p>
+      <input type="file" id="restore-file" accept=".json,application/json" />
+      <div id="restore-preview" style="display:none"></div>
+      <div class="warn-box">
+        <strong>Warning:</strong> This will modify live data in Supabase. Confirm only if you trust this file.
+      </div>
+      <label style="display:flex;align-items:center;gap:10px;margin:12px 0">
+        <input type="checkbox" id="restore-ack" />
+        <span>I understand this will modify live data</span>
+      </label>
+      <p style="font-size:13px;color:#6b7280;margin-bottom:8px">Select tables to restore (leave all checked for full restore):</p>
+      <div class="table-list" id="table-checkboxes"></div>
+      <button type="button" class="btn-primary" id="btn-preview" style="width:auto;margin-top:12px;margin-right:10px;padding:10px 18px">Preview</button>
+      <button type="button" class="btn-primary" id="btn-restore" style="width:auto;margin-top:12px;padding:10px 18px;background:#b45309;border-color:#b45309" disabled>Confirm restore</button>
+      <div id="restore-progress" style="margin-top:16px"></div>
+    </div>
+  </main>
+
+  <script src="/js/ima-core.js?v=20260408"></script>
+  <script>
+    (function () {
+      var banner = document.getElementById('banner');
+      var exportTables = [];
+      var parsedBackup = null;
+
+      function showBanner(text, ok) {
+        if (!text) { banner.className = 'msg'; banner.textContent = ''; return; }
+        banner.textContent = text;
+        banner.className = 'msg show ' + (ok ? 'ok' : 'error');
+      }
+
+      async function authHeader() {
+        var r = await IMA.refreshSessionForApi();
+        if (!r.accessToken) throw new Error('Not signed in');
+        return { Authorization: 'Bearer ' + r.accessToken, 'Content-Type': 'application/json' };
+      }
+
+      async function requireAdmin() {
+        var session = await IMA.requireAuth('/admin-login.html');
+        if (!session) return null;
+        var profile = await IMA.getProfile();
+        if (!profile) { window.location.replace('/index.html#schedule'); return null; }
+        var em = String(session.user && session.user.email ? session.user.email : '').toLowerCase();
+        if (profile.role !== 'admin' && !IMA.isAdminLoginEmail(em)) {
+          showBanner('Admin access only.', false);
+          window.location.replace('/index.html#schedule');
+          return null;
+        }
+        return true;
+      }
+
+      async function apiGet(path) {
+        var h = await authHeader();
+        var res = await fetch(path, { headers: { Authorization: h.Authorization } });
+        var j = await res.json().catch(function () { return {}; });
+        if (!res.ok) throw new Error(j.error || res.statusText);
+        return j;
+      }
+
+      async function apiPost(body) {
+        var h = await authHeader();
+        var res = await fetch('/api/backup', {
+          method: 'POST',
+          headers: h,
+          body: JSON.stringify(body),
+        });
+        return res;
+      }
+
+      async function loadMeta() {
+        var j = await apiGet('/api/backup?meta=1');
+        exportTables = j.export_tables || [];
+        var wrap = document.getElementById('table-checkboxes');
+        wrap.innerHTML = '';
+        exportTables.forEach(function (t) {
+          var id = 'tbl-' + t;
+          var lab = document.createElement('label');
+          lab.innerHTML = '<input type="checkbox" class="tbl-pick" value="' + t + '" checked id="' + id + '"> ' + t;
+          wrap.appendChild(lab);
+        });
+      }
+
+      function selectedTables() {
+        var boxes = document.querySelectorAll('.tbl-pick:checked');
+        return Array.prototype.map.call(boxes, function (b) { return b.value; });
+      }
+
+      async function loadHistory() {
+        var j = await apiGet('/api/backup');
+        var tb = document.querySelector('#tbl-history tbody');
+        tb.innerHTML = '';
+        (j.history || []).forEach(function (row) {
+          var tr = document.createElement('tr');
+          tr.innerHTML =
+            '<td>' + IMA.formatDate(row.created_at) + '</td>' +
+            '<td>' + (row.table_count != null ? row.table_count : '—') + '</td>' +
+            '<td>' + (row.total_rows != null ? row.total_rows : '—') + '</td>' +
+            '<td>' + String(row.status || '') + '</td>' +
+            '<td><button type="button" class="btn-ghost dl-backup" style="padding:6px 12px;font-size:12px">Download</button></td>';
+          tr.querySelector('.dl-backup').onclick = runCreateBackup;
+          tb.appendChild(tr);
+        });
+      }
+
+      async function loadScheduleUi() {
+        var j = await apiGet('/api/backup?schedule=1');
+        var s = j.schedule || {};
+        document.getElementById('sch-enabled').checked = !!s.enabled;
+        document.getElementById('sch-frequency').value = s.frequency || 'manual';
+        document.getElementById('sch-time').value = s.timeUtc || '06:00';
+        document.getElementById('sch-email').value = s.emailTo || '';
+      }
+
+      async function runCreateBackup() {
+        var st = document.getElementById('create-status');
+        st.textContent = 'Working…';
+        try {
+          var res = await apiPost({ action: 'create' });
+          if (!res.ok) {
+            var errJ = await res.json().catch(function () { return {}; });
+            throw new Error(errJ.error || res.statusText);
+          }
+          var text = await res.text();
+          var blob = new Blob([text], { type: 'application/json' });
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'imaos-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+          a.click();
+          URL.revokeObjectURL(a.href);
+          st.textContent = 'Download started.';
+          showBanner('Backup downloaded.', true);
+          loadHistory();
+        } catch (e) {
+          st.textContent = '';
+          showBanner(e.message || String(e), false);
+        }
+      }
+
+      document.getElementById('btn-create').onclick = runCreateBackup;
+
+      document.getElementById('btn-save-schedule').onclick = async function () {
+        var el = document.getElementById('sch-status');
+        el.textContent = 'Saving…';
+        try {
+          var res = await apiPost({
+            action: 'saveSchedule',
+            schedule: {
+              enabled: document.getElementById('sch-enabled').checked,
+              frequency: document.getElementById('sch-frequency').value,
+              timeUtc: document.getElementById('sch-time').value,
+              emailTo: document.getElementById('sch-email').value.trim(),
+            },
+          });
+          var j = await res.json();
+          if (!res.ok) throw new Error(j.error || res.statusText);
+          el.textContent = 'Saved.';
+          showBanner('Schedule saved.', true);
+        } catch (e) {
+          el.textContent = '';
+          showBanner(e.message || String(e), false);
+        }
+      };
+
+      document.getElementById('restore-file').onchange = function () {
+        parsedBackup = null;
+        document.getElementById('restore-preview').style.display = 'none';
+        document.getElementById('btn-restore').disabled = true;
+        var f = this.files && this.files[0];
+        if (!f) return;
+        var reader = new FileReader();
+        reader.onload = function () {
+          try {
+            parsedBackup = JSON.parse(reader.result);
+            var ack = document.getElementById('restore-ack');
+            document.getElementById('btn-restore').disabled = !ack.checked || !parsedBackup;
+          } catch (e) {
+            showBanner('Invalid JSON file', false);
+            parsedBackup = null;
+            document.getElementById('btn-restore').disabled = true;
+          }
+        };
+        reader.readAsText(f, 'UTF-8');
+      };
+
+      document.getElementById('btn-preview').onclick = async function () {
+        if (!parsedBackup) {
+          showBanner('Choose a backup file first.', false);
+          return;
+        }
+        try {
+          var res = await apiPost({ action: 'preview', data: parsedBackup });
+          var j = await res.json();
+          if (!res.ok) throw new Error(j.error || res.statusText);
+          var p = j.preview;
+          var pv = document.getElementById('restore-preview');
+          pv.style.display = 'block';
+          pv.innerHTML =
+            '<strong>Preview</strong><br>This backup contains <strong>' +
+            p.table_count +
+            '</strong> tables, <strong>' +
+            p.total_rows +
+            '</strong> total rows' +
+            (p.exported_at ? ', created <strong>' + IMA.formatDate(p.exported_at) + '</strong>' : '') +
+            '.';
+          showBanner('Preview ready.', true);
+        } catch (e) {
+          showBanner(e.message || String(e), false);
+        }
+      };
+
+      document.getElementById('btn-restore').onclick = async function () {
+        if (!parsedBackup) {
+          showBanner('Choose a backup file first.', false);
+          return;
+        }
+        if (!document.getElementById('restore-ack').checked) {
+          showBanner('Check the confirmation box to proceed.', false);
+          return;
+        }
+        var tables = selectedTables();
+        if (!tables.length) {
+          showBanner('Select at least one table.', false);
+          return;
+        }
+        var prog = document.getElementById('restore-progress');
+        prog.innerHTML = '<p style="font-size:13px;color:#6b7280">Restoring…</p>';
+        try {
+          var res = await apiPost({
+            action: 'restore',
+            data: parsedBackup,
+            tables: tables,
+          });
+          var j = await res.json();
+          if (!res.ok) {
+            prog.innerHTML = '';
+            (j.progress || []).forEach(function (line) {
+              var d = document.createElement('div');
+              d.className = 'progress-line ' + (line.status === 'ok' ? 'ok' : line.status === 'error' ? 'err' : '');
+              d.textContent = line.table + ': ' + (line.status || '') + (line.done != null ? ' ' + line.done + '/' + line.total : '');
+              prog.appendChild(d);
+            });
+            throw new Error(j.error || 'Restore failed');
+          }
+          prog.innerHTML = '';
+          (j.progress || []).forEach(function (line) {
+            var d = document.createElement('div');
+            d.className = 'progress-line ' + (line.status === 'ok' ? 'ok' : '');
+            d.textContent = line.table + ': ' + line.done + '/' + line.total + ' ✓';
+            prog.appendChild(d);
+          });
+          var sum = document.createElement('p');
+          sum.style.marginTop = '12px';
+          sum.style.fontWeight = '600';
+          sum.textContent = 'Restored ' + j.restoredTables + ' tables, ' + j.restoredRows + ' rows.';
+          prog.appendChild(sum);
+          showBanner(j.summary || 'Restore complete.', true);
+          loadHistory();
+        } catch (e) {
+          showBanner(e.message || String(e), false);
+        }
+      };
+
+      document.getElementById('restore-ack').onchange = function () {
+        document.getElementById('btn-restore').disabled = !this.checked || !parsedBackup;
+      };
+
+      document.getElementById('btn-out').onclick = function () { IMA.signOut('/admin-login.html'); };
+      document.getElementById('btn-portal').onclick = function () { window.location.href = '/index.html#schedule'; };
+
+      (async function init() {
+        if (!(await requireAdmin())) return;
+        try {
+          await loadMeta();
+          await loadHistory();
+          await loadScheduleUi();
+        } catch (e) {
+          showBanner(e.message || String(e), false);
+        }
+      })();
+    })();
+  </script>
+</body>
+</html>

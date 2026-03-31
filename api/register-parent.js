@@ -109,7 +109,6 @@ module.exports = async (req, res) => {
       return json(res, 400, { error: 'Password must be at least 8 characters' });
     }
     if (!fullName) return json(res, 400, { error: 'Full name required' });
-    if (!phone) return json(res, 400, { error: 'Phone required' });
 
     let sb;
     try {

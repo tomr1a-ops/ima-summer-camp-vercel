@@ -49,6 +49,8 @@
         <span class="admin-nav-inv-badge" id="inv-low-badge" hidden aria-hidden="true" title="Items at or below reorder point"></span>
       </a>
       <a class="btn-ghost" href="/admin/gear-distribution.html">Gear</a>
+      <a class="btn-ghost" href="/admin/backup">Backup</a>
+      <a class="btn-ghost" href="/admin/system-health">System Health</a>
       <button type="button" class="btn-ghost" id="btn-portal">Camp site</button>
       <button type="button" class="btn-ghost" id="btn-out">Log out</button>
     </div>
@@ -108,7 +110,7 @@
     </div>
 
     <div class="panel">
-      <div class="panel-head">Week management <span class="panel-hint">· click the <strong>0/35</strong> count (or row) to see who’s registered</span></div>
+      <div class="panel-head">Week management <span class="panel-hint">· count = server totals (all families): max of day counters, enrollment headcount per day, and distinct campers; click count or row for roster</span></div>
       <div class="panel-body" id="week-manage"></div>
     </div>
 
@@ -146,7 +148,7 @@
     </div>
   </main>
 
-  <script src="/js/ima-core.js?v=20260405"></script>
+  <script src="/js/ima-core.js?v=20260408"></script>
   <script>
     (function () {
       const banner = document.getElementById('banner');
@@ -200,17 +202,67 @@
         return data || [];
       }
 
-      /** Max days.current_enrollment per week_id — same source as /api/weeks and portal. */
-      async function loadWeekPeakEnrollmentByWeekId(sb) {
-        const { data, error } = await sb.from('days').select('week_id,current_enrollment');
+      /**
+       * Per-week peak headcount from enrollment rows: each day in day_ids counts once (same day → stacked).
+       * Pending = in Stripe / not finalized yet; confirmed = paid or $0 finalized.
+       */
+      async function loadWeekPeakFromEnrollments(sb, statuses) {
+        var q = sb.from('enrollments').select('week_id, day_ids');
+        if (statuses && statuses.length) q = q.in('status', statuses);
+        const { data, error } = await q;
         if (error) throw error;
-        const peak = {};
+        var perWeekDay = {};
+        (data || []).forEach(function (row) {
+          var wid = row.week_id != null ? String(row.week_id) : '';
+          if (!wid) return;
+          var ids = row.day_ids || [];
+          ids.forEach(function (did) {
+            var dk = String(did);
+            if (!perWeekDay[wid]) perWeekDay[wid] = {};
+            perWeekDay[wid][dk] = (perWeekDay[wid][dk] || 0) + 1;
+          });
+        });
+        var peak = {};
+        Object.keys(perWeekDay).forEach(function (wid) {
+          var m = perWeekDay[wid];
+          var mx = 0;
+          Object.keys(m).forEach(function (dk) {
+            mx = Math.max(mx, m[dk] || 0);
+          });
+          peak[wid] = mx;
+        });
+        return peak;
+      }
+
+      /** Max per-day occupancy from public.days (same signal parent /api/weeks uses for sold-out). */
+      async function loadWeekPeakFromDaysTable(sb) {
+        const { data, error } = await sb.from('days').select('week_id, current_enrollment');
+        if (error) throw error;
+        var peak = {};
         (data || []).forEach(function (d) {
-          const wid = String(d.week_id);
-          const n = Number(d.current_enrollment) || 0;
+          var wid = d.week_id != null ? String(d.week_id) : '';
+          if (!wid) return;
+          var n = Number(d.current_enrollment) || 0;
           peak[wid] = Math.max(peak[wid] || 0, n);
         });
         return peak;
+      }
+
+      /**
+       * Week bar: max(days peak, pending+confirmed enrollment peak) so admin matches the live site
+       * and still shows in-flight checkouts; top cards stay confirmed-only revenue/roster.
+       */
+      async function loadWeekPeakForAdminCapacity(sb) {
+        const [fromDays, fromEnr] = await Promise.all([
+          loadWeekPeakFromDaysTable(sb),
+          loadWeekPeakFromEnrollments(sb, ['pending', 'confirmed']),
+        ]);
+        var ids = new Set([].concat(Object.keys(fromDays), Object.keys(fromEnr)));
+        var out = {};
+        ids.forEach(function (wid) {
+          out[wid] = Math.max(fromDays[wid] || 0, fromEnr[wid] || 0);
+        });
+        return out;
       }
 
       async function loadEnrollments(sb) {
@@ -269,6 +321,15 @@
           if (!r.campers && cmap[r.camper_id]) r.campers = cmap[r.camper_id];
           if (!r.weeks && wmap[r.week_id]) r.weeks = wmap[r.week_id];
         });
+      }
+
+      function applyOverviewFromServer(o) {
+        if (!o) return;
+        document.getElementById('st-kids').textContent = String(o.enrolledCampersConfirmed != null ? o.enrolledCampersConfirmed : 0);
+        document.getElementById('st-rev').textContent = IMA.formatMoney(o.revenueConfirmed != null ? o.revenueConfirmed : 0);
+        document.getElementById('st-enr').textContent = String(o.activeEnrollmentRows != null ? o.activeEnrollmentRows : 0);
+        var stc = document.getElementById('st-cancel');
+        if (stc) stc.textContent = String(o.cancelledRows != null ? o.cancelledRows : 0);
       }
 
       function overviewStats(enr) {
@@ -362,7 +423,7 @@
             Object.keys(distinct).length +
             ' distinct camper(s) with confirmed enrollment · ' +
             activeRoster.length +
-            ' active row(s). Week capacity on the list above uses <strong>days.current_enrollment</strong>.</p>';
+            ' active row(s). The <strong>week list</strong> number is the server max of day counters, per-day enrollment headcount, and distinct campers (pending+confirmed).</p>';
           function rosterTable(title, list) {
             if (!list.length) return '';
             return (
@@ -614,6 +675,27 @@
       }
 
       /**
+       * Full camp dashboard payload with service role (all families). Required when JWT is allowlist-admin
+       * but profiles.role is still parent — browser RLS would hide other enrollments and skew week counts.
+       */
+      async function fetchAdminCampSnapshot() {
+        try {
+          var tok = await IMA.refreshSessionForApi();
+          var at = tok && tok.accessToken ? tok.accessToken : null;
+          if (!at) return null;
+          var res = await fetch('/api/admin-camp-snapshot', {
+            method: 'GET',
+            headers: { Authorization: 'Bearer ' + at },
+            cache: 'no-store',
+          });
+          if (!res.ok) return null;
+          return await res.json();
+        } catch (e) {
+          return null;
+        }
+      }
+
+      /**
        * Reload dashboard from Supabase (initial load + debounced Realtime).
        * @param {{ initial?: boolean }} opts
        */
@@ -621,17 +703,28 @@
         opts = opts || {};
         await refreshInventoryLowBadge(sb);
         state.weeks = await loadWeeks(sb);
-        state.enr = await loadEnrollments(sb);
-        await hydrateCampersWeeks(sb, state.enr);
-        state.parents = await hydrateParents(sb, state.enr);
+        var snap = await fetchAdminCampSnapshot();
+        var peakByWeekId;
+        if (snap && snap.weekCapacity && Array.isArray(snap.enrollments)) {
+          state.enr = snap.enrollments;
+          await hydrateCampersWeeks(sb, state.enr);
+          state.parents =
+            snap.parentsById && typeof snap.parentsById === 'object' ? Object.assign({}, snap.parentsById) : {};
+          peakByWeekId = snap.weekCapacity;
+          applyOverviewFromServer(snap.overview);
+        } else {
+          state.enr = await loadEnrollments(sb);
+          await hydrateCampersWeeks(sb, state.enr);
+          state.parents = await hydrateParents(sb, state.enr);
+          peakByWeekId = await loadWeekPeakForAdminCapacity(sb);
+          overviewStats(state.enr);
+        }
         var shirtCampers = await loadCampersExtraShirtPaid(sb);
         var shirtParentRows = shirtCampers.map(function (c) {
           return { parent_id: c.parent_id };
         });
         var shirtParents = await hydrateParents(sb, shirtParentRows);
         var parentsForShirts = Object.assign({}, state.parents, shirtParents);
-        const peakByWeekId = await loadWeekPeakEnrollmentByWeekId(sb);
-        overviewStats(state.enr);
         renderShirtAddons(shirtCampers, parentsForShirts);
         renderWeekManage(sb, state.weeks, peakByWeekId);
         fillWeekFilterSelect();
@@ -640,11 +733,10 @@
 
       var adminRealtimeBound = false;
       var adminRefreshTimer = null;
+      var adminPollTimer = null;
 
-      function subscribeAdminCampRealtime(sb) {
-        if (adminRealtimeBound) return;
-        adminRealtimeBound = true;
-        function scheduleRefresh() {
+      function createAdminDebouncedRefresh(sb) {
+        return function scheduleAdminRefresh() {
           if (adminRefreshTimer) clearTimeout(adminRefreshTimer);
           adminRefreshTimer = setTimeout(function () {
             adminRefreshTimer = null;
@@ -652,9 +744,14 @@
               console.warn('[admin] live refresh failed', e && e.message ? e.message : e);
             });
           }, 400);
-        }
+        };
+      }
+
+      function subscribeAdminCampRealtime(sb, scheduleAdminRefresh) {
+        if (adminRealtimeBound) return;
+        adminRealtimeBound = true;
         document.addEventListener('visibilitychange', function () {
-          if (document.visibilityState === 'visible') scheduleRefresh();
+          if (document.visibilityState === 'visible') scheduleAdminRefresh();
         });
         var tables = ['enrollments', 'campers', 'days', 'weeks', 'inventory_items'];
         var ch = sb.channel('ima-admin-camp-live');
@@ -663,7 +760,7 @@
             'postgres_changes',
             { event: '*', schema: 'public', table: table },
             function () {
-              scheduleRefresh();
+              scheduleAdminRefresh();
             }
           );
         });
@@ -673,6 +770,11 @@
             console.warn('[admin] Realtime status:', status, err || '');
           }
         });
+        if (!adminPollTimer) {
+          adminPollTimer = setInterval(function () {
+            if (document.visibilityState === 'visible') scheduleAdminRefresh();
+          }, 20000);
+        }
       }
 
       var adminFilterListenersBound = false;
@@ -684,7 +786,8 @@
 
         await refreshAdminData(sb, { initial: true });
         bindRosterModalUiOnce();
-        subscribeAdminCampRealtime(sb);
+        var scheduleAdminRefresh = createAdminDebouncedRefresh(sb);
+        subscribeAdminCampRealtime(sb, scheduleAdminRefresh);
 
         if (!adminFilterListenersBound) {
           adminFilterListenersBound = true;

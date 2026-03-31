@@ -110,6 +110,16 @@ async function requireParent(req) {
   return { user, profile, token };
 }
 
+/** Must match `IMA.ADMIN_LOGIN_EMAILS` in js/ima-core.js (profiles.role may still be parent). */
+const ADMIN_LOGIN_EMAIL_ALLOWLIST = ['tom@imaimpact.com', 'coachshick@imaimpact.com'];
+
+function isAdminLoginEmail(email) {
+  const e = String(email || '')
+    .trim()
+    .toLowerCase();
+  return ADMIN_LOGIN_EMAIL_ALLOWLIST.indexOf(e) !== -1;
+}
+
 async function requireAdmin(req) {
   const { user, token } = await getUserFromRequest(req);
   if (!user) {
@@ -118,7 +128,13 @@ async function requireAdmin(req) {
     throw err;
   }
   const profile = await getProfileForUser(user.id);
-  if (!profile || profile.role !== 'admin') {
+  if (!profile) {
+    const err = new Error('Admin only');
+    err.statusCode = 403;
+    throw err;
+  }
+  const email = resolveUserEmail(user);
+  if (profile.role !== 'admin' && !isAdminLoginEmail(email)) {
     const err = new Error('Admin only');
     err.statusCode = 403;
     throw err;
@@ -134,4 +150,5 @@ module.exports = {
   upsertParentProfile,
   requireParent,
   requireAdmin,
+  isAdminLoginEmail,
 };

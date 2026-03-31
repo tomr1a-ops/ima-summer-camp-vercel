@@ -8,7 +8,7 @@
 <meta http-equiv="Expires" content="0" />
 <title>IMA Summer Camp 2026 — Register Now</title>
 <script src="https://js.stripe.com/v3/" defer></script>
-<script src="/js/ima-core.js?v=20260331"></script>
+<script src="/js/ima-core.js?v=20260409"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1043,6 +1043,12 @@
     font-weight: 700;
     letter-spacing: 1.5px;
   }
+  /* Week hit capacity only after counting this parent’s draft — not the same as globally sold out */
+  .full-badge.sold-out-badge.sold-out-badge--draft {
+    color: #7dd3fc;
+    background: rgba(125, 211, 252, 0.12);
+    border-color: rgba(125, 211, 252, 0.5);
+  }
   .week-card.full-card .week-kids-ctrl {
     pointer-events: none;
   }
@@ -1979,6 +1985,9 @@
   let extraShirtByCamper = {};
   /** Last order-summary total ($) — compared to server totals on checkout to catch UI vs Stripe mismatches. */
   let lastSummaryGrandDollars = 0;
+  /** True during any create-checkout-session call (manual or $0 auto-save) — avoids duplicate POSTs. */
+  let checkoutSessionInFlight = false;
+  let zeroBalanceAutoSaveTimer = null;
   const API_ADD_CAMPER = '/api/add-camper';
   const ENROLL_SS = 'ima_reg_enroll_v1';
   /** Survives post-checkout enroll draft wipe; value = IMA member checkbox checked (waive fee when still applicable). */
@@ -2033,6 +2042,12 @@
     const dbFull = !!w._imaDbFull;
     w.is_full = !!(numericFull || dbFull);
     w.disabled = !!(w.is_full || inactive);
+    /** True when capacity is hit only because this parent's draft is included — server days still have room. */
+    const serverDaysFull = (w.days || []).some(function (d) {
+      const mc = Number(d.max_capacity) > 0 ? Number(d.max_capacity) : cap;
+      return (Number(d._imaServerEnr) || 0) >= mc;
+    });
+    w._imaFullOnlyBecauseOfDraft = !inactive && !!numericFull && !serverDaysFull && !dbFull;
   }
 
   function formatDayLabel(d) {
@@ -4257,26 +4272,32 @@
     document.getElementById('total-amount').textContent = fmt(grand);
     var btnMain = document.querySelector('#checkout-btn .btn-text');
     var secureNote = document.querySelector('.order-summary .secure-note');
+    var zeroDue = grand < 0.01 && (bookings.length > 0 || shirtTotal > 0);
     if (btnMain) {
-      btnMain.textContent =
-        grand < 0.01 && (bookings.length > 0 || shirtTotal > 0)
-          ? 'Complete order — $0'
-          : 'Secure Checkout →';
+      if (checkoutSessionInFlight && zeroDue) {
+        btnMain.textContent = 'Saving…';
+      } else {
+        btnMain.textContent = zeroDue ? 'Confirm registration ($0)' : 'Secure Checkout →';
+      }
     }
     if (secureNote) {
-      secureNote.textContent =
-        grand < 0.01 && (bookings.length > 0 || shirtTotal > 0)
-          ? 'No card charge for this order. Tap to confirm your registration.'
-          : '🔒 Powered by Stripe · Card data stays safe';
+      secureNote.textContent = zeroDue
+        ? 'No payment due — we save automatically. Tap Confirm if it does not save.'
+        : '🔒 Powered by Stripe · Card data stays safe';
     }
     if (fwConflictMsgs.length) {
       msg.className = 'msg error';
       msg.textContent = fwConflictMsgs[0];
       btn.disabled = true;
+    } else if (zeroDue) {
+      btn.disabled = !!checkoutSessionInFlight;
     } else {
       btn.disabled = false;
     }
     persistEnrollLocal();
+    if (session && zeroDue && !fwConflictMsgs.length && !checkoutSessionInFlight) {
+      scheduleZeroBalanceAutoSave();
+    }
   }
 
   function buildWeekCamperCheckboxes(weekId, mode) {
@@ -4323,7 +4344,7 @@
         cb.disabled = false;
         row.title = paidWeekOwnChild
           ? 'Registered for this week — uncheck or Remove to cancel.'
-          : 'Selected for this sold-out week — uncheck to clear your selection.';
+          : 'Your selection counts toward this week’s capacity — uncheck to clear.';
       } else {
         cb.checked = !!(st && st.has(cid));
         cb.disabled = weekBlocked;
@@ -4606,8 +4627,12 @@
       head.appendChild(left);
       if (full) {
         const b = document.createElement('span');
-        b.className = 'full-badge sold-out-badge';
-        b.textContent = 'Sold out';
+        const draftOnly = !!w._imaFullOnlyBecauseOfDraft;
+        b.className = 'full-badge sold-out-badge' + (draftOnly ? ' sold-out-badge--draft' : '');
+        b.textContent = draftOnly ? 'Full with your selection' : 'Sold out';
+        b.title = draftOnly
+          ? 'Capacity includes the children you checked below. You can still complete checkout.'
+          : 'No remaining spots for new registrations this week.';
         head.appendChild(b);
       }
       card.appendChild(head);
@@ -4700,8 +4725,12 @@
         '</div>';
       if (weekFull) {
         const b = document.createElement('span');
-        b.className = 'full-badge sold-out-badge';
-        b.textContent = 'Sold out';
+        const draftOnly = !!w._imaFullOnlyBecauseOfDraft;
+        b.className = 'full-badge sold-out-badge' + (draftOnly ? ' sold-out-badge--draft' : '');
+        b.textContent = draftOnly ? 'Full with your selection' : 'Sold out';
+        b.title = draftOnly
+          ? 'Capacity includes your day picks below. You can still complete checkout.'
+          : 'No remaining spots for new registrations this week.';
         head.appendChild(b);
       }
       block.appendChild(head);
@@ -5194,56 +5223,42 @@
     applyScheduleTabFromUrl();
   }
 
-  async function startCheckout() {
-    const btn = document.getElementById('checkout-btn');
-    const msg = document.getElementById('msg');
+  function hasShirtCheckoutSelection() {
+    return (
+      session &&
+      parentCampers.length &&
+      parentCampers.some(function (c) {
+        return extraShirtChargesThisCheckout(c.id);
+      })
+    );
+  }
 
-    function showCheckoutErr(t) {
-      if (msg) {
-        msg.className = 'msg error';
-        msg.textContent = t;
-      }
-    }
-
-    function clearCheckoutLoading() {
-      if (btn) btn.classList.remove('loading');
-      updateSummary();
-    }
-
-    let stripePk = '';
+  function applyZeroDollarRegistrationSavedUi() {
     try {
-      const pricingPromise = session ? refreshPricingPreview() : Promise.resolve();
-      const results = await Promise.all([IMA.getStripePublishableKey(), pricingPromise]);
-      stripePk = results[0];
-    } catch (eCfg) {
-      showCheckoutErr('Could not load site configuration.');
-      return;
-    }
-    if (!stripePk) {
-      if (msg) {
-        msg.className = 'msg warning';
-        msg.textContent =
-          'Set STRIPE_PUBLISHABLE_KEY (or NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY) in Vercel with your Stripe publishable key, then redeploy.';
+      clearEnrollmentSelections();
+      refreshScheduleUiAfterEnrollStorageChange();
+      schedulePostCheckoutEnrollmentRefetchRetries();
+      var msgOk = document.getElementById('msg');
+      if (msgOk) {
+        msgOk.className = 'msg ok';
+        msgOk.textContent = 'Registration saved.';
       }
-      return;
-    }
+      try {
+        persistEnrollLocal();
+      } catch (eP) {}
+    } catch (e) {}
+  }
+
+  async function runCreateCheckoutSessionRequest(signal) {
     if (session) {
       pruneConflictingFullWeekSelections();
       pruneFullWeekCampersUnknownToParent();
     }
     const bookings = sortBookingsStable(collectBookings());
     var fwBlock = getFullWeekPaidDayConflictMessages();
-    if (fwBlock.length) {
-      showCheckoutErr(fwBlock[0]);
-      return;
-    }
-    var hasShirtCheckout =
-      session &&
-      parentCampers.length &&
-      parentCampers.some(function (c) {
-        return extraShirtChargesThisCheckout(c.id);
-      });
-    if (!bookings.length && !hasShirtCheckout) return;
+    if (fwBlock.length) return { error: fwBlock[0] };
+    var hasShirt = hasShirtCheckoutSelection();
+    if (!bookings.length && !hasShirt) return { skip: true };
 
     const headers = { 'Content-Type': 'application/json' };
     if (session) {
@@ -5280,54 +5295,155 @@
       }),
     };
 
+    const res = await fetch(API_CHECKOUT, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(body),
+      signal: signal,
+    });
+    const data = await res.json().catch(function () {
+      return {};
+    });
+    if (!res.ok) return { error: data.error || 'Server error ' + res.status || 'Server error', data: data };
+    return { data: data };
+  }
+
+  function clearCheckoutButtonLoading() {
+    var b = document.getElementById('checkout-btn');
+    if (b) b.classList.remove('loading');
+    updateSummary();
+  }
+
+  function scheduleZeroBalanceAutoSave() {
+    if (!session || checkoutSessionInFlight) return;
+    if (zeroBalanceAutoSaveTimer) clearTimeout(zeroBalanceAutoSaveTimer);
+    zeroBalanceAutoSaveTimer = setTimeout(function () {
+      zeroBalanceAutoSaveTimer = null;
+      void attemptZeroBalanceAutoSave();
+    }, 650);
+  }
+
+  async function attemptZeroBalanceAutoSave() {
+    if (!session || checkoutSessionInFlight) return;
+    if (lastSummaryGrandDollars >= 0.01) return;
+    var bookingsProbe = collectBookings();
+    if (!bookingsProbe.length && !hasShirtCheckoutSelection()) return;
+    if (getFullWeekPaidDayConflictMessages().length) return;
+
+    checkoutSessionInFlight = true;
+    const ac = new AbortController();
+    var fetchTid = setTimeout(function () {
+      ac.abort();
+    }, 120000);
+    try {
+      await refreshPricingPreview();
+      if (lastSummaryGrandDollars >= 0.01) return;
+      const r = await runCreateCheckoutSessionRequest(ac.signal);
+      if (r.skip) return;
+      if (r.error) {
+        var msgBad = document.getElementById('msg');
+        if (msgBad) {
+          msgBad.className = 'msg error';
+          msgBad.textContent = r.error;
+        }
+        return;
+      }
+      if (r.data && r.data.zeroDollarComplete) {
+        applyZeroDollarRegistrationSavedUi();
+      } else if (r.data && lastSummaryGrandDollars < 0.01) {
+        var msgW = document.getElementById('msg');
+        if (msgW) {
+          msgW.className = 'msg warning';
+          msgW.textContent = 'Summary was $0 but the server returned a card checkout — refresh the page, then try Confirm registration ($0).';
+        }
+      }
+    } catch (err) {
+      var msgEl = document.getElementById('msg');
+      if (msgEl && lastSummaryGrandDollars < 0.01) {
+        msgEl.className = 'msg error';
+        msgEl.textContent =
+          err && err.name === 'AbortError'
+            ? 'Save timed out. Check your connection and try again.'
+            : (err && err.message) || 'Could not save registration.';
+      }
+    } finally {
+      clearTimeout(fetchTid);
+      checkoutSessionInFlight = false;
+      updateSummary();
+    }
+  }
+
+  async function startCheckout() {
+    const btn = document.getElementById('checkout-btn');
+    const msg = document.getElementById('msg');
+
+    function showCheckoutErr(t) {
+      if (msg) {
+        msg.className = 'msg error';
+        msg.textContent = t;
+      }
+    }
+
     if (btn) {
       btn.classList.add('loading');
       btn.disabled = true;
     }
     if (msg) msg.className = 'msg';
 
-    if (typeof window.Stripe !== 'function') {
-      clearCheckoutLoading();
-      showCheckoutErr(
-        'Stripe could not load (js.stripe.com blocked or failed). Turn off ad blockers for this page, check your network, refresh, and try again.'
-      );
-      return;
-    }
-
-    let stripe;
-    try {
-      stripe = window.Stripe(stripePk);
-    } catch (e) {
-      clearCheckoutLoading();
-      showCheckoutErr(e.message);
-      return;
-    }
-
+    checkoutSessionInFlight = true;
     const checkoutFetchMs = 120000;
     const ac = new AbortController();
     const fetchTid = setTimeout(function () {
       ac.abort();
     }, checkoutFetchMs);
     try {
-      const res = await fetch(API_CHECKOUT, {
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify(body),
-        signal: ac.signal,
-      });
-      const data = await res.json().catch(function () {
-        return {};
-      });
-      if (!res.ok) throw new Error(data.error || 'Server error ' + res.status);
-      if (data.zeroDollarComplete) {
-        clearCheckoutLoading();
-        try {
-          localStorage.setItem('ima_post_checkout_clear_enroll', '1');
-          sessionStorage.setItem('ima_post_checkout_clear_enroll', '1');
-        } catch (eZ) {}
-        window.location.assign('/success.html?prepaid=1');
+      if (session) {
+        await refreshPricingPreview();
+      }
+      const r = await runCreateCheckoutSessionRequest(ac.signal);
+      if (r.skip) {
         return;
       }
+      if (r.error) {
+        showCheckoutErr(r.error);
+        return;
+      }
+      if (r.data && r.data.zeroDollarComplete) {
+        applyZeroDollarRegistrationSavedUi();
+        return;
+      }
+
+      let stripePk = '';
+      try {
+        stripePk = await IMA.getStripePublishableKey();
+      } catch (eCfg) {
+        showCheckoutErr('Could not load site configuration.');
+        return;
+      }
+      if (!stripePk) {
+        if (msg) {
+          msg.className = 'msg warning';
+          msg.textContent =
+            'Set STRIPE_PUBLISHABLE_KEY (or NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY) in Vercel with your Stripe publishable key, then redeploy.';
+        }
+        return;
+      }
+      if (typeof window.Stripe !== 'function') {
+        showCheckoutErr(
+          'Stripe could not load (js.stripe.com blocked or failed). Turn off ad blockers for this page, check your network, refresh, and try again.'
+        );
+        return;
+      }
+
+      let stripe;
+      try {
+        stripe = window.Stripe(stripePk);
+      } catch (e) {
+        showCheckoutErr(e.message);
+        return;
+      }
+
+      const data = r.data;
       if (!data.sessionId || typeof data.sessionId !== 'string') {
         throw new Error(
           'Checkout started but no Stripe session was returned. Open DevTools → Network, find create-checkout-session, and check the response (or contact IMA).'
@@ -5353,7 +5469,6 @@
       const out = await stripe.redirectToCheckout({ sessionId: data.sessionId });
       if (out.error) throw new Error(out.error.message);
     } catch (err) {
-      clearCheckoutLoading();
       var errText =
         err && err.name === 'AbortError'
           ? 'Checkout timed out waiting for the server. Check your connection and try again. If this keeps happening, contact IMA.'
@@ -5361,6 +5476,8 @@
       showCheckoutErr(errText);
     } finally {
       clearTimeout(fetchTid);
+      checkoutSessionInFlight = false;
+      clearCheckoutButtonLoading();
     }
   }
 

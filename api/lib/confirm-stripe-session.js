@@ -3,6 +3,40 @@ const { dayRate, weekRate, registrationFee } = require('./pricing');
 const { subtractFamilyCampLedgerCents } = require('./family-camp-ledger');
 
 /**
+ * Set campers.extra_shirt_addon_paid from Stripe session metadata (same as finalize-batch-enrollments).
+ * Runs for paid card checkout; idempotent. Verifies each camper belongs to the checkout parent.
+ */
+async function applyExtraShirtPaidFromStripeSession(sb, session, enrollmentRows) {
+  const meta = session.metadata || {};
+  const shirtCents = Number(meta.extra_shirt_cents || 0) || 0;
+  const idsRaw = String(meta.extra_shirt_camper_ids || '').trim();
+  if (shirtCents <= 0 || !idsRaw) return 0;
+  const shirtIds = idsRaw.split(',').map((s) => s.trim()).filter(Boolean);
+  if (!shirtIds.length) return 0;
+
+  const parentId =
+    (enrollmentRows && enrollmentRows[0] && enrollmentRows[0].parent_id) || meta.checkout_parent_id || null;
+  if (!parentId) {
+    console.warn('[confirm-stripe-session] extra shirt in metadata but no parent id');
+    return 0;
+  }
+
+  const { data: campers, error } = await sb.from('campers').select('id, parent_id').in('id', shirtIds);
+  if (error) throw error;
+  let applied = 0;
+  for (const c of campers || []) {
+    if (String(c.parent_id) !== String(parentId)) {
+      console.warn('[confirm-stripe-session] skip shirt: camper not owned by checkout parent', c.id);
+      continue;
+    }
+    const { error: ue } = await sb.from('campers').update({ extra_shirt_addon_paid: true }).eq('id', c.id);
+    if (ue) throw ue;
+    applied += 1;
+  }
+  return applied;
+}
+
+/**
  * Idempotent: confirms pending enrollments for session.metadata.checkout_batch_id
  */
 async function confirmStripeSession(stripe, session) {
@@ -23,12 +57,25 @@ async function confirmStripeSession(stripe, session) {
     .eq('checkout_batch_id', batchId)
     .order('created_at', { ascending: true });
   if (qe) throw qe;
-  if (!rows || !rows.length) {
+  const enrollmentRows = rows || [];
+
+  const customerEmail =
+    (session.customer_details && session.customer_details.email) ||
+    session.customer_email ||
+    '';
+
+  await applyExtraShirtPaidFromStripeSession(sb, session, enrollmentRows);
+
+  if (!enrollmentRows.length) {
+    const shirtCents = Number((session.metadata && session.metadata.extra_shirt_cents) || 0) || 0;
+    if (shirtCents > 0) {
+      return { ok: true, shirtOnly: true, count: 0, email: customerEmail };
+    }
     return { ok: false, reason: 'no_rows' };
   }
 
-  if (rows.every((r) => r.status === 'confirmed' && r.stripe_session_id === session.id)) {
-    return { ok: true, already: true, count: rows.length };
+  if (enrollmentRows.every((r) => r.status === 'confirmed' && r.stripe_session_id === session.id)) {
+    return { ok: true, already: true, count: enrollmentRows.length, email: customerEmail };
   }
 
   const testPricing = session.metadata.test_pricing === 'true';
@@ -41,14 +88,9 @@ async function confirmStripeSession(stripe, session) {
     ? Number(session.metadata.registration_fee_cents) > 0
     : false;
 
-  const customerEmail =
-    (session.customer_details && session.customer_details.email) ||
-    session.customer_email ||
-    '';
-
   let didConfirmAny = false;
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
+  for (let i = 0; i < enrollmentRows.length; i++) {
+    const row = enrollmentRows[i];
     if (row.status === 'confirmed' && row.stripe_session_id === session.id) {
       continue;
     }
@@ -87,11 +129,11 @@ async function confirmStripeSession(stripe, session) {
   }
 
   const lc = Math.max(0, Math.round(Number(session.metadata && session.metadata.ledger_consume_cents) || 0));
-  if (didConfirmAny && lc > 0 && rows[0].parent_id) {
-    await subtractFamilyCampLedgerCents(sb, rows[0].parent_id, lc);
+  if (didConfirmAny && lc > 0 && enrollmentRows[0].parent_id) {
+    await subtractFamilyCampLedgerCents(sb, enrollmentRows[0].parent_id, lc);
   }
 
-  return { ok: true, count: rows.length, email: customerEmail };
+  return { ok: true, count: enrollmentRows.length, email: customerEmail };
 }
 
 module.exports = { confirmStripeSession };
