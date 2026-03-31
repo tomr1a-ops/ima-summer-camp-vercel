@@ -1,6 +1,6 @@
 const { randomUUID } = require('crypto');
 const { serviceClient } = require('./lib/supabase');
-const { getUserFromRequest, upsertParentProfile } = require('./lib/auth');
+const { getUserFromRequest, upsertParentProfile, resolveParentDisplayName } = require('./lib/auth');
 const { dayRate, weekRate, registrationFee, extraCampShirt } = require('./lib/pricing');
 /** Full-week bookings that overlap a camper's already-confirmed days fail here with a specific message (see validateBooking in ./lib/capacity). */
 const { validateBooking } = require('./lib/capacity');
@@ -334,6 +334,7 @@ module.exports = async (req, res) => {
     });
   }
   parentId = user.id;
+  const parentDisplayName = resolveParentDisplayName(user, profile);
   for (const b of bookingsArray) {
     if (!b.camperId) {
       return failCheckout(res, 400, 'MISSING_CAMPER', 'Each week needs a child selected (camperId on each booking).');
@@ -655,7 +656,7 @@ module.exports = async (req, res) => {
     logStep('before_insertAgreementRecord', { batchId });
     const rec = await insertAgreementRecord(sb, {
       parentId,
-      parentName: (profile && profile.full_name) || '',
+      parentName: parentDisplayName,
       email: (profile && profile.email) || (user.email || ''),
       ipAddress: clientIpFromRequest(req),
       camperIds: camperIdsToVerify,
@@ -727,7 +728,7 @@ module.exports = async (req, res) => {
       await sendStepUpReservationEmails(sb, {
         batchId,
         parentEmail: parentMail,
-        parentName: (profile && profile.full_name) || '',
+        parentName: parentDisplayName,
         testPricing: tp,
       });
     } catch (emErr) {

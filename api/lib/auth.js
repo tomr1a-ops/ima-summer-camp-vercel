@@ -53,6 +53,32 @@ function resolveUserEmail(user) {
 }
 
 /**
+ * Greeting / display name for emails when profiles.full_name is empty (common for OAuth-only accounts).
+ * Order: profile.full_name → auth user_metadata → friendly local-part of email.
+ */
+function resolveParentDisplayName(user, profile) {
+  if (profile && String(profile.full_name || '').trim()) {
+    return String(profile.full_name).trim();
+  }
+  if (user && user.user_metadata && typeof user.user_metadata === 'object') {
+    const m = user.user_metadata;
+    const parts = [m.first_name, m.last_name].map((x) => String(x || '').trim()).filter(Boolean);
+    if (parts.length) return parts.join(' ');
+    const metaName = String(m.full_name || m.name || m.display_name || '').trim();
+    if (metaName) return metaName;
+  }
+  const em = resolveUserEmail(user);
+  if (em) {
+    const local = em.split('@')[0] || '';
+    const cleaned = local.replace(/[.+_]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (cleaned) {
+      return cleaned.replace(/\b\w/g, (ch) => ch.toUpperCase());
+    }
+  }
+  return '';
+}
+
+/**
  * Ensures public.profiles has a row for this auth user (campers.parent_id FK targets profiles.id).
  * Uses the service role so INSERT succeeds even when RLS would block anon/JWT-only writes.
  * Preserves an existing role (e.g. admin); new rows default to parent.
@@ -72,10 +98,11 @@ async function upsertParentProfile(user, extras) {
   const existing = await getProfileForUser(user.id);
   const fnIn = extras && extras.full_name != null ? String(extras.full_name).trim() : '';
   const phIn = extras && extras.phone != null ? String(extras.phone).trim() : '';
+  const fromAuthMeta = resolveParentDisplayName(user, existing);
   const row = {
     id: user.id,
     email,
-    full_name: fnIn || (existing && existing.full_name) || null,
+    full_name: fnIn || (existing && existing.full_name) || fromAuthMeta || null,
     phone: phIn || (existing && existing.phone) || null,
     role: (existing && existing.role) || 'parent',
   };
@@ -147,6 +174,7 @@ module.exports = {
   getUserFromRequest,
   getProfileForUser,
   resolveUserEmail,
+  resolveParentDisplayName,
   upsertParentProfile,
   requireParent,
   requireAdmin,

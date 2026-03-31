@@ -58,7 +58,7 @@ async function sendAgreementAcknowledgmentEmailOnce(sb, agreementRecordId, toEma
   const { sendResend } = require('./send-resend');
   const { data: row, error } = await sb
     .from('agreement_records')
-    .select('id, acknowledgment_email_sent, agreed_at, agreement_version, parent_name, email')
+    .select('id, parent_id, acknowledgment_email_sent, agreed_at, agreement_version, parent_name, email')
     .eq('id', agreementRecordId)
     .maybeSingle();
   if (error) throw error;
@@ -67,7 +67,27 @@ async function sendAgreementAcknowledgmentEmailOnce(sb, agreementRecordId, toEma
   const addr = String(toEmail || row.email || '').trim();
   if (!addr) return { sent: false, reason: 'no_email' };
 
-  const parentName = String(row.parent_name || '').trim();
+  let parentName = String(row.parent_name || '').trim();
+  if (!parentName || parentName === 'Unknown') {
+    const pid = row.parent_id;
+    if (pid) {
+      const { data: prof, error: pe } = await sb.from('profiles').select('full_name').eq('id', pid).maybeSingle();
+      if (!pe && prof && String(prof.full_name || '').trim()) {
+        parentName = String(prof.full_name).trim();
+      }
+    }
+  }
+  if (!parentName || parentName === 'Unknown') {
+    const at = addr.indexOf('@');
+    if (at > 0) {
+      const local = addr
+        .slice(0, at)
+        .replace(/[.+_]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (local) parentName = local.replace(/\b\w/g, (ch) => ch.toUpperCase());
+    }
+  }
   const whenEastern = formatAgreementAckEastern(row.agreed_at);
   const ver = row.agreement_version || AGREEMENT_VERSION;
   const subject = 'IMA Summer Camp 2026 — Agreement confirmation';
