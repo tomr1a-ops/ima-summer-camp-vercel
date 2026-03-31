@@ -178,6 +178,9 @@
         if (!(await requireAdmin())) return;
         try {
           await IMA.loadPublicConfig();
+          window.supabaseClient = await IMA.getSupabase();
+          var sid = IMA.__publicConfig && IMA.__publicConfig.studioId;
+          if (sid && !window.STUDIO_ID) window.STUDIO_ID = String(sid).trim();
           await runChecks();
         } catch (e) {
           showBanner(e.message || 'Could not load', false);

@@ -1,17 +1,16 @@
 ---
-description: Always deploy vercel-v2 to Vercel production after code changes
+description: Do not auto-deploy vercel-v2 to ima-summer-camp unless asked
 alwaysApply: true
 ---
 
-# Vercel v2 (IMA camp) — always deploy
+# Vercel v2 (IMA camp) — no automatic summer camp deploy
 
-**Rule: Always deploy.** After any change under the camp checkout project (`vercel-v2`: `index.html`, `success.html`, `api/`, `package.json`, `vercel.json`), you **must** run a **production** deploy before the task is done. Treat deploy as part of the same turn as the edit.
+**Do not** run a production deploy to **`ima-summer-camp`** after changes under `vercel-v2` unless the user **explicitly** asks to deploy.
 
-- Deploy from the **project root** (parent of `api/`), not from `api/` alone. Use project **`ima-summer-camp`** (serves `ima-summer-camp.vercel.app` and `ima-summer-camp-git-main-*.vercel.app`):
+- Deploy from the **project root** (parent of `api/`), not from `api/` alone, only when requested. Command for summer camp when asked:
 
 ```bash
 cd /Users/tomrichardson/Downloads/vercel-v2 && VERCEL_ORG_ID=team_PXMrLfQ01zlse3XBsDcaPa3s VERCEL_PROJECT_ID=prj_TJxRFRbKAK4AkYBe8AKL1DoH2k9p npx vercel deploy --prod --yes
 ```
 
-- Use the **Vercel CLI** for a forced production deploy; do not rely only on git-push auto deploys or tell the user to deploy later.
-- If the command fails (auth, network), retry or fix, then deploy again. Only skip if the user **explicitly** says not to deploy.
+- Otherwise do not run that deploy at the end of tasks.

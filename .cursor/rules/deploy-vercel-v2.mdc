@@ -1,19 +1,17 @@
 ---
-description: Always deploy vercel-v2 to Vercel production after code changes
+description: Do not auto-deploy vercel-v2 to ima-summer-camp unless asked
 alwaysApply: true
 ---
 
-# Vercel v2 (IMA camp) — always deploy
+# Vercel v2 (IMA camp) — no automatic summer camp deploy
 
-**Rule: Always deploy.** After any change under this repo (`index.html`, `success.html`, `api/`, `package.json`, `vercel.json`), you **must** run a **production** deploy before the task is done. Treat deploy as part of the same turn as the edit.
+**Do not** run a production deploy to **`ima-summer-camp`** (`ima-summer-camp.vercel.app`) after edits in this repo unless the user **explicitly** asks to deploy (e.g. “deploy”, “ship to prod”, “vercel prod”).
 
-**Production host:** `ima-summer-camp.vercel.app` and `ima-summer-camp-git-main-tom-richardsons-projects.vercel.app` use Vercel project **`ima-summer-camp`** (not the linked `vercel-v2` folder default). Deploy that project:
+- Rely on git-push auto deploy or the user’s own workflow unless they request a CLI deploy.
+- If they do ask for a forced production deploy to summer camp, from repo root:
 
 ```bash
 cd /Users/tomrichardson/Downloads/vercel-v2 && VERCEL_ORG_ID=team_PXMrLfQ01zlse3XBsDcaPa3s VERCEL_PROJECT_ID=prj_TJxRFRbKAK4AkYBe8AKL1DoH2k9p npx vercel deploy --prod --yes
 ```
 
-(Optional second project / alternate alias: `npx vercel --prod --yes` uses linked `vercel-v2` → `vercel-v2-alpha.vercel.app`.)
-
-- Use the **Vercel CLI** for a forced production deploy; do not rely only on git-push auto deploys or tell the user to deploy later.
-- If the command fails (auth, network), retry or fix, then deploy again. Only skip if the user **explicitly** says not to deploy.
+- Optional: `npx vercel --prod --yes` from this folder targets the linked project (`vercel-v2-alpha.vercel.app`), not summer camp, unless configured otherwise.
