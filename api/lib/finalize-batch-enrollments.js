@@ -252,10 +252,55 @@ async function finalizeStepUpReservationBatch(sb, batchId, options) {
     if (regUp) throw regUp;
   }
 
+  /**
+   * Extra T-shirt $ is part of Step Up balance — merge into `price_paid` (same as shirt-only add-on path
+   * in create-checkout-session). Previously only `campers.extra_shirt_addon_paid` was set, so admin/parent
+   * totals diverged and `price_paid` stayed camp-only.
+   */
   const shirtC = Number(extraShirtCents) || 0;
-  if (didAny && shirtC > 0) {
-    const shirtIds = (extraShirtCamperIds || []).map(String).filter(Boolean);
-    for (const camId of shirtIds) {
+  const shirtIdsMerge = (extraShirtCamperIds || []).map(String).filter(Boolean);
+  if (didAny && shirtC > 0 && shirtIdsMerge.length > 0) {
+    const { data: upRows, error: uqe } = await sb
+      .from('enrollments')
+      .select('id, camper_id, price_paid')
+      .eq('checkout_batch_id', batchId)
+      .eq('status', ENROLLMENT_STATUS.PENDING_STEP_UP)
+      .order('created_at', { ascending: true });
+    if (uqe) throw uqe;
+    const normCamper = (id) => String(id == null ? '' : id).trim();
+    const byCamperFirst = new Map();
+    for (const er of upRows || []) {
+      const k = normCamper(er.camper_id);
+      if (k && !byCamperFirst.has(k)) byCamperFirst.set(k, er);
+    }
+    let remainingCents = Math.round(shirtC);
+    for (let i = 0; i < shirtIdsMerge.length; i++) {
+      const nk = normCamper(shirtIdsMerge[i]);
+      let er = byCamperFirst.get(nk);
+      if (!er) {
+        for (const [key, row] of byCamperFirst) {
+          if (normCamper(key) === nk) {
+            er = row;
+            break;
+          }
+        }
+      }
+      if (!er) continue;
+      const nLeft = shirtIdsMerge.length - i;
+      const addCents = Math.floor(remainingCents / nLeft);
+      remainingCents -= addCents;
+      const addDollars = addCents / 100;
+      const prev = Number(er.price_paid) || 0;
+      const next = prev + addDollars;
+      const { error: upE } = await sb
+        .from('enrollments')
+        .update({ price_paid: next })
+        .eq('id', er.id)
+        .eq('status', ENROLLMENT_STATUS.PENDING_STEP_UP);
+      if (upE) throw upE;
+      er.price_paid = next;
+    }
+    for (const camId of shirtIdsMerge) {
       const { error: shirtUp } = await sb.from('campers').update({ extra_shirt_addon_paid: true }).eq('id', camId);
       if (shirtUp) throw shirtUp;
     }

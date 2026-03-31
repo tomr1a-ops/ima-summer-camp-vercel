@@ -160,6 +160,7 @@
               <th>Camper</th>
               <th>Week</th>
               <th>Schedule</th>
+              <th>Add-ons</th>
               <th>Amount owed</th>
               <th>Hold started</th>
               <th>Hours left</th>
@@ -705,6 +706,7 @@
               e.amount_owed != null && Number.isFinite(Number(e.amount_owed))
                 ? Number(e.amount_owed)
                 : Number(e.price_paid) || 0;
+            var addonHint = (e.hold_addons_hint && String(e.hold_addons_hint).trim()) || '—';
             return (
               '<tr>' +
               '<td>' +
@@ -715,6 +717,8 @@
               escapeHtml(w.label || '') +
               '</td><td>' +
               escapeHtml(scheduleLabel(e)) +
+              '</td><td>' +
+              escapeHtml(addonHint) +
               '</td><td>' +
               escapeHtml(IMA.formatMoney(owed)) +
               '</td><td>' +

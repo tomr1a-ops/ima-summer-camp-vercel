@@ -4,7 +4,7 @@
 const { serviceClient } = require('./lib/supabase');
 const { requireAdmin, logAdminAuthProbe } = require('./lib/auth');
 const { ENROLLMENT_STATUS } = require('./lib/enrollment-status');
-const { registrationFee } = require('./lib/pricing');
+const { registrationFee, dayRate, weekRate, extraCampShirt } = require('./lib/pricing');
 
 function json(res, code, body) {
   res.statusCode = code;
@@ -34,12 +34,12 @@ module.exports = async (req, res) => {
 
   const selectWithExpiry =
     'id,parent_id,camper_id,week_id,status,day_ids,guest_email,created_at,step_up_hold_expires_at,price_paid,registration_fee_paid,' +
-    'campers(first_name,last_name,registration_fee_paid),' +
+    'campers(first_name,last_name,registration_fee_paid,extra_shirt_addon_paid),' +
     'weeks(label,week_number)';
 
   const selectBase =
     'id,parent_id,camper_id,week_id,status,day_ids,guest_email,created_at,price_paid,registration_fee_paid,' +
-    'campers(first_name,last_name,registration_fee_paid),' +
+    'campers(first_name,last_name,registration_fee_paid,extra_shirt_addon_paid),' +
     'weeks(label,week_number)';
 
   try {
@@ -81,6 +81,16 @@ module.exports = async (req, res) => {
     }
 
     const regFeeDollars = registrationFee(false);
+    const shirtUnit = extraCampShirt(false);
+    const dr = dayRate(false);
+    const wr = weekRate(false);
+    /** Rough camp tuition from schedule (no ledger context) — used only to hint add-ons when flag missing. */
+    function estimateCampDollars(row) {
+      if (!row) return 0;
+      const n = Array.isArray(row.day_ids) ? row.day_ids.length : 0;
+      if (n >= 5) return wr;
+      return Math.max(0, n) * dr;
+    }
     const listArr = list || [];
     const firstHoldRowIdByCamper = new Map();
     listArr.forEach((r) => {
@@ -113,10 +123,21 @@ module.exports = async (req, res) => {
         regDollars = regFeeDollars;
       }
       const amount_owed = camp + regDollars;
+      let hold_addons_hint = '';
+      if (camper.extra_shirt_addon_paid === true) {
+        hold_addons_hint = 'Extra camp T-shirt';
+      } else if (shirtUnit > 0) {
+        const residual = Math.round((camp - estimateCampDollars(r)) * 100) / 100;
+        const n = Math.round(residual / shirtUnit);
+        if (n >= 1 && Math.abs(residual - n * shirtUnit) < 0.02) {
+          hold_addons_hint = n === 1 ? 'Extra camp T-shirt' : `${n}× Extra camp T-shirt`;
+        }
+      }
       return {
         ...r,
         profiles: r.parent_id ? profilesById[String(r.parent_id)] || null : null,
         amount_owed,
+        hold_addons_hint,
       };
     });
 
