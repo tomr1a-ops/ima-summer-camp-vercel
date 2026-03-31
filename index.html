@@ -2295,11 +2295,9 @@
   let confirmedEnrollmentsRaw = [];
   /** After Step Up hold API success, totals until GET /api/enrollments includes pending_step_up rows (avoids empty-cart / Stripe UI clearing the owed line). */
   let stepUpHoldSummarySnapshot = null;
-  /** Briefly pin Step Up order summary to server `data.totals.total` (single stable line + total; itemized rows after lock). */
-  let stepUpOrderSummaryTotalLockUntil = 0;
-  let stepUpOrderSummaryTotalLockValue = null;
-  var stepUpOrderSummaryLockExpireTimer = null;
-  var stepUpOrderSummaryLockWave = 0;
+  var IMA_STEP_UP_HOLD_TOTALS_SS = 'ima_step_up_hold_totals';
+  var STEP_UP_HOLD_SUCCESS_MSG =
+    'Hold successful — your spot is reserved for 24 hours. Check your email — complete Step Up for Students funding to IMA Impact Martial Athletics; staff will confirm when allocation is received.';
   /** camperId|weekId keys with status pending (open checkout). */
   let pendingEnrollmentWeekKeys = new Set();
   /** camperId|weekId → waitlist row from GET /api/waitlist */
@@ -4047,16 +4045,27 @@
       var hasPendingStepUp = (confirmedEnrollmentsRaw || []).some(function (r) {
         return r && r.status === 'pending_step_up';
       });
-      /* Keep checkout totals snapshot while holds exist so the summary total does not flash 0 / low until row math matches the server. Clear when no Step Up holds remain. */
+      if (hasPendingStepUp && !stepUpHoldSummarySnapshot) {
+        try {
+          var rawSu = sessionStorage.getItem(IMA_STEP_UP_HOLD_TOTALS_SS);
+          if (rawSu) {
+            var oSu = JSON.parse(rawSu);
+            if (oSu && Number.isFinite(Number(oSu.total)) && Number(oSu.total) >= 0) {
+              var xSu = Number(oSu.extraShirts);
+              stepUpHoldSummarySnapshot = {
+                total: Number(oSu.total),
+                extraShirts: Number.isFinite(xSu) && xSu > 0 ? xSu : 0,
+              };
+            }
+          }
+        } catch (eSu) {}
+      }
+      /* Keep checkout totals snapshot while holds exist. Clear when no Step Up holds remain. */
       if (!hasPendingStepUp) {
         stepUpHoldSummarySnapshot = null;
-        stepUpOrderSummaryTotalLockUntil = 0;
-        stepUpOrderSummaryTotalLockValue = null;
-        if (stepUpOrderSummaryLockExpireTimer) {
-          clearTimeout(stepUpOrderSummaryLockExpireTimer);
-          stepUpOrderSummaryLockExpireTimer = null;
-        }
-        stepUpOrderSummaryLockWave++;
+        try {
+          sessionStorage.removeItem(IMA_STEP_UP_HOLD_TOTALS_SS);
+        } catch (eRm) {}
       }
       try {
         persistEnrollLocal();
@@ -4319,7 +4328,18 @@
     return camp + reg;
   }
 
+  /** Server checkout totals while Step Up holds exist — suppresses per-row $ flash from pricing/enrollment refetch. */
+  function stepUpHoldOrderUsesStableServerTotal() {
+    var s = stepUpHoldSummarySnapshot;
+    if (!s) return false;
+    var t = Number(s.total);
+    return Number.isFinite(t) && t >= 0;
+  }
+
   function pendingStepUpAmountOwedHtml(row) {
+    if (row && row.status === 'pending_step_up' && stepUpHoldOrderUsesStableServerTotal()) {
+      return '<span class="sov-step-up-owed"> · Balance due via Step Up (see total below)</span>';
+    }
     var t = pendingStepUpAmountOwedDollars(row);
     if (t == null) return '';
     return (
@@ -4812,10 +4832,11 @@
         html += '<div class="schedule-overview-child">';
         html += '<div class="schedule-overview-sub">On hold 24h — Step Up (add-ons)</div>';
         html += '<ul class="schedule-overview-list"><li><span class="sov-week">Extra camp T-shirt</span>';
-        html +=
-          '<span class="sov-type sov-paid">Add-on (Step Up — pending funding)<span class="sov-step-up-owed"> · Owed ' +
-          escapeHtml(fmt(ovShirtSnap)) +
-          ' until staff confirms Step Up payment</span></span></li></ul>';
+        html += stepUpHoldOrderUsesStableServerTotal()
+          ? '<span class="sov-type sov-paid">Add-on (Step Up — pending funding)<span class="sov-step-up-owed"> · Included in order total below</span></span></li></ul>'
+          : '<span class="sov-type sov-paid">Add-on (Step Up — pending funding)<span class="sov-step-up-owed"> · Owed ' +
+            escapeHtml(fmt(ovShirtSnap)) +
+            ' until staff confirms Step Up payment</span></span></li></ul>';
         html += '</div>';
       }
     }
@@ -4827,7 +4848,7 @@
       html +=
         '<p class="schedule-overview-hint">Use <strong>Weekly registration</strong> or <strong>Daily registration</strong> on the left, then check each child for the weeks they will attend.</p>';
     }
-    el.innerHTML = html;
+    if (el.innerHTML !== html) el.innerHTML = html;
   }
 
   function renderStepUpPendingBanner() {
@@ -4848,6 +4869,8 @@
       return;
     }
     el.hidden = false;
+    var stableSuBanner = stepUpHoldOrderUsesStableServerTotal();
+    var snapTotBanner = stableSuBanner ? Number(stepUpHoldSummarySnapshot.total) : null;
     var parts = holds.map(function (row) {
       var cid = String(row.camper_id);
       var name = getCamperNameById(cid) || 'Child';
@@ -4859,6 +4882,9 @@
       var weekLine = escapeHtml(wl) + (range ? ' · ' + escapeHtml(range) : '');
       var owed = pendingStepUpAmountOwedDollars(row);
       var owedTxt = owed != null ? fmt(owed) : '—';
+      var metaRow = stableSuBanner
+        ? 'Held — payment pending · total in Order Summary'
+        : 'Amount owed: <strong>' + escapeHtml(owedTxt) + '</strong> · Held — Payment Pending';
       return (
         '<div class="step-up-pending-row">' +
         '<div class="step-up-pending-main"><strong>' +
@@ -4866,9 +4892,9 @@
         '</strong> · ' +
         weekLine +
         '</div>' +
-        '<div class="step-up-pending-meta">Amount owed: <strong>' +
-        escapeHtml(owedTxt) +
-        '</strong> · Held — Payment Pending</div>' +
+        '<div class="step-up-pending-meta">' +
+        metaRow +
+        '</div>' +
         '</div>'
       );
     });
@@ -4880,16 +4906,26 @@
       parts.push(
         '<div class="step-up-pending-row">' +
           '<div class="step-up-pending-main"><strong>Extra camp T-shirt</strong></div>' +
-          '<div class="step-up-pending-meta">Amount owed: <strong>' +
-          escapeHtml(fmt(banShirt)) +
-          '</strong> · Held — Payment Pending</div>' +
+          '<div class="step-up-pending-meta">' +
+          (stableSuBanner
+            ? 'Held — payment pending · included in Order Summary total'
+            : 'Amount owed: <strong>' + escapeHtml(fmt(banShirt)) + '</strong> · Held — Payment Pending') +
+          '</div>' +
           '</div>'
       );
     }
-    el.innerHTML =
+    var bannerStableTotalFoot =
+      stableSuBanner && snapTotBanner != null
+        ? '<p class="step-up-pending-hint" style="margin-top:12px"><strong>Total due:</strong> ' +
+          escapeHtml(fmt(snapTotBanner)) +
+          '</p>'
+        : '';
+    var nextBan =
       '<div class="step-up-pending-banner-title">Step Up — payment required</div>' +
       '<p class="step-up-pending-hint">These enrollments stay on hold until IMA confirms Step Up funding. Balance remains until staff marks them paid.</p>' +
-      parts.join('');
+      parts.join('') +
+      bannerStableTotalFoot;
+    if (el.innerHTML !== nextBan) el.innerHTML = nextBan;
   }
 
   /**
@@ -5279,20 +5315,17 @@
     const totalRow = document.getElementById('total-row');
     const btn = document.getElementById('checkout-btn');
     const msg = document.getElementById('msg');
-    msg.className = 'msg';
+    var freezeStepUpHoldOkBanner =
+      msg &&
+      session &&
+      stepUpHoldOrderUsesStableServerTotal() &&
+      !collectBookings().length &&
+      msg.textContent === STEP_UP_HOLD_SUCCESS_MSG;
+    if (!freezeStepUpHoldOkBanner) msg.className = 'msg';
 
     const dr = Number(testPriceMode ? 1 : pricingPreview.dayRate != null ? pricingPreview.dayRate : dayRateClient());
     const wr = Number(testPriceMode ? 1 : pricingPreview.weekRate != null ? pricingPreview.weekRate : weekRateClient());
     const bookings = collectBookings();
-    if (bookings.length > 0) {
-      stepUpOrderSummaryTotalLockUntil = 0;
-      stepUpOrderSummaryTotalLockValue = null;
-      if (stepUpOrderSummaryLockExpireTimer) {
-        clearTimeout(stepUpOrderSummaryLockExpireTimer);
-        stepUpOrderSummaryLockExpireTimer = null;
-      }
-      stepUpOrderSummaryLockWave++;
-    }
     if (!bookings.length) {
       serverPrepaidApply = null;
     }
@@ -5372,8 +5405,7 @@
         lines.style.display = '';
         totalRow.style.display = '';
         msg.className = 'msg ok';
-        msg.textContent =
-          'Hold successful — your spot is reserved for 24 hours. Check your email — complete Step Up for Students funding to IMA Impact Martial Athletics; staff will confirm when allocation is received.';
+        if (msg.textContent !== STEP_UP_HOLD_SUCCESS_MSG) msg.textContent = STEP_UP_HOLD_SUCCESS_MSG;
 
         var agreeSU = document.getElementById('camp-agreement-section');
         if (agreeSU) agreeSU.hidden = true;
@@ -5383,19 +5415,13 @@
         var coalescedSU = coalesceEnrollmentRowsForSidebar(stepUpRowsForSummary);
         var htmlSU = '';
         var grandSU = 0;
-        var pinTot =
-          stepUpOrderSummaryTotalLockValue != null && Number.isFinite(Number(stepUpOrderSummaryTotalLockValue))
-            ? Number(stepUpOrderSummaryTotalLockValue)
-            : null;
-        var lockPinStepUpOrderLines =
-          pinTot != null &&
-          pinTot >= 0 &&
-          Date.now() < stepUpOrderSummaryTotalLockUntil;
-        if (lockPinStepUpOrderLines) {
-          grandSU = pinTot;
+        var useStableServerStepUpLine = stepUpHoldOrderUsesStableServerTotal();
+        var stableLineTot = useStableServerStepUpLine ? Number(stepUpHoldSummarySnapshot.total) : null;
+        if (useStableServerStepUpLine && stableLineTot != null) {
+          grandSU = stableLineTot;
           htmlSU +=
             '<div class="summary-line"><span class="label">Step Up hold <span class="summary-line-detail">· Amount due when staff confirms funding</span></span><span class="val">' +
-            fmt(pinTot) +
+            fmt(stableLineTot) +
             '</span></div>';
         } else if (coalescedSU.length) {
           coalescedSU.forEach(function (row) {
@@ -5432,13 +5458,15 @@
             fmt(grandSU) +
             '</span></div>';
         }
-        lines.innerHTML = htmlSU;
+        if (lines.innerHTML !== htmlSU) lines.innerHTML = htmlSU;
         var displayGrandSU = grandSU;
-        if (!lockPinStepUpOrderLines && snapTot != null && Number.isFinite(snapTot) && snapTot >= 0 && displayGrandSU < snapTot - 0.02) {
+        if (!useStableServerStepUpLine && snapTot != null && Number.isFinite(snapTot) && snapTot >= 0 && displayGrandSU < snapTot - 0.02) {
           displayGrandSU = snapTot;
         }
         lastSummaryGrandDollars = displayGrandSU;
-        document.getElementById('total-amount').textContent = fmt(displayGrandSU);
+        var totalAmtEl = document.getElementById('total-amount');
+        var nextGrandTxt = fmt(displayGrandSU);
+        if (totalAmtEl && totalAmtEl.textContent !== nextGrandTxt) totalAmtEl.textContent = nextGrandTxt;
 
         var btnMainSU = document.querySelector('#checkout-btn .btn-text');
         var secureNoteSU = document.querySelector('.order-summary .secure-note');
@@ -6937,12 +6965,6 @@
   function applyStepUpRegistrationSavedUi(data) {
     try {
       stepUpHoldSummarySnapshot = null;
-      stepUpOrderSummaryTotalLockUntil = 0;
-      stepUpOrderSummaryTotalLockValue = null;
-      if (stepUpOrderSummaryLockExpireTimer) {
-        clearTimeout(stepUpOrderSummaryLockExpireTimer);
-        stepUpOrderSummaryLockExpireTimer = null;
-      }
       if (data && data.totals && Number.isFinite(Number(data.totals.total))) {
         var tSnap = Number(data.totals.total);
         if (tSnap >= 0) {
@@ -6951,16 +6973,9 @@
             total: tSnap,
             extraShirts: Number.isFinite(xSh) && xSh > 0 ? xSh : 0,
           };
-          stepUpOrderSummaryTotalLockValue = tSnap;
-          /* Cover post-checkout refetch (~450ms + ~2.4s) + pricing refresh so summary stays one server-backed line. */
-          var lockMs = 4300;
-          stepUpOrderSummaryTotalLockUntil = Date.now() + lockMs;
-          var wSu = ++stepUpOrderSummaryLockWave;
-          stepUpOrderSummaryLockExpireTimer = setTimeout(function () {
-            stepUpOrderSummaryLockExpireTimer = null;
-            if (wSu !== stepUpOrderSummaryLockWave) return;
-            updateSummary();
-          }, lockMs);
+          try {
+            sessionStorage.setItem(IMA_STEP_UP_HOLD_TOTALS_SS, JSON.stringify(stepUpHoldSummarySnapshot));
+          } catch (eSs) {}
         }
       }
       resetCampAgreementAfterSuccessfulCheckout();
@@ -6970,14 +6985,12 @@
       var msgOk = document.getElementById('msg');
       if (msgOk) {
         msgOk.className = 'msg ok';
-        msgOk.textContent =
-          'Hold successful — your spot is reserved for 24 hours. Check your email — complete Step Up for Students funding to IMA Impact Martial Athletics; staff will confirm when allocation is received.';
+        msgOk.textContent = STEP_UP_HOLD_SUCCESS_MSG;
       }
       try {
         persistEnrollLocal();
       } catch (eP) {}
       void refreshParentProfileWaiverFromServer().then(function () {
-        if (stepUpOrderSummaryTotalLockUntil > Date.now()) return;
         updateSummary();
       });
     } catch (e) {}
@@ -7065,7 +7078,6 @@
   function clearCheckoutButtonLoading() {
     var b = document.getElementById('checkout-btn');
     if (b) b.classList.remove('loading');
-    if (stepUpOrderSummaryTotalLockUntil > Date.now()) return;
     updateSummary();
   }
 
