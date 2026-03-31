@@ -74,6 +74,10 @@
         <h3>Cancelled rows</h3>
         <div class="num" id="st-cancel">0</div>
       </div>
+      <div class="stat-card">
+        <h3>Extra camp T-shirts paid</h3>
+        <div class="num" id="st-shirt">0</div>
+      </div>
     </div>
 
     <div id="week-people-modal" class="admin-modal" aria-hidden="true">
@@ -84,6 +88,22 @@
           <button type="button" class="btn-ghost" id="week-people-close">Close</button>
         </div>
         <div class="admin-modal-body" id="week-people-body"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">Extra camp T-shirt add-ons <span class="panel-hint">· $20 add-on; also emailed to staff on payment (same as bookings)</span></div>
+      <div class="panel-body table-wrap">
+        <table class="data" id="tbl-shirts">
+          <thead>
+            <tr>
+              <th>Camper</th>
+              <th>Parent</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty-hint" id="shirt-empty" hidden>No paid extra-shirt add-ons yet.</p>
       </div>
     </div>
 
@@ -126,7 +146,7 @@
     </div>
   </main>
 
-  <script src="/js/ima-core.js?v=20260330"></script>
+  <script src="/js/ima-core.js?v=20260405"></script>
   <script>
     (function () {
       const banner = document.getElementById('banner');
@@ -206,6 +226,16 @@
         return data || [];
       }
 
+      async function loadCampersExtraShirtPaid(sb) {
+        const { data, error } = await sb
+          .from('campers')
+          .select('id,first_name,last_name,parent_id')
+          .eq('extra_shirt_addon_paid', true)
+          .order('first_name', { ascending: true });
+        if (error) throw error;
+        return data || [];
+      }
+
       async function hydrateParents(sb, rows) {
         const ids = [...new Set(rows.map(function (r) { return r.parent_id; }).filter(Boolean))];
         if (!ids.length) return {};
@@ -255,6 +285,31 @@
         document.getElementById('st-enr').textContent = String(activeRows.length);
         var stc = document.getElementById('st-cancel');
         if (stc) stc.textContent = String(cancelledRows.length);
+      }
+
+      function renderShirtAddons(campers, parents) {
+        var st = document.getElementById('st-shirt');
+        if (st) st.textContent = String(campers.length);
+        var body = document.querySelector('#tbl-shirts tbody');
+        var empty = document.getElementById('shirt-empty');
+        var tbl = document.getElementById('tbl-shirts');
+        if (!campers.length) {
+          if (body) body.innerHTML = '';
+          if (empty) empty.hidden = false;
+          if (tbl) tbl.style.display = 'none';
+          return;
+        }
+        if (empty) empty.hidden = true;
+        if (tbl) tbl.style.display = '';
+        if (body) {
+          body.innerHTML = campers
+            .map(function (c) {
+              var cname = escapeHtml((c.first_name || '') + ' ' + (c.last_name || ''));
+              var pname = parentGuestLabel({ parent_id: c.parent_id, guest_email: null }, parents);
+              return '<tr><td>' + cname + '</td><td>' + pname + '</td></tr>';
+            })
+            .join('');
+        }
       }
 
       function closeWeekPeopleModal() {
@@ -558,34 +613,91 @@
         }
       }
 
+      /**
+       * Reload dashboard from Supabase (initial load + debounced Realtime).
+       * @param {{ initial?: boolean }} opts
+       */
+      async function refreshAdminData(sb, opts) {
+        opts = opts || {};
+        await refreshInventoryLowBadge(sb);
+        state.weeks = await loadWeeks(sb);
+        state.enr = await loadEnrollments(sb);
+        await hydrateCampersWeeks(sb, state.enr);
+        state.parents = await hydrateParents(sb, state.enr);
+        var shirtCampers = await loadCampersExtraShirtPaid(sb);
+        var shirtParentRows = shirtCampers.map(function (c) {
+          return { parent_id: c.parent_id };
+        });
+        var shirtParents = await hydrateParents(sb, shirtParentRows);
+        var parentsForShirts = Object.assign({}, state.parents, shirtParents);
+        const peakByWeekId = await loadWeekPeakEnrollmentByWeekId(sb);
+        overviewStats(state.enr);
+        renderShirtAddons(shirtCampers, parentsForShirts);
+        renderWeekManage(sb, state.weeks, peakByWeekId);
+        fillWeekFilterSelect();
+        renderTable(state.enr, state.parents);
+      }
+
+      var adminRealtimeBound = false;
+      var adminRefreshTimer = null;
+
+      function subscribeAdminCampRealtime(sb) {
+        if (adminRealtimeBound) return;
+        adminRealtimeBound = true;
+        function scheduleRefresh() {
+          if (adminRefreshTimer) clearTimeout(adminRefreshTimer);
+          adminRefreshTimer = setTimeout(function () {
+            adminRefreshTimer = null;
+            refreshAdminData(sb, {}).catch(function (e) {
+              console.warn('[admin] live refresh failed', e && e.message ? e.message : e);
+            });
+          }, 400);
+        }
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'visible') scheduleRefresh();
+        });
+        var tables = ['enrollments', 'campers', 'days', 'weeks', 'inventory_items'];
+        var ch = sb.channel('ima-admin-camp-live');
+        tables.forEach(function (table) {
+          ch.on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: table },
+            function () {
+              scheduleRefresh();
+            }
+          );
+        });
+        ch.subscribe(function (status, err) {
+          if (status === 'SUBSCRIBED') return;
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            console.warn('[admin] Realtime status:', status, err || '');
+          }
+        });
+      }
+
+      var adminFilterListenersBound = false;
+
       async function boot() {
         const ctx = await requireAdmin();
         if (!ctx) return;
         const sb = await IMA.getSupabase();
 
-        refreshInventoryLowBadge(sb);
-
-        state.weeks = await loadWeeks(sb);
-        state.enr = await loadEnrollments(sb);
-        await hydrateCampersWeeks(sb, state.enr);
-        state.parents = await hydrateParents(sb, state.enr);
-        const peakByWeekId = await loadWeekPeakEnrollmentByWeekId(sb);
-
-        overviewStats(state.enr);
-        renderWeekManage(sb, state.weeks, peakByWeekId);
+        await refreshAdminData(sb, { initial: true });
         bindRosterModalUiOnce();
-        fillWeekFilterSelect();
-        renderTable(state.enr, state.parents);
+        subscribeAdminCampRealtime(sb);
 
-        document.getElementById('flt-week').addEventListener('change', function () {
-          renderTable(state.enr, state.parents);
-        });
-        document.getElementById('flt-status').addEventListener('change', function () {
-          renderTable(state.enr, state.parents);
-        });
-        document.getElementById('btn-csv').addEventListener('click', function () {
-          exportCsv(state.enr, state.parents);
-        });
+        if (!adminFilterListenersBound) {
+          adminFilterListenersBound = true;
+          document.getElementById('flt-week').addEventListener('change', function () {
+            renderTable(state.enr, state.parents);
+          });
+          document.getElementById('flt-status').addEventListener('change', function () {
+            renderTable(state.enr, state.parents);
+          });
+          document.getElementById('btn-csv').addEventListener('click', function () {
+            exportCsv(state.enr, state.parents);
+          });
+        }
       }
 
       boot().catch(function (e) {
