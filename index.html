@@ -4722,6 +4722,26 @@
       html += '</div>';
     });
 
+    var ovShirtSnap =
+      stepUpHoldSummarySnapshot && Number.isFinite(Number(stepUpHoldSummarySnapshot.extraShirts))
+        ? Number(stepUpHoldSummarySnapshot.extraShirts)
+        : 0;
+    if (ovShirtSnap > 0.01) {
+      var anyStepUpOv = (confirmedEnrollmentsCache || []).some(function (r) {
+        return r && r.status === 'pending_step_up';
+      });
+      if (anyStepUpOv) {
+        html += '<div class="schedule-overview-child">';
+        html += '<div class="schedule-overview-sub">On hold 24h — Step Up (add-ons)</div>';
+        html += '<ul class="schedule-overview-list"><li><span class="sov-week">Extra camp T-shirt</span>';
+        html +=
+          '<span class="sov-type sov-paid">Add-on (Step Up — pending funding)<span class="sov-step-up-owed"> · Owed ' +
+          escapeHtml(fmt(ovShirtSnap)) +
+          ' until staff confirms Step Up payment</span></span></li></ul>';
+        html += '</div>';
+      }
+    }
+
     const anyPaid = (confirmedEnrollmentsCache || []).some(function (r) {
       return r && (r.status === 'confirmed' || r.status === 'pending_step_up');
     });
@@ -4774,6 +4794,20 @@
         '</div>'
       );
     });
+    var banShirt =
+      stepUpHoldSummarySnapshot && Number.isFinite(Number(stepUpHoldSummarySnapshot.extraShirts))
+        ? Number(stepUpHoldSummarySnapshot.extraShirts)
+        : 0;
+    if (banShirt > 0.01) {
+      parts.push(
+        '<div class="step-up-pending-row">' +
+          '<div class="step-up-pending-main"><strong>Extra camp T-shirt</strong></div>' +
+          '<div class="step-up-pending-meta">Amount owed: <strong>' +
+          escapeHtml(fmt(banShirt)) +
+          '</strong> · Held — Payment Pending</div>' +
+          '</div>'
+      );
+    }
     el.innerHTML =
       '<div class="step-up-pending-banner-title">Step Up — payment required</div>' +
       '<p class="step-up-pending-hint">These enrollments stay on hold until IMA confirms Step Up funding. Balance remains until staff marks them paid.</p>' +
@@ -5232,7 +5266,7 @@
       return;
     }
 
-    if (!bookings.length && shirtTotal <= 0) {
+    if (!bookings.length) {
       var stepUpRowsForSummary = (confirmedEnrollmentsCache || []).filter(function (r) {
         return r && r.status === 'pending_step_up';
       });
@@ -5240,6 +5274,10 @@
         stepUpHoldSummarySnapshot && Number.isFinite(Number(stepUpHoldSummarySnapshot.total))
           ? Number(stepUpHoldSummarySnapshot.total)
           : null;
+      var shirtSnap =
+        stepUpHoldSummarySnapshot && Number.isFinite(Number(stepUpHoldSummarySnapshot.extraShirts))
+          ? Number(stepUpHoldSummarySnapshot.extraShirts)
+          : 0;
       var useStepUpHoldOrderSummary =
         session &&
         (stepUpRowsForSummary.length > 0 || (snapTot != null && snapTot >= 0));
@@ -5282,6 +5320,13 @@
               fmt(owed) +
               '</span></div>';
           });
+          if (shirtSnap > 0.01) {
+            grandSU += shirtSnap;
+            htmlSU +=
+              '<div class="summary-line"><span class="label">Extra camp T-shirt <span class="summary-line-detail">· Included in Step Up hold</span></span><span class="val">' +
+              fmt(shirtSnap) +
+              '</span></div>';
+          }
         } else if (snapTot != null) {
           grandSU = snapTot;
           htmlSU +=
@@ -5310,22 +5355,24 @@
         return;
       }
 
-      if (fwConflictMsgs.length) {
-        empty.textContent = fwConflictMsgs[0];
-        empty.style.display = '';
-        msg.className = 'msg error';
-        msg.textContent = fwConflictMsgs[0];
-      } else {
-        empty.textContent = '';
-        empty.style.display = 'none';
-        msg.textContent = '';
+      if (shirtTotal <= 0) {
+        if (fwConflictMsgs.length) {
+          empty.textContent = fwConflictMsgs[0];
+          empty.style.display = '';
+          msg.className = 'msg error';
+          msg.textContent = fwConflictMsgs[0];
+        } else {
+          empty.textContent = '';
+          empty.style.display = 'none';
+          msg.textContent = '';
+        }
+        lines.style.display = 'none';
+        totalRow.style.display = 'none';
+        btn.disabled = true;
+        hideCampAgreementSection();
+        persistEnrollLocal();
+        return;
       }
-      lines.style.display = 'none';
-      totalRow.style.display = 'none';
-      btn.disabled = true;
-      hideCampAgreementSection();
-      persistEnrollLocal();
-      return;
     }
 
     let campTotal = creditApplied.campTotal;
@@ -6780,7 +6827,11 @@
       if (data && data.totals && Number.isFinite(Number(data.totals.total))) {
         var tSnap = Number(data.totals.total);
         if (tSnap >= 0) {
-          stepUpHoldSummarySnapshot = { total: tSnap };
+          var xSh = Number(data.totals.extraShirts);
+          stepUpHoldSummarySnapshot = {
+            total: tSnap,
+            extraShirts: Number.isFinite(xSh) && xSh > 0 ? xSh : 0,
+          };
         }
       }
       resetCampAgreementAfterSuccessfulCheckout();
