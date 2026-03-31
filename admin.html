@@ -754,7 +754,16 @@
               });
               state.enr = (state.enr || []).map(function (e) {
                 if (String(e.id) !== String(id)) return e;
-                return Object.assign({}, e, { status: wantStatus, step_up_hold_expires_at: null });
+                var patch = { status: wantStatus, step_up_hold_expires_at: null };
+                if (action === 'mark_paid') {
+                  if (j.pricePaid != null && Number.isFinite(Number(j.pricePaid))) {
+                    patch.price_paid = Number(j.pricePaid);
+                  }
+                  if (Number(j.registrationFeeApplied) > 0) {
+                    patch.registration_fee_paid = true;
+                  }
+                }
+                return Object.assign({}, e, patch);
               });
               renderTable(state.enr, state.parents);
               renderStepUpHolds(state.stepUpHolds, state.parents);

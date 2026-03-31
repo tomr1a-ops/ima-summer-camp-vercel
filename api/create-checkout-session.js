@@ -677,6 +677,8 @@ module.exports = async (req, res) => {
         testPricing: tp,
         campLineCents,
         bookingModes,
+        ledgerConsumeCents: ledgerConsumedCents,
+        ledgerParentId: parentId,
       });
       logStep('after_finalizeStepUpReservationBatch', { batchId });
     } catch (fz) {

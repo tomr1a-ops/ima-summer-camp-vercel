@@ -129,7 +129,8 @@ async function finalizePendingEnrollmentBatch(sb, batchId, options) {
 }
 
 /**
- * Step Up for Students: no Stripe; status pending_step_up; day counts incremented; no reg/shirt flags or ledger.
+ * Step Up for Students: no Stripe; status pending_step_up; day counts incremented; no reg/shirt flags on rows.
+ * Ledger (family_camp_credit_ledger) consumed here when credits reduced camp lines — same as card/$0 finalize.
  */
 async function finalizeStepUpReservationBatch(sb, batchId, options) {
   const {
@@ -137,6 +138,8 @@ async function finalizeStepUpReservationBatch(sb, batchId, options) {
     testPricing,
     campLineCents,
     bookingModes,
+    ledgerConsumeCents,
+    ledgerParentId,
   } = options;
 
   const { data: rows, error: qe } = await sb
@@ -209,6 +212,12 @@ async function finalizeStepUpReservationBatch(sb, batchId, options) {
       const { error: incErr } = await sb.from('days').update({ current_enrollment: next }).eq('id', dayId);
       if (incErr) throw incErr;
     }
+  }
+
+  const lc = Math.max(0, Math.round(Number(ledgerConsumeCents) || 0));
+  const lid = ledgerParentId || (rows[0] && rows[0].parent_id);
+  if (didAny && lc > 0 && lid) {
+    await subtractFamilyCampLedgerCents(sb, lid, lc);
   }
 
   return { ok: true, count: rows.length, didAny };

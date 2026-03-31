@@ -7,6 +7,8 @@ const { ENROLLMENT_STATUS } = require('./lib/enrollment-status');
 const { syncConfirmedDayCounts } = require('./lib/capacity');
 const { sendStepUpMarkedPaidEmail } = require('./lib/email');
 const { isMissingStepUpHoldExpiresColumn } = require('./lib/step-up-hold-column');
+const { isCampRegistrationFeePaid } = require('./lib/camper-registration-fee');
+const { registrationFee } = require('./lib/pricing');
 
 function json(res, code, body) {
   res.statusCode = code;
@@ -53,7 +55,9 @@ module.exports = async (req, res) => {
   const sb = serviceClient();
   const { data: row, error: fe } = await sb
     .from('enrollments')
-    .select('id, status')
+    .select(
+      'id, status, camper_id, parent_id, price_paid, registration_fee_paid, checkout_batch_id, day_ids'
+    )
     .eq('id', enrollmentId)
     .maybeSingle();
   if (fe) return json(res, 500, { error: fe.message });
@@ -63,20 +67,36 @@ module.exports = async (req, res) => {
 
   try {
     if (action === 'mark_paid') {
+      const regAlreadyPaid = await isCampRegistrationFeePaid(sb, row.camper_id);
+      const regDollars = regAlreadyPaid ? 0 : registrationFee(false);
+      const prevPrice = Number(row.price_paid) || 0;
+      const nextPrice = prevPrice + regDollars;
+
+      const updateFields = {
+        status: ENROLLMENT_STATUS.CONFIRMED,
+        step_up_hold_expires_at: null,
+        price_paid: nextPrice,
+      };
+      if (regDollars > 0) {
+        updateFields.registration_fee_paid = true;
+      }
+
       let { data: updated, error: ue } = await sb
         .from('enrollments')
-        .update({
-          status: ENROLLMENT_STATUS.CONFIRMED,
-          step_up_hold_expires_at: null,
-        })
+        .update(updateFields)
         .eq('id', row.id)
         .eq('status', ENROLLMENT_STATUS.PENDING_STEP_UP)
         .select('id')
         .maybeSingle();
       if (ue && isMissingStepUpHoldExpiresColumn(ue)) {
+        const retryFields = {
+          status: ENROLLMENT_STATUS.CONFIRMED,
+          price_paid: nextPrice,
+        };
+        if (regDollars > 0) retryFields.registration_fee_paid = true;
         const r2 = await sb
           .from('enrollments')
-          .update({ status: ENROLLMENT_STATUS.CONFIRMED })
+          .update(retryFields)
           .eq('id', row.id)
           .eq('status', ENROLLMENT_STATUS.PENDING_STEP_UP)
           .select('id')
@@ -86,8 +106,24 @@ module.exports = async (req, res) => {
       }
       if (ue) throw ue;
       if (!updated) return json(res, 200, { ok: true, already: true });
+
+      if (regDollars > 0 && row.camper_id) {
+        if (row.checkout_batch_id) {
+          await sb
+            .from('enrollments')
+            .update({ registration_fee_paid: true })
+            .eq('checkout_batch_id', row.checkout_batch_id)
+            .eq('camper_id', row.camper_id);
+        }
+        await sb.from('campers').update({ registration_fee_paid: true }).eq('id', row.camper_id);
+      }
+
       await sendStepUpMarkedPaidEmail(sb, row.id);
-      return json(res, 200, { ok: true });
+      return json(res, 200, {
+        ok: true,
+        pricePaid: nextPrice,
+        registrationFeeApplied: regDollars,
+      });
     }
 
     if (action === 'release_hold') {
