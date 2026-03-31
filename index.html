@@ -4324,6 +4324,60 @@
     return 'Daily (Step Up — pending funding): ' + dTxt;
   }
 
+  /**
+   * Step Up holds already on file for weeks not in this cart — still owed until staff confirms.
+   * When adding another week after refresh, merge these lines and dollars into the order summary total.
+   */
+  function pendingStepUpHoldAddonForBookings(bookings) {
+    var raw = (confirmedEnrollmentsCache || []).filter(function (r) {
+      return r && r.status === 'pending_step_up';
+    });
+    var coalesced = coalesceEnrollmentRowsForSidebar(raw);
+    var inCart = new Set();
+    (bookings || []).forEach(function (b) {
+      if (!b) return;
+      var cid = b.camperId != null ? String(b.camperId) : '';
+      var wid = b.weekId != null ? String(b.weekId) : '';
+      if (cid && wid) inCart.add(cid + '|' + wid);
+    });
+    var sum = 0;
+    var linesHtml = '';
+    coalesced.forEach(function (row) {
+      var key = String(row.camper_id) + '|' + String(row.week_id);
+      if (inCart.has(key)) return;
+      var owed = pendingStepUpAmountOwedDollars(row);
+      if (owed == null || !Number.isFinite(owed) || owed < 0.005) return;
+      sum += owed;
+      var w = weeksPayload.find(function (x) {
+        return String(x.id) === String(row.week_id);
+      });
+      var range = w ? formatWeekRangeForSummary(w) : '';
+      var childName = getCamperNameById(row.camper_id);
+      var headLine = w ? w.label + (range ? ' (' + range + ')' : '') + ' — ' + childName : 'Camp — ' + childName;
+      var detailSU = stepUpHoldSummaryDetailForRow(row, w);
+      linesHtml +=
+        '<div class="summary-line"><span class="label">' +
+        escapeHtml(headLine) +
+        ' <span class="summary-line-detail">· ' +
+        escapeHtml(detailSU) +
+        ' (on hold — pay with Step Up)</span></span><span class="val">' +
+        fmt(owed) +
+        '</span></div>';
+    });
+    var shirtSnap =
+      stepUpHoldSummarySnapshot && Number.isFinite(Number(stepUpHoldSummarySnapshot.extraShirts))
+        ? Number(stepUpHoldSummarySnapshot.extraShirts)
+        : 0;
+    if (shirtSnap > 0.01 && coalesced.length > 0) {
+      sum += shirtSnap;
+      linesHtml +=
+        '<div class="summary-line"><span class="label">Extra camp T-shirt <span class="summary-line-detail">· On Step Up hold (not yet confirmed)</span></span><span class="val">' +
+        fmt(shirtSnap) +
+        '</span></div>';
+    }
+    return { sum: sum, html: linesHtml };
+  }
+
   function enrollmentRowToScheduleLi(row) {
     const w = weeksPayload.find(function (x) {
       return String(x.id) === String(row.week_id);
@@ -5209,9 +5263,6 @@
     if (!bookings.length) {
       serverPrepaidApply = null;
     }
-    if (bookings.length && stepUpHoldSummarySnapshot && !checkoutSessionInFlight) {
-      stepUpHoldSummarySnapshot = null;
-    }
     var creditApplied = applyFamilyPrepaidCredits(bookings, wr, dr);
     renderCreditByCamperBlock(creditApplied);
     const fwConflictMsgs = getFullWeekPaidDayConflictMessages();
@@ -5417,7 +5468,8 @@
       }
     }
 
-    let html = '';
+    var stepUpHeldAddon = pendingStepUpHoldAddonForBookings(bookings);
+    let html = stepUpHeldAddon.html || '';
     creditApplied.lines.forEach(function (row) {
       const b = row.b;
       const w = weeksPayload.find(function (x) {
@@ -5523,7 +5575,8 @@
       });
     }
     lines.innerHTML = html;
-    const grand = Number(campTotal) + Number(reg) + Number(shirtTotal);
+    const grand =
+      Number(campTotal) + Number(reg) + Number(shirtTotal) + Number(stepUpHeldAddon.sum || 0);
     lastSummaryGrandDollars = grand;
     document.getElementById('total-amount').textContent = fmt(grand);
     var btnMain = document.querySelector('#checkout-btn .btn-text');
