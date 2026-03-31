@@ -735,7 +735,7 @@
 
       var stepUpHoldsActionsBound = false;
 
-      function bindStepUpHoldsActions(sb) {
+      function bindStepUpHoldsActions(sb, scheduleAdminRefresh) {
         if (stepUpHoldsActionsBound) return;
         var tbl = document.getElementById('tbl-step-up-holds');
         if (!tbl) return;
@@ -771,7 +771,11 @@
                 return {};
               });
               if (!res.ok) throw new Error(j.error || res.statusText || 'Request failed');
-              await refreshAdminData(sb, {});
+              var idStr = String(id);
+              state.stepUpHolds = (state.stepUpHolds || []).filter(function (h) {
+                return String(h && h.id) !== idStr;
+              });
+              renderStepUpHolds(state.stepUpHolds, state.parents);
               closeWeekPeopleModal();
               var msg =
                 action === 'mark_paid'
@@ -782,6 +786,11 @@
                     ? 'Hold was already released.'
                     : 'Hold released.';
               showBanner(msg, true);
+              if (typeof scheduleAdminRefresh === 'function') {
+                scheduleAdminRefresh();
+              } else {
+                void refreshAdminData(sb, {});
+              }
             } catch (err) {
               showBanner(err.message || String(err), false);
             } finally {
@@ -1005,12 +1014,25 @@
         mount.innerHTML = parts.join('');
       }
 
+      var adminRefreshSerialized = Promise.resolve();
+
       /**
        * Reload dashboard from Supabase (initial load + debounced Realtime).
+       * Serialized so overlapping Realtime bursts do not run several full snapshots in parallel (was ~6s stacked).
        * @param {{ initial?: boolean }} opts
        */
-      async function refreshAdminData(sb, opts) {
+      function refreshAdminData(sb, opts) {
         opts = opts || {};
+        var p = adminRefreshSerialized.then(function () {
+          return refreshAdminDataWork(sb, opts);
+        });
+        adminRefreshSerialized = p.catch(function (e) {
+          console.warn('[admin] refresh failed', e && e.message ? e.message : e);
+        });
+        return p;
+      }
+
+      async function refreshAdminDataWork(sb, opts) {
         state.weeks = await loadWeeks(sb);
         var snap = await fetchAdminCampSnapshot();
         var peakByWeekId;
@@ -1102,10 +1124,10 @@
         if (!ctx) return;
         const sb = await IMA.getSupabase();
 
-        await refreshAdminData(sb, { initial: true });
-        bindStepUpHoldsActions(sb);
-        bindRosterModalUiOnce();
         var scheduleAdminRefresh = createAdminDebouncedRefresh(sb);
+        bindStepUpHoldsActions(sb, scheduleAdminRefresh);
+        bindRosterModalUiOnce();
+        await refreshAdminData(sb, { initial: true });
         subscribeAdminCampRealtime(sb, scheduleAdminRefresh);
 
         if (!adminFilterListenersBound) {
