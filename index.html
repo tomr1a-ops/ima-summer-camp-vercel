@@ -2298,6 +2298,7 @@
   /** While > Date.now(), do not drop snapshot when enrollments fetch has not listed pending_step_up yet (post-checkout race). */
   var stepUpHoldSnapshotProtectUntil = 0;
   var stepUpPendingBannerRaf = null;
+  var stepUpBannerDebounceTimer = null;
   var stepUpSummaryCoalesceTimer = null;
   var stepUpSaveInProgress = false;
   var IMA_STEP_UP_HOLD_TOTALS_SS = 'ima_step_up_hold_totals';
@@ -4327,6 +4328,19 @@
    */
   function pendingStepUpAmountOwedDollars(row) {
     if (!row || row.status !== 'pending_step_up') return null;
+    var snapTotPs =
+      stepUpHoldSummarySnapshot && Number.isFinite(Number(stepUpHoldSummarySnapshot.total))
+        ? Number(stepUpHoldSummarySnapshot.total)
+        : null;
+    if (
+      snapTotPs != null &&
+      snapTotPs >= 0 &&
+      (confirmedEnrollmentsCache || []).some(function (r) {
+        return r && r.status === 'pending_step_up';
+      })
+    ) {
+      return null;
+    }
     var fromDb = Number(row.price_paid);
     var camp =
       Number.isFinite(fromDb) && fromDb > 0 ? fromDb : estimateStepUpCampTuitionDollars(row);
@@ -4368,6 +4382,21 @@
     if (row && row.status === 'pending_step_up' && stepUpHoldOrderUsesStableServerTotal()) {
       return '<span class="sov-step-up-owed"> · Balance due via Step Up (see total below)</span>';
     }
+    var snapH =
+      stepUpHoldSummarySnapshot && Number.isFinite(Number(stepUpHoldSummarySnapshot.total))
+        ? Number(stepUpHoldSummarySnapshot.total)
+        : null;
+    if (
+      row &&
+      row.status === 'pending_step_up' &&
+      snapH != null &&
+      snapH >= 0 &&
+      (confirmedEnrollmentsCache || []).some(function (r) {
+        return r && r.status === 'pending_step_up';
+      })
+    ) {
+      return '<span class="sov-step-up-owed"> · Balance due via Step Up (see total below)</span>';
+    }
     var t = pendingStepUpAmountOwedDollars(row);
     if (t == null) return '';
     return (
@@ -4404,6 +4433,17 @@
     var raw = (confirmedEnrollmentsCache || []).filter(function (r) {
       return r && r.status === 'pending_step_up';
     });
+    var snapTotPb =
+      stepUpHoldSummarySnapshot && Number.isFinite(Number(stepUpHoldSummarySnapshot.total))
+        ? Number(stepUpHoldSummarySnapshot.total)
+        : null;
+    if (raw.length && snapTotPb != null && snapTotPb >= 0) {
+      var oneLnPb =
+        '<div class="summary-line"><span class="label">Step Up hold <span class="summary-line-detail">· Active reservation — total from checkout</span></span><span class="val">' +
+        fmt(snapTotPb) +
+        '</span></div>';
+      return { sum: snapTotPb, html: oneLnPb };
+    }
     if (!raw.length) {
       if (stepUpHoldOrderUsesStableServerTotal()) {
         var stOnly = Number(stepUpHoldSummarySnapshot.total);
@@ -4414,20 +4454,6 @@
         return { sum: stOnly, html: htmlOnly };
       }
       return { sum: 0, html: '' };
-    }
-    /**
-     * Non-empty cart path: previously summed pendingStepUpAmountOwedDollars per row (recalculates with
-     * pricing preview) and skipped rows when camper|week was in cart — so adding days in the same week
-     * dropped the hold from the total and showed only “current pick” pricing. Use the server snapshot
-     * total for the whole active hold instead.
-     */
-    if (stepUpHoldOrderUsesStableServerTotal()) {
-      var stHold = Number(stepUpHoldSummarySnapshot.total);
-      var oneHoldLine =
-        '<div class="summary-line"><span class="label">Step Up hold <span class="summary-line-detail">· Active reservation — total from checkout</span></span><span class="val">' +
-        fmt(stHold) +
-        '</span></div>';
-      return { sum: stHold, html: oneHoldLine };
     }
     var coalesced = coalesceEnrollmentRowsForSidebar(raw);
     var inCart = new Set();
@@ -4905,11 +4931,15 @@
   }
 
   function renderStepUpPendingBanner() {
-    if (stepUpPendingBannerRaf) cancelAnimationFrame(stepUpPendingBannerRaf);
-    stepUpPendingBannerRaf = requestAnimationFrame(function () {
-      stepUpPendingBannerRaf = null;
-      renderStepUpPendingBannerImpl();
-    });
+    if (stepUpBannerDebounceTimer) clearTimeout(stepUpBannerDebounceTimer);
+    stepUpBannerDebounceTimer = setTimeout(function () {
+      stepUpBannerDebounceTimer = null;
+      if (stepUpPendingBannerRaf) cancelAnimationFrame(stepUpPendingBannerRaf);
+      stepUpPendingBannerRaf = requestAnimationFrame(function () {
+        stepUpPendingBannerRaf = null;
+        renderStepUpPendingBannerImpl();
+      });
+    }, 80);
   }
 
   function renderStepUpPendingBannerImpl() {
@@ -4924,8 +4954,12 @@
       return r && r.status === 'pending_step_up';
     });
     var holds = coalesceEnrollmentRowsForSidebar(rawHolds);
-    var stableSuBanner = stepUpHoldOrderUsesStableServerTotal();
-    var snapTotBanner = stableSuBanner ? Number(stepUpHoldSummarySnapshot.total) : null;
+    var snapTotBanner =
+      stepUpHoldSummarySnapshot && Number.isFinite(Number(stepUpHoldSummarySnapshot.total))
+        ? Number(stepUpHoldSummarySnapshot.total)
+        : null;
+    var stableSuBanner =
+      stepUpHoldOrderUsesStableServerTotal() || (snapTotBanner != null && holds.length > 0);
     if (!holds.length) {
       if (stableSuBanner && snapTotBanner != null) {
         el.hidden = false;
@@ -5001,6 +5035,10 @@
   }
 
   function cancelStepUpSummaryCoalesce() {
+    if (stepUpBannerDebounceTimer) {
+      clearTimeout(stepUpBannerDebounceTimer);
+      stepUpBannerDebounceTimer = null;
+    }
     if (stepUpSummaryCoalesceTimer) {
       clearTimeout(stepUpSummaryCoalesceTimer);
       stepUpSummaryCoalesceTimer = null;
@@ -5520,9 +5558,20 @@
         var coalescedSU = coalesceEnrollmentRowsForSidebar(stepUpRowsForSummary);
         var htmlSU = '';
         var grandSU = 0;
+        var useSnapExclusiveSu =
+          snapTot != null &&
+          Number.isFinite(snapTot) &&
+          snapTot >= 0 &&
+          stepUpRowsForSummary.length > 0;
         var useStableServerStepUpLine = stepUpHoldOrderUsesStableServerTotal();
         var stableLineTot = useStableServerStepUpLine ? Number(stepUpHoldSummarySnapshot.total) : null;
-        if (useStableServerStepUpLine && stableLineTot != null) {
+        if (useSnapExclusiveSu) {
+          grandSU = snapTot;
+          htmlSU +=
+            '<div class="summary-line"><span class="label">Step Up hold <span class="summary-line-detail">· Amount due when staff confirms funding</span></span><span class="val">' +
+            fmt(snapTot) +
+            '</span></div>';
+        } else if (useStableServerStepUpLine && stableLineTot != null) {
           grandSU = stableLineTot;
           htmlSU +=
             '<div class="summary-line"><span class="label">Step Up hold <span class="summary-line-detail">· Amount due when staff confirms funding</span></span><span class="val">' +
@@ -7150,6 +7199,7 @@
   }
 
   async function applyStepUpRegistrationSavedUi(data) {
+    cancelStepUpSummaryCoalesce();
     if (summaryImmediateRaf != null) {
       try {
         cancelAnimationFrame(summaryImmediateRaf);
