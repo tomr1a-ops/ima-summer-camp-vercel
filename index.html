@@ -2236,8 +2236,10 @@
   const ENROLL_SS = 'ima_reg_enroll_v1';
   /** Survives post-checkout enroll draft wipe; value = IMA member checkbox checked (waive fee when still applicable). */
   const IMA_MEMBER_PREF_SS = 'ima_ima_member_pref_v1';
-  /** Same browser tab: user accepted current camp agreement (version in key) — survives checkout + summary rebuild. */
+  /** Legacy key — cleared on hide so old sessions do not pre-check the box without scrolling. */
   const CAMP_AGREEMENT_ACCEPT_SS = 'ima_camp_agreement_accepted_v2';
+  /** Same tab only: user scrolled agreement to bottom (version in key). Never stores checkbox checked — user must tick each time. */
+  const CAMP_AGREEMENT_SCROLL_SS = 'ima_camp_agreement_scrolled_v2';
 
   function dayRateClient() {
     if (testPriceMode) return 1;
@@ -4660,25 +4662,37 @@
   var campAgreementScrollUnlocked = false;
   var campAgreementTextPromise = null;
 
-  function campAgreementSessionStorageKey() {
+  function campAgreementScrollSessionKey() {
+    var uid = enrollUserId();
+    return CAMP_AGREEMENT_SCROLL_SS + ':' + (uid || 'guest') + ':' + CAMP_AGREEMENT_VERSION;
+  }
+
+  function campAgreementLegacyAcceptedSessionKey() {
     var uid = enrollUserId();
     return CAMP_AGREEMENT_ACCEPT_SS + ':' + (uid || 'guest') + ':' + CAMP_AGREEMENT_VERSION;
   }
 
-  function readCampAgreementSessionAccepted() {
+  function readCampAgreementScrollOk() {
     try {
-      return sessionStorage.getItem(campAgreementSessionStorageKey()) === '1';
+      return sessionStorage.getItem(campAgreementScrollSessionKey()) === '1';
     } catch (eR) {
       return false;
     }
   }
 
-  function writeCampAgreementSessionAccepted(on) {
+  function writeCampAgreementScrollOk(on) {
     try {
-      var k = campAgreementSessionStorageKey();
+      var k = campAgreementScrollSessionKey();
       if (on) sessionStorage.setItem(k, '1');
       else sessionStorage.removeItem(k);
     } catch (eW) {}
+  }
+
+  function clearCampAgreementSessionStorageKeys() {
+    try {
+      sessionStorage.removeItem(campAgreementScrollSessionKey());
+      sessionStorage.removeItem(campAgreementLegacyAcceptedSessionKey());
+    } catch (eC) {}
   }
 
   function hideCampAgreementSection() {
@@ -4702,21 +4716,21 @@
     }
     if (sc) sc.scrollTop = 0;
     campAgreementScrollUnlocked = false;
+    clearCampAgreementSessionStorageKeys();
   }
 
   function updateCampAgreementScrollGate() {
     var sc = document.getElementById('camp-agreement-scroll');
     var agreeChk = document.getElementById('camp-agreement-accept');
     if (!sc || !agreeChk) return;
-    if (readCampAgreementSessionAccepted()) {
-      campAgreementScrollUnlocked = true;
-      agreeChk.disabled = false;
-      agreeChk.checked = true;
-      return;
-    }
     var threshold = 12;
     var atBottom = sc.scrollTop + sc.clientHeight >= sc.scrollHeight - threshold;
-    if (atBottom) campAgreementScrollUnlocked = true;
+    if (atBottom) {
+      campAgreementScrollUnlocked = true;
+      writeCampAgreementScrollOk(true);
+    } else if (readCampAgreementScrollOk()) {
+      campAgreementScrollUnlocked = true;
+    }
     if (campAgreementScrollUnlocked) {
       agreeChk.disabled = false;
     } else {
@@ -4759,7 +4773,6 @@
     sc.dataset.agreementInit = '1';
     sc.addEventListener('scroll', updateCampAgreementScrollGate, { passive: true });
     agreeChk.addEventListener('change', function () {
-      writeCampAgreementSessionAccepted(!!agreeChk.checked);
       updateSummary();
     });
   }
