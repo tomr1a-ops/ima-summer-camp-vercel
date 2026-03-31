@@ -26,7 +26,7 @@ async function getProfileForUser(userId) {
   const sb = serviceClient();
   const { data, error } = await sb
     .from('profiles')
-    .select('id,email,full_name,phone,role')
+    .select('id,email,full_name,phone,role,waiver_signed,waiver_signed_at')
     .eq('id', userId)
     .maybeSingle();
   if (error) throw error;
@@ -109,12 +109,12 @@ async function upsertParentProfile(user, extras) {
   const { data: rows, error } = await sb
     .from('profiles')
     .upsert(row, { onConflict: 'id' })
-    .select('id,email,full_name,phone,role');
+    .select('id,email,full_name,phone,role,waiver_signed,waiver_signed_at');
   if (error) throw error;
   if (rows && rows[0]) return rows[0];
   const { data: again, error: e2 } = await sb
     .from('profiles')
-    .select('id,email,full_name,phone,role')
+    .select('id,email,full_name,phone,role,waiver_signed,waiver_signed_at')
     .eq('id', user.id)
     .maybeSingle();
   if (e2) throw e2;

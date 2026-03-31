@@ -18,6 +18,8 @@ CREATE TABLE public.profiles (
   full_name  TEXT,
   phone      TEXT,
   role       public.user_role NOT NULL DEFAULT 'parent',
+  waiver_signed     BOOLEAN NOT NULL DEFAULT false,
+  waiver_signed_at  TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

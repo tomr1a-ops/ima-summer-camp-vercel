@@ -3,6 +3,7 @@ const { subtractFamilyCampLedgerCents } = require('./family-camp-ledger');
 const { ENROLLMENT_STATUS } = require('./enrollment-status');
 const { isMissingStepUpHoldExpiresColumn } = require('./step-up-hold-column');
 const { markWaitlistConverted } = require('./waitlist-service');
+const { markProfileWaiverSigned } = require('./profile-waiver');
 
 /**
  * After payment (Stripe) or $0 prepaid checkout: confirm pending rows, bump day counts,
@@ -135,6 +136,14 @@ async function finalizePendingEnrollmentBatch(sb, batchId, options) {
     }
   }
 
+  if (didConfirmAny && rows[0] && rows[0].parent_id) {
+    try {
+      await markProfileWaiverSigned(sb, rows[0].parent_id);
+    } catch (wErr) {
+      console.error('[finalizePendingEnrollmentBatch] waiver flag', wErr && wErr.message);
+    }
+  }
+
   return { ok: true, count: rows.length };
 }
 
@@ -252,6 +261,14 @@ async function finalizeStepUpReservationBatch(sb, batchId, options) {
       await markWaitlistConverted(sb, waitlistIds, lid);
     } catch (wlErr) {
       console.error('[finalizeStepUpReservationBatch] waitlist converted', wlErr && wlErr.message);
+    }
+  }
+
+  if (didAny && rows[0] && rows[0].parent_id) {
+    try {
+      await markProfileWaiverSigned(sb, rows[0].parent_id);
+    } catch (wErr) {
+      console.error('[finalizeStepUpReservationBatch] waiver flag', wErr && wErr.message);
     }
   }
 

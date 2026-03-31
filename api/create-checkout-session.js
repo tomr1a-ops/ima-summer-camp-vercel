@@ -254,23 +254,6 @@ module.exports = async (req, res) => {
     );
   }
 
-  if (agreementAccepted !== true) {
-    return failCheckout(
-      res,
-      400,
-      'AGREEMENT_REQUIRED',
-      'Please read and confirm the agreement before continuing.'
-    );
-  }
-  if (agreementVersion !== AGREEMENT_VERSION) {
-    return failCheckout(
-      res,
-      400,
-      'AGREEMENT_VERSION',
-      'Please refresh the page and accept the current camp agreement.'
-    );
-  }
-
   let paymentMethod =
     body.paymentMethod === 'step_up' || body.paymentMethod === 'STEP_UP'
       ? 'step_up'
@@ -334,6 +317,29 @@ module.exports = async (req, res) => {
     });
   }
   parentId = user.id;
+  const profileWaiverOk =
+    profile &&
+    (profile.waiver_signed === true ||
+      profile.waiver_signed === 'true' ||
+      String(profile.waiver_signed) === '1');
+  if (!profileWaiverOk) {
+    if (agreementAccepted !== true) {
+      return failCheckout(
+        res,
+        400,
+        'AGREEMENT_REQUIRED',
+        'Please read and confirm the agreement before continuing.'
+      );
+    }
+    if (agreementVersion !== AGREEMENT_VERSION) {
+      return failCheckout(
+        res,
+        400,
+        'AGREEMENT_VERSION',
+        'Please refresh the page and accept the current camp agreement.'
+      );
+    }
+  }
   const parentDisplayName = resolveParentDisplayName(user, profile);
   for (const b of bookingsArray) {
     if (!b.camperId) {
@@ -652,33 +658,37 @@ module.exports = async (req, res) => {
   }
 
   let agreementRecordId = null;
-  try {
-    logStep('before_insertAgreementRecord', { batchId });
-    const rec = await insertAgreementRecord(sb, {
-      parentId,
-      parentName: parentDisplayName,
-      email: (profile && profile.email) || (user.email || ''),
-      ipAddress: clientIpFromRequest(req),
-      camperIds: camperIdsToVerify,
-    });
-    agreementRecordId = rec.id;
-    logStep('after_insertAgreementRecord', { agreementRecordId });
-  } catch (arErr) {
-    logFullError('insertAgreementRecord', arErr);
-    if (bookingsArray.length) {
-      try {
-        await sb.from('enrollments').delete().eq('checkout_batch_id', batchId);
-      } catch (delE) {
-        logFullError('rollback enrollments after agreement failure', delE);
+  if (!profileWaiverOk) {
+    try {
+      logStep('before_insertAgreementRecord', { batchId });
+      const rec = await insertAgreementRecord(sb, {
+        parentId,
+        parentName: parentDisplayName,
+        email: (profile && profile.email) || (user.email || ''),
+        ipAddress: clientIpFromRequest(req),
+        camperIds: camperIdsToVerify,
+      });
+      agreementRecordId = rec.id;
+      logStep('after_insertAgreementRecord', { agreementRecordId });
+    } catch (arErr) {
+      logFullError('insertAgreementRecord', arErr);
+      if (bookingsArray.length) {
+        try {
+          await sb.from('enrollments').delete().eq('checkout_batch_id', batchId);
+        } catch (delE) {
+          logFullError('rollback enrollments after agreement failure', delE);
+        }
       }
+      return failCheckout(
+        res,
+        500,
+        'AGREEMENT_SAVE',
+        'Could not save agreement acceptance. Try again.',
+        arErr instanceof Error ? arErr : arErr
+      );
     }
-    return failCheckout(
-      res,
-      500,
-      'AGREEMENT_SAVE',
-      'Could not save agreement acceptance. Try again.',
-      arErr instanceof Error ? arErr : arErr
-    );
+  } else {
+    logStep('skip_insertAgreementRecord', { reason: 'profile_waiver_signed' });
   }
 
   logStep('before_payment_branch', {

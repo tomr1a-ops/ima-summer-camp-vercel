@@ -157,7 +157,7 @@
     const sb = await g.IMA.getSupabase();
     const { data, error } = await sb
       .from('profiles')
-      .select('id,email,full_name,phone,role,created_at')
+      .select('id,email,full_name,phone,role,created_at,waiver_signed,waiver_signed_at')
       .eq('id', session.user.id)
       .maybeSingle();
     if (error) throw error;

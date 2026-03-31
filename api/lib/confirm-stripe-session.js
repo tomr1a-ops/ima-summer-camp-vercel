@@ -3,6 +3,7 @@ const { ENROLLMENT_STATUS } = require('./enrollment-status');
 const { dayRate, weekRate, registrationFee } = require('./pricing');
 const { subtractFamilyCampLedgerCents } = require('./family-camp-ledger');
 const { markWaitlistConverted } = require('./waitlist-service');
+const { markProfileWaiverSigned } = require('./profile-waiver');
 
 /**
  * Set campers.extra_shirt_addon_paid from Stripe session metadata (same as finalize-batch-enrollments).
@@ -71,6 +72,14 @@ async function confirmStripeSession(stripe, session) {
   if (!enrollmentRows.length) {
     const shirtCents = Number((session.metadata && session.metadata.extra_shirt_cents) || 0) || 0;
     if (shirtCents > 0) {
+      const pid = session.metadata && session.metadata.checkout_parent_id;
+      if (pid) {
+        try {
+          await markProfileWaiverSigned(sb, pid);
+        } catch (wErr) {
+          console.error('[confirm-stripe-session] waiver flag (shirt-only)', wErr && wErr.message);
+        }
+      }
       return { ok: true, shirtOnly: true, count: 0, email: customerEmail };
     }
     return { ok: false, reason: 'no_rows' };
@@ -179,6 +188,14 @@ async function confirmStripeSession(stripe, session) {
           console.error('[confirm-stripe-session] waitlist converted', wlErr && wlErr.message);
         }
       }
+    }
+  }
+
+  if (didConfirmAny && enrollmentRows[0] && enrollmentRows[0].parent_id) {
+    try {
+      await markProfileWaiverSigned(sb, enrollmentRows[0].parent_id);
+    } catch (wErr) {
+      console.error('[confirm-stripe-session] waiver flag', wErr && wErr.message);
     }
   }
 

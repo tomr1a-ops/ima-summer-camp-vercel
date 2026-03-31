@@ -1,16 +1,14 @@
 ---
-description: Do not auto-deploy vercel-v2 to ima-summer-camp unless asked
+description: Always production-deploy vercel-v2 to ima-summer-camp after code changes
 alwaysApply: true
 ---
 
-# Vercel v2 (IMA camp) — no automatic summer camp deploy
+# Vercel v2 (IMA camp) — always deploy summer camp after edits
 
-**Do not** run a production deploy to **`ima-summer-camp`** after changes under `vercel-v2` unless the user **explicitly** asks to deploy.
-
-- Deploy from the **project root** (parent of `api/`), not from `api/` alone, only when requested. Command for summer camp when asked:
+After **any** change under `vercel-v2` that affects production (including from the `api/` workspace), run a **production deploy** to **`ima-summer-camp`**. Deploy from **project root** (parent of `api/`), not from `api/` alone:
 
 ```bash
 cd /Users/tomrichardson/Downloads/vercel-v2 && VERCEL_ORG_ID=team_PXMrLfQ01zlse3XBsDcaPa3s VERCEL_PROJECT_ID=prj_TJxRFRbKAK4AkYBe8AKL1DoH2k9p npx vercel deploy --prod --yes
 ```
 
-- Otherwise do not run that deploy at the end of tasks.
+Do this at the end of the same turn as the edits unless the user says not to deploy.
