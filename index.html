@@ -5109,8 +5109,19 @@
         console.error(e);
       } catch (e2) {}
     } finally {
+      var shirtPickForSum = false;
+      if (session && parentCampers.length) {
+        for (var si = 0; si < parentCampers.length; si++) {
+          if (extraShirtChargesThisCheckout(parentCampers[si].id)) {
+            shirtPickForSum = true;
+            break;
+          }
+        }
+      }
       var skipSum =
-        stepUpHoldOrderUsesStableServerTotal() && !collectBookings().length;
+        stepUpHoldOrderUsesStableServerTotal() &&
+        !collectBookings().length &&
+        !shirtPickForSum;
       if (!skipSum) updateSummary();
     }
   }
@@ -5490,12 +5501,10 @@
         lines.style.display = '';
         totalRow.style.display = '';
         msg.className = 'msg ok';
-        if (msg.textContent !== STEP_UP_HOLD_SUCCESS_MSG) msg.textContent = STEP_UP_HOLD_SUCCESS_MSG;
+        if (shirtTotal <= 0 && msg.textContent !== STEP_UP_HOLD_SUCCESS_MSG) msg.textContent = STEP_UP_HOLD_SUCCESS_MSG;
 
         var agreeSU = document.getElementById('camp-agreement-section');
-        if (agreeSU) agreeSU.hidden = true;
         var paySU = document.getElementById('payment-method-section');
-        if (paySU) paySU.hidden = true;
 
         var coalescedSU = coalesceEnrollmentRowsForSidebar(stepUpRowsForSummary);
         var htmlSU = '';
@@ -5543,6 +5552,18 @@
             fmt(grandSU) +
             '</span></div>';
         }
+        if (shirtTotal > 0) {
+          shirtBillCamperIds.forEach(function (cid) {
+            var nm = getCamperNameById(cid);
+            htmlSU +=
+              '<div class="summary-line"><span class="label">Extra camp T-shirt — ' +
+              escapeHtml(nm) +
+              '</span><span class="val">' +
+              fmt(shirtUnit) +
+              '</span></div>';
+          });
+          grandSU += shirtTotal;
+        }
         if (lines.innerHTML !== htmlSU) lines.innerHTML = htmlSU;
         var displayGrandSU = grandSU;
         if (!useStableServerStepUpLine && snapTot != null && Number.isFinite(snapTot) && snapTot >= 0 && displayGrandSU < snapTot - 0.02) {
@@ -5555,12 +5576,79 @@
 
         var btnMainSU = document.querySelector('#checkout-btn .btn-text');
         var secureNoteSU = document.querySelector('.order-summary .secure-note');
-        if (btnMainSU) btnMainSU.textContent = 'Hold active — not a card checkout';
-        if (secureNoteSU) {
-          secureNoteSU.textContent =
-            'No card charge here. Balance above is owed through Step Up until IMA staff confirms payment.';
+        if (shirtTotal > 0) {
+          if (paySU) paySU.hidden = false;
+          if (agreeSU) {
+            if (parentProfileWaiverSigned) {
+              agreeSU.hidden = true;
+            } else {
+              agreeSU.hidden = false;
+              if (readCampAgreementAcceptOk()) {
+                writeCampAgreementScrollOk(true);
+              }
+              ensureCampAgreementTextLoaded();
+              try {
+                requestAnimationFrame(function () {
+                  updateCampAgreementScrollGate();
+                });
+              } catch (eRafSu) {
+                updateCampAgreementScrollGate();
+              }
+            }
+          }
+          initCampAgreementScrollUnlock();
+          var pmPickSu = document.getElementById('payment-method-select');
+          var pmValSu =
+            pmPickSu && pmPickSu.value === 'step_up'
+              ? 'step_up'
+              : pmPickSu && pmPickSu.value === 'credit_card'
+                ? 'credit_card'
+                : '';
+          var stepUpNoticeSu = document.getElementById('step-up-notice');
+          if (stepUpNoticeSu) stepUpNoticeSu.hidden = pmValSu !== 'step_up';
+          var agreeChkSu = document.getElementById('camp-agreement-accept');
+          var agreementOkSu = !!(parentProfileWaiverSigned || (agreeChkSu && agreeChkSu.checked));
+          var paymentOkSu = pmValSu === 'credit_card' || pmValSu === 'step_up';
+          var zeroDueSu = displayGrandSU < 0.01 && shirtTotal > 0;
+          if (btnMainSU) {
+            if (checkoutSessionInFlight && zeroDueSu && pmValSu === 'credit_card') {
+              btnMainSU.textContent = 'Saving…';
+            } else if (pmValSu === 'step_up') {
+              btnMainSU.textContent = 'Hold Spot';
+            } else if (zeroDueSu) {
+              btnMainSU.textContent = 'Confirm registration ($0)';
+            } else {
+              btnMainSU.textContent = 'Secure Checkout →';
+            }
+          }
+          if (secureNoteSU) {
+            if (pmValSu === 'step_up') {
+              secureNoteSU.textContent = 'No card charge — 24-hour hold pending Step Up funding.';
+            } else if (zeroDueSu) {
+              secureNoteSU.textContent = 'No payment due — we save automatically. Tap Confirm if it does not save.';
+            } else {
+              secureNoteSU.textContent = '🔒 Powered by Stripe · Card data stays safe';
+            }
+          }
+          if (fwConflictMsgs.length) {
+            msg.className = 'msg error';
+            msg.textContent = fwConflictMsgs[0];
+            btn.disabled = true;
+          } else if (zeroDueSu) {
+            btn.disabled = !!checkoutSessionInFlight || !agreementOkSu || !paymentOkSu;
+          } else {
+            btn.disabled = !agreementOkSu || !paymentOkSu;
+          }
+        } else {
+          if (agreeSU) agreeSU.hidden = true;
+          if (paySU) paySU.hidden = true;
+          if (btnMainSU) btnMainSU.textContent = 'Hold active — not a card checkout';
+          if (secureNoteSU) {
+            secureNoteSU.textContent =
+              'No card charge here. Balance above is owed through Step Up until IMA staff confirms payment.';
+          }
+          btn.disabled = true;
         }
-        btn.disabled = true;
         btn.classList.remove('loading');
         persistEnrollLocal();
         return;
