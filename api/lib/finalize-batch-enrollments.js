@@ -1,6 +1,7 @@
 const { dayRate, weekRate, registrationFee } = require('./pricing');
 const { subtractFamilyCampLedgerCents } = require('./family-camp-ledger');
 const { ENROLLMENT_STATUS } = require('./enrollment-status');
+const { isMissingStepUpHoldExpiresColumn } = require('./step-up-hold-column');
 
 /**
  * After payment (Stripe) or $0 prepaid checkout: confirm pending rows, bump day counts,
@@ -170,21 +171,33 @@ async function finalizeStepUpReservationBatch(sb, batchId, options) {
     }
     const pricePaid = campDollars;
 
-    const { data: updated, error: ue } = await sb
+    const baseUpdate = {
+      status: ENROLLMENT_STATUS.PENDING_STEP_UP,
+      stripe_session_id: null,
+      price_paid: pricePaid,
+      registration_fee_paid: false,
+      guest_email: row.parent_id ? null : customerEmail || null,
+    };
+    let { data: updated, error: ue } = await sb
       .from('enrollments')
-      .update({
-        status: ENROLLMENT_STATUS.PENDING_STEP_UP,
-        stripe_session_id: null,
-        price_paid: pricePaid,
-        registration_fee_paid: false,
-        guest_email: row.parent_id ? null : customerEmail || null,
-        step_up_hold_expires_at: holdExpiresIso,
-      })
+      .update({ ...baseUpdate, step_up_hold_expires_at: holdExpiresIso })
       .eq('id', row.id)
       .eq('status', ENROLLMENT_STATUS.PENDING)
       .select('id')
       .maybeSingle();
 
+    if (ue && isMissingStepUpHoldExpiresColumn(ue)) {
+      console.warn('[finalizeStepUpReservationBatch] retry update without step_up_hold_expires_at');
+      const retry = await sb
+        .from('enrollments')
+        .update(baseUpdate)
+        .eq('id', row.id)
+        .eq('status', ENROLLMENT_STATUS.PENDING)
+        .select('id')
+        .maybeSingle();
+      updated = retry.data;
+      ue = retry.error;
+    }
     if (ue) throw ue;
     if (!updated) continue;
     didAny = true;

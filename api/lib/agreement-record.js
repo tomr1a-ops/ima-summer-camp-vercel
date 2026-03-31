@@ -31,12 +31,18 @@ async function insertAgreementRecord(sb, opts) {
     version = AGREEMENT_VERSION,
   } = opts;
   const uniqueCampers = [...new Set((camperIds || []).map((id) => String(id).trim()).filter(Boolean))];
+  let emailOut = String(email || '').trim();
+  if (!emailOut) {
+    const pid = parentId ? String(parentId).replace(/[^a-f0-9-]/gi, '').slice(0, 36) : 'unknown';
+    emailOut = `parent+${pid}@ima-camp-agreement.local`;
+    console.warn('[agreement-record] empty email for agreement insert; using synthetic address', { parentId });
+  }
   const { data, error } = await sb
     .from('agreement_records')
     .insert({
       parent_id: parentId || null,
       parent_name: String(parentName || '').trim() || 'Unknown',
-      email: String(email || '').trim(),
+      email: emailOut,
       ip_address: ipAddress ? String(ipAddress).slice(0, 200) : null,
       agreement_version: String(version),
       camper_ids: uniqueCampers,

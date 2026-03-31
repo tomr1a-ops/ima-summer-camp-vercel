@@ -6,6 +6,7 @@ const { requireAdmin } = require('./lib/auth');
 const { ENROLLMENT_STATUS } = require('./lib/enrollment-status');
 const { syncConfirmedDayCounts } = require('./lib/capacity');
 const { sendStepUpMarkedPaidEmail } = require('./lib/email');
+const { isMissingStepUpHoldExpiresColumn } = require('./lib/step-up-hold-column');
 
 function json(res, code, body) {
   res.statusCode = code;
@@ -62,7 +63,7 @@ module.exports = async (req, res) => {
 
   try {
     if (action === 'mark_paid') {
-      const { data: updated, error: ue } = await sb
+      let { data: updated, error: ue } = await sb
         .from('enrollments')
         .update({
           status: ENROLLMENT_STATUS.CONFIRMED,
@@ -72,6 +73,17 @@ module.exports = async (req, res) => {
         .eq('status', ENROLLMENT_STATUS.PENDING_STEP_UP)
         .select('id')
         .maybeSingle();
+      if (ue && isMissingStepUpHoldExpiresColumn(ue)) {
+        const r2 = await sb
+          .from('enrollments')
+          .update({ status: ENROLLMENT_STATUS.CONFIRMED })
+          .eq('id', row.id)
+          .eq('status', ENROLLMENT_STATUS.PENDING_STEP_UP)
+          .select('id')
+          .maybeSingle();
+        updated = r2.data;
+        ue = r2.error;
+      }
       if (ue) throw ue;
       if (!updated) return json(res, 200, { ok: true, already: true });
       await sendStepUpMarkedPaidEmail(sb, row.id);
@@ -79,7 +91,7 @@ module.exports = async (req, res) => {
     }
 
     if (action === 'release_hold') {
-      const { data: updated, error: ue } = await sb
+      let { data: updated, error: ue } = await sb
         .from('enrollments')
         .update({
           status: ENROLLMENT_STATUS.CANCELLED,
@@ -89,6 +101,17 @@ module.exports = async (req, res) => {
         .eq('status', ENROLLMENT_STATUS.PENDING_STEP_UP)
         .select('day_ids')
         .maybeSingle();
+      if (ue && isMissingStepUpHoldExpiresColumn(ue)) {
+        const r2 = await sb
+          .from('enrollments')
+          .update({ status: ENROLLMENT_STATUS.CANCELLED })
+          .eq('id', row.id)
+          .eq('status', ENROLLMENT_STATUS.PENDING_STEP_UP)
+          .select('day_ids')
+          .maybeSingle();
+        updated = r2.data;
+        ue = r2.error;
+      }
       if (ue) throw ue;
       if (!updated) return json(res, 200, { ok: true, already: true });
       await syncConfirmedDayCounts(sb, updated.day_ids || [], []);

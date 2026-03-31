@@ -5,6 +5,12 @@
  */
 const { serviceClient } = require('./lib/supabase');
 const { requireAdmin } = require('./lib/auth');
+const { isMissingStepUpHoldExpiresColumn } = require('./lib/step-up-hold-column');
+
+const ENR_SELECT_WITH_HOLD =
+  'id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at,step_up_hold_expires_at, campers(first_name,last_name), weeks(label,week_number)';
+const ENR_SELECT_BASE =
+  'id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at, campers(first_name,last_name), weeks(label,week_number)';
 
 function json(res, code, body) {
   res.statusCode = code;
@@ -117,16 +123,21 @@ module.exports = async (req, res) => {
 
   try {
     const sb = serviceClient();
-    const [{ data: dayRows, error: de }, { data: enrRows, error: ee }] = await Promise.all([
-      sb.from('days').select('week_id, current_enrollment'),
-      sb
-        .from('enrollments')
-        .select(
-          'id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at,step_up_hold_expires_at, campers(first_name,last_name), weeks(label,week_number)'
-        )
-        .order('created_at', { ascending: false }),
-    ]);
+    const { data: dayRows, error: de } = await sb.from('days').select('week_id, current_enrollment');
     if (de) throw de;
+
+    let { data: enrRows, error: ee } = await sb
+      .from('enrollments')
+      .select(ENR_SELECT_WITH_HOLD)
+      .order('created_at', { ascending: false });
+    const retryNoHold =
+      (ee && isMissingStepUpHoldExpiresColumn(ee)) || (ee && String(ee.code || '') === 'PGRST205');
+    if (ee && retryNoHold) {
+      console.warn('[admin-camp-snapshot] retrying enrollments select without step_up_hold_expires_at', ee.code, ee.message);
+      const second = await sb.from('enrollments').select(ENR_SELECT_BASE).order('created_at', { ascending: false });
+      enrRows = second.data;
+      ee = second.error;
+    }
     if (ee) throw ee;
 
     const weekCapacity = buildWeekCapacity(dayRows, enrRows || []);

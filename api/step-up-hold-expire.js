@@ -5,6 +5,7 @@
 const { serviceClient } = require('./lib/supabase');
 const { ENROLLMENT_STATUS } = require('./lib/enrollment-status');
 const { syncConfirmedDayCounts } = require('./lib/capacity');
+const { isMissingStepUpHoldExpiresColumn } = require('./lib/step-up-hold-column');
 
 function json(res, code, body) {
   res.statusCode = code;
@@ -47,11 +48,14 @@ module.exports = async (req, res) => {
       .eq('status', ENROLLMENT_STATUS.PENDING_STEP_UP)
       .not('step_up_hold_expires_at', 'is', null)
       .lt('step_up_hold_expires_at', nowIso);
+    if (qe && isMissingStepUpHoldExpiresColumn(qe)) {
+      return json(res, 200, { ok: true, skipped: true, reason: 'step_up_hold_expires_at column missing' });
+    }
     if (qe) throw qe;
 
     let released = 0;
     for (const row of expired || []) {
-      const { data: updated, error: ue } = await sb
+      let { data: updated, error: ue } = await sb
         .from('enrollments')
         .update({
           status: ENROLLMENT_STATUS.CANCELLED,
@@ -61,6 +65,17 @@ module.exports = async (req, res) => {
         .eq('status', ENROLLMENT_STATUS.PENDING_STEP_UP)
         .select('day_ids')
         .maybeSingle();
+      if (ue && isMissingStepUpHoldExpiresColumn(ue)) {
+        const r2 = await sb
+          .from('enrollments')
+          .update({ status: ENROLLMENT_STATUS.CANCELLED })
+          .eq('id', row.id)
+          .eq('status', ENROLLMENT_STATUS.PENDING_STEP_UP)
+          .select('day_ids')
+          .maybeSingle();
+        updated = r2.data;
+        ue = r2.error;
+      }
       if (ue) {
         console.error('[step-up-hold-expire] update', row.id, ue.message);
         continue;
