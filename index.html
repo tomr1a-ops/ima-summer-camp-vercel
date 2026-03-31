@@ -2295,6 +2295,8 @@
   let confirmedEnrollmentsRaw = [];
   /** After Step Up hold API success, totals until GET /api/enrollments includes pending_step_up rows (avoids empty-cart / Stripe UI clearing the owed line). */
   let stepUpHoldSummarySnapshot = null;
+  /** While > Date.now(), do not drop snapshot when enrollments fetch has not listed pending_step_up yet (post-checkout race). */
+  var stepUpHoldSnapshotProtectUntil = 0;
   var IMA_STEP_UP_HOLD_TOTALS_SS = 'ima_step_up_hold_totals';
   var STEP_UP_HOLD_SUCCESS_MSG =
     'Hold successful — your spot is reserved for 24 hours. Check your email — complete Step Up for Students funding to IMA Impact Martial Athletics; staff will confirm when allocation is received.';
@@ -4062,10 +4064,20 @@
       }
       /* Keep checkout totals snapshot while holds exist. Clear when no Step Up holds remain. */
       if (!hasPendingStepUp) {
-        stepUpHoldSummarySnapshot = null;
-        try {
-          sessionStorage.removeItem(IMA_STEP_UP_HOLD_TOTALS_SS);
-        } catch (eRm) {}
+        var skipClearSnapshot =
+          Date.now() < stepUpHoldSnapshotProtectUntil && stepUpHoldSummarySnapshot != null;
+        if (skipClearSnapshot) {
+          /* GET /api/enrollments often lags create-checkout-session; first refetch can omit pending_step_up
+             and would wipe the owed total until a full page reload. */
+        } else {
+          stepUpHoldSummarySnapshot = null;
+          stepUpHoldSnapshotProtectUntil = 0;
+          try {
+            sessionStorage.removeItem(IMA_STEP_UP_HOLD_TOTALS_SS);
+          } catch (eRm) {}
+        }
+      } else if (hasPendingStepUp) {
+        stepUpHoldSnapshotProtectUntil = 0;
       }
       try {
         persistEnrollLocal();
@@ -6980,6 +6992,7 @@
   function applyStepUpRegistrationSavedUi(data) {
     try {
       stepUpHoldSummarySnapshot = null;
+      stepUpHoldSnapshotProtectUntil = 0;
       if (data && data.totals && Number.isFinite(Number(data.totals.total))) {
         var tSnap = Number(data.totals.total);
         if (tSnap >= 0) {
@@ -6991,6 +7004,7 @@
           try {
             sessionStorage.setItem(IMA_STEP_UP_HOLD_TOTALS_SS, JSON.stringify(stepUpHoldSummarySnapshot));
           } catch (eSs) {}
+          stepUpHoldSnapshotProtectUntil = Date.now() + 20000;
         }
       }
       resetCampAgreementAfterSuccessfulCheckout();
