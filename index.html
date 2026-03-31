@@ -3798,6 +3798,57 @@
     }
   }
 
+  /** After a cancel/trim mutation, refresh enrollments and week capacity together (faster than sequential). */
+  async function refreshAfterEnrollmentMutation() {
+    await Promise.all([refreshConfirmedEnrollmentsFromServer(), loadWeeks()]);
+  }
+
+  /** DELETE each enrollment id (full cancel). */
+  async function deleteEnrollmentIdsByApi(tok, ids) {
+    if (!tok) return { ok: false, error: 'Not signed in' };
+    if (!ids || !ids.length) return { ok: false, error: 'No enrollment found' };
+    for (var i = 0; i < ids.length; i++) {
+      const res = await imaNoStoreFetch('/api/enrollments', {
+        method: 'DELETE',
+        headers: {
+          Authorization: 'Bearer ' + tok,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: ids[i] }),
+      });
+      if (!res.ok) {
+        var errText = '';
+        try {
+          errText = await res.text();
+        } catch (eT) {}
+        return { ok: false, error: errText || res.statusText || 'Request failed' };
+      }
+    }
+    return { ok: true };
+  }
+
+  /** Instant UI: drop confirmed/pending_step_up rows for this camper+week from local cache and picker state. */
+  function optimisticRemoveEnrollmentsMatching(weekId, camperId) {
+    const wk = String(weekId);
+    const cid = String(camperId);
+    const raw = confirmedEnrollmentsRaw || [];
+    const toRemove = raw.filter(function (r) {
+      return (
+        r &&
+        String(r.week_id) === wk &&
+        String(r.camper_id) === cid &&
+        (r.status === 'confirmed' || r.status === 'pending_step_up')
+      );
+    });
+    if (!toRemove.length) return;
+    const rmSet = new Set(toRemove);
+    toRemove.forEach(removePickerStateForDroppedEnrollment);
+    confirmedEnrollmentsRaw = raw.filter(function (r) {
+      return !rmSet.has(r);
+    });
+    confirmedEnrollmentsCache = dedupeConfirmedEnrollmentsForDisplay(confirmedEnrollmentsRaw);
+  }
+
   var parentEnrollmentsRealtimeBound = false;
   var parentEnrollmentsRefreshTimer = null;
   function scheduleParentEnrollmentRefreshFromRealtime() {
@@ -3923,28 +3974,8 @@
 
   async function cancelConfirmedEnrollmentsForCamperWeek(weekId, camperId) {
     var tokCx = await freshAccessTokenForApi();
-    if (!tokCx) return { ok: false, error: 'Not signed in' };
     const ids = confirmedEnrollmentIdsForCamperWeek(weekId, camperId);
-    if (!ids.length) return { ok: false, error: 'No enrollment found' };
-    for (var i = 0; i < ids.length; i++) {
-      /* JSON body: some platforms mishandle query strings on DELETE; API accepts body.id */
-      const res = await imaNoStoreFetch('/api/enrollments', {
-        method: 'DELETE',
-        headers: {
-          Authorization: 'Bearer ' + tokCx,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ id: ids[i] }),
-      });
-      if (!res.ok) {
-        var errText = '';
-        try {
-          errText = await res.text();
-        } catch (eT) {}
-        return { ok: false, error: errText || res.statusText || 'Request failed' };
-      }
-    }
-    return { ok: true };
+    return deleteEnrollmentIdsByApi(tokCx, ids);
   }
 
   function enrollmentRowToScheduleLi(row) {
@@ -4952,46 +4983,55 @@
           return;
         }
         if (!cb.checked && paidHere && mode === 'full') {
-          const nm = (c.first_name + ' ' + c.last_name).trim() || 'This child';
-          if (
-            !confirm(
-              'Remove ' +
-                nm +
-                ' from this week? Their enrollment will be cancelled and the spot will open up.'
-            )
-          ) {
-            cb.checked = true;
-            return;
-          }
-          cb.disabled = true;
           void (async function () {
+            var tokRm = await freshAccessTokenForApi();
+            var idsSnap = confirmedEnrollmentIdsForCamperWeek(weekId, cid);
+            if (!tokRm || !idsSnap.length) {
+              cb.checked = true;
+              var msgBad = document.getElementById('msg');
+              if (msgBad && !tokRm) {
+                msgBad.className = 'msg error';
+                msgBad.textContent = 'Sign in again to change registrations.';
+              }
+              return;
+            }
+            cb.disabled = true;
+            optimisticRemoveEnrollmentsMatching(weekId, cid);
+            renderFullWeeks();
+            renderDailyWeeks();
+            refreshPricingPreview();
+            updateSummary();
             try {
-              const result = await cancelConfirmedEnrollmentsForCamperWeek(weekId, cid);
+              persistEnrollLocal();
+            } catch (ePl) {}
+            try {
+              var result = await deleteEnrollmentIdsByApi(tokRm, idsSnap);
               if (!result.ok) {
-                const msgEl = document.getElementById('msg');
+                await refreshAfterEnrollmentMutation();
+                hydrateSelectionFromConfirmedEnrollments();
+                refreshScheduleUiAfterEnrollStorageChange();
+                renderFullWeeks();
+                renderDailyWeeks();
+                refreshPricingPreview();
+                updateSummary();
+                try {
+                  persistEnrollLocal();
+                } catch (eP2) {}
+                cb.checked = true;
+                var msgEl = document.getElementById('msg');
                 if (msgEl) {
                   msgEl.className = 'msg error';
                   msgEl.textContent =
                     'Could not remove that registration. Try again or contact IMA.';
                 }
-                cb.checked = true;
-                cb.disabled = false;
                 return;
               }
-              var s2 = fullWeekCampersByWeek[wk];
-              if (s2) {
-                s2.delete(cid);
-                if (!s2.size) delete fullWeekCampersByWeek[wk];
-              }
-              clearDailyForCamperWeek(wk, cid);
-              clearFullWeekHydrateDismiss(wk, cid);
-              await refreshConfirmedEnrollmentsFromServer();
-              await loadWeeks();
+              await refreshAfterEnrollmentMutation();
               hydrateSelectionFromConfirmedEnrollments();
               refreshScheduleUiAfterEnrollStorageChange();
               try {
                 persistEnrollLocal();
-              } catch (ePl) {}
+              } catch (ePl3) {}
               refreshPricingPreview();
               updateSummary();
               var msgOk = document.getElementById('msg');
@@ -5000,8 +5040,15 @@
                 msgOk.textContent = '';
               }
             } catch (eRem) {
+              await refreshAfterEnrollmentMutation();
+              hydrateSelectionFromConfirmedEnrollments();
+              refreshScheduleUiAfterEnrollStorageChange();
+              renderFullWeeks();
+              renderDailyWeeks();
+              refreshPricingPreview();
+              updateSummary();
               cb.checked = true;
-              const msgEx = document.getElementById('msg');
+              var msgEx = document.getElementById('msg');
               if (msgEx) {
                 msgEx.className = 'msg error';
                 msgEx.textContent =
@@ -5055,22 +5102,40 @@
           ev.preventDefault();
           ev.stopPropagation();
           if (!session) return;
-          const nm = (c.first_name + ' ' + c.last_name).trim() || 'This child';
-          if (
-            !confirm(
-              'Remove ' +
-                nm +
-                ' from this week? Their enrollment will be cancelled and the spot will open up.'
-            )
-          ) {
-            return;
-          }
-          rm.disabled = true;
           void (async function () {
+            var tokRm = await freshAccessTokenForApi();
+            var idsSnap = confirmedEnrollmentIdsForCamperWeek(weekId, cid);
+            if (!tokRm || !idsSnap.length) {
+              var msgBad = document.getElementById('msg');
+              if (msgBad && !tokRm) {
+                msgBad.className = 'msg error';
+                msgBad.textContent = 'Sign in again to change registrations.';
+              }
+              return;
+            }
+            rm.disabled = true;
+            optimisticRemoveEnrollmentsMatching(weekId, cid);
+            renderFullWeeks();
+            renderDailyWeeks();
+            refreshPricingPreview();
+            updateSummary();
             try {
-              const result = await cancelConfirmedEnrollmentsForCamperWeek(weekId, cid);
+              persistEnrollLocal();
+            } catch (ePl) {}
+            try {
+              var result = await deleteEnrollmentIdsByApi(tokRm, idsSnap);
               if (!result.ok) {
-                const msgEl = document.getElementById('msg');
+                await refreshAfterEnrollmentMutation();
+                hydrateSelectionFromConfirmedEnrollments();
+                refreshScheduleUiAfterEnrollStorageChange();
+                renderFullWeeks();
+                renderDailyWeeks();
+                refreshPricingPreview();
+                updateSummary();
+                try {
+                  persistEnrollLocal();
+                } catch (eP2) {}
+                var msgEl = document.getElementById('msg');
                 if (msgEl) {
                   msgEl.className = 'msg error';
                   msgEl.textContent =
@@ -5079,20 +5144,12 @@
                 rm.disabled = false;
                 return;
               }
-              var s2 = fullWeekCampersByWeek[wk];
-              if (s2) {
-                s2.delete(cid);
-                if (!s2.size) delete fullWeekCampersByWeek[wk];
-              }
-              clearDailyForCamperWeek(wk, cid);
-              clearFullWeekHydrateDismiss(wk, cid);
-              await refreshConfirmedEnrollmentsFromServer();
-              await loadWeeks();
+              await refreshAfterEnrollmentMutation();
               hydrateSelectionFromConfirmedEnrollments();
               refreshScheduleUiAfterEnrollStorageChange();
               try {
                 persistEnrollLocal();
-              } catch (ePl) {}
+              } catch (ePl3) {}
               refreshPricingPreview();
               updateSummary();
               var msgOk = document.getElementById('msg');
@@ -5101,13 +5158,21 @@
                 msgOk.textContent = '';
               }
             } catch (eRem) {
-              rm.disabled = false;
-              const msgEx = document.getElementById('msg');
+              await refreshAfterEnrollmentMutation();
+              hydrateSelectionFromConfirmedEnrollments();
+              refreshScheduleUiAfterEnrollStorageChange();
+              renderFullWeeks();
+              renderDailyWeeks();
+              refreshPricingPreview();
+              updateSummary();
+              var msgEx = document.getElementById('msg');
               if (msgEx) {
                 msgEx.className = 'msg error';
                 msgEx.textContent =
                   (eRem && eRem.message) || 'Could not remove that registration. Try again or contact IMA.';
               }
+            } finally {
+              rm.disabled = false;
             }
           })();
         });
@@ -5558,18 +5623,6 @@
                 ev.preventDefault();
                 ev.stopPropagation();
                 if (!session) return;
-                var nm = (c.first_name + ' ' + c.last_name).trim() || 'This child';
-                if (
-                  !confirm(
-                    'Remove ' +
-                      nm +
-                      ' from ' +
-                      formatDayLabel(d) +
-                      '? Their paid spot for this day will be cancelled and may open to others.'
-                  )
-                ) {
-                  return;
-                }
                 rm.disabled = true;
                 void (async function () {
                   try {
@@ -5581,7 +5634,6 @@
                         msgEl.textContent =
                           'Could not remove that registration. Try again or contact IMA.';
                       }
-                      rm.disabled = false;
                       return;
                     }
                     var setR = ensureDayCamperSetMain(wk, d.id);
@@ -5592,8 +5644,7 @@
                       pruneEmptyDailyWeekMain(wk);
                     }
                     clearDailyHydrateDismiss(wk, String(d.id), cid);
-                    await refreshConfirmedEnrollmentsFromServer();
-                    await loadWeeks();
+                    await refreshAfterEnrollmentMutation();
                     hydrateSelectionFromConfirmedEnrollments();
                     refreshScheduleUiAfterEnrollStorageChange();
                     try {
@@ -5607,7 +5658,6 @@
                       msgOk.textContent = '';
                     }
                   } catch (eRem) {
-                    rm.disabled = false;
                     var msgEx = document.getElementById('msg');
                     if (msgEx) {
                       msgEx.className = 'msg error';
@@ -5615,6 +5665,8 @@
                         (eRem && eRem.message) ||
                         'Could not remove that registration. Try again or contact IMA.';
                     }
+                  } finally {
+                    rm.disabled = false;
                   }
                 })();
               });
