@@ -1,18 +1,20 @@
 ---
-description: Always production-deploy vercel-v2 to ima-summer-camp after code changes
+description: "#1 — always production-deploy ima-summer-camp after any code change"
 alwaysApply: true
 ---
 
-# Vercel v2 (IMA camp) — always deploy summer camp after edits
+# Rule #1 — IMA summer camp: always deploy (non-negotiable)
 
-After **any** code or asset change in this repo that affects the live camp site (including `index.html`, `api/`, `js/`, `vercel.json`, etc.), finish the task by running a **forced production deploy** to **`ima-summer-camp`** (`ima-summer-camp.vercel.app`). Do not skip deploy because git-push might run later; run the CLI deploy in the same session.
+This rule **overrides** relying on git-push alone, Vercel auto-deploy lag, or “user can deploy later.”
 
-From **repo root** (`vercel-v2`, parent of `api/`):
+After **any** edit in this repo that affects production (`index.html`, `success.html`, `api/`, `js/`, `vercel.json`, assets, etc.), you **must** finish the same turn with a **forced CLI production deploy** to **`ima-summer-camp`** (`ima-summer-camp.vercel.app`). Retry on auth/network errors until it succeeds.
+
+From **repo root** (folder that contains `api/` — **not** only `api/`):
 
 ```bash
 cd /Users/tomrichardson/Downloads/vercel-v2 && VERCEL_ORG_ID=team_PXMrLfQ01zlse3XBsDcaPa3s VERCEL_PROJECT_ID=prj_TJxRFRbKAK4AkYBe8AKL1DoH2k9p npx vercel deploy --prod --yes
 ```
 
-Retry on auth/network failure. Only skip if the user **explicitly** says not to deploy.
+**Only skip** if the user **explicitly** says not to deploy (e.g. “don’t deploy,” “local only”).
 
-Note: `npx vercel --prod --yes` from this folder without those env vars may target a different linked project (`vercel-v2-alpha.vercel.app`); use the command above for summer camp.
+`npx vercel --prod --yes` without those env vars may target a different project; **always** use the command above for summer camp.

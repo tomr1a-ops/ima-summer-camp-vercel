@@ -1,14 +1,16 @@
 ---
-description: Always production-deploy vercel-v2 to ima-summer-camp after code changes
+description: "#1 — always production-deploy ima-summer-camp after any code change"
 alwaysApply: true
 ---
 
-# Vercel v2 (IMA camp) — always deploy summer camp after edits
+# Rule #1 — IMA summer camp: always deploy (non-negotiable)
 
-After **any** change under `vercel-v2` that affects production (including from the `api/` workspace), run a **production deploy** to **`ima-summer-camp`**. Deploy from **project root** (parent of `api/`), not from `api/` alone:
+Workspace may open under `api/`; deploy still runs from **parent** `vercel-v2` root.
+
+After **any** change that affects production (including edits made from this `api/` workspace), you **must** end the same turn with a **forced CLI production deploy** to **`ima-summer-camp`**. Do not assume git-push or auto-deploy is enough.
 
 ```bash
 cd /Users/tomrichardson/Downloads/vercel-v2 && VERCEL_ORG_ID=team_PXMrLfQ01zlse3XBsDcaPa3s VERCEL_PROJECT_ID=prj_TJxRFRbKAK4AkYBe8AKL1DoH2k9p npx vercel deploy --prod --yes
 ```
 
-Do this at the end of the same turn as the edits unless the user says not to deploy.
+Retry on failure. **Only skip** if the user explicitly says not to deploy.
