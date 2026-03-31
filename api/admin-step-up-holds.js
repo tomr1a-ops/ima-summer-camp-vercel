@@ -2,7 +2,7 @@
  * Admin-only: pending_step_up enrollments with camper, week, and parent (profile) for Step Up Holds UI.
  */
 const { serviceClient } = require('./lib/supabase');
-const { requireAdmin } = require('./lib/auth');
+const { requireAdmin, logAdminAuthProbe } = require('./lib/auth');
 const { ENROLLMENT_STATUS } = require('./lib/enrollment-status');
 const { registrationFee } = require('./lib/pricing');
 
@@ -24,6 +24,7 @@ module.exports = async (req, res) => {
   if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' });
 
   try {
+    logAdminAuthProbe(req, 'admin-step-up-holds');
     await requireAdmin(req);
   } catch (e) {
     return json(res, e.statusCode || 500, { error: e.message || 'Unauthorized' });

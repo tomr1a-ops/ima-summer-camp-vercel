@@ -4,7 +4,7 @@
  * (RLS would otherwise hide other families' enrollments in the browser).
  */
 const { serviceClient } = require('./lib/supabase');
-const { requireAdmin } = require('./lib/auth');
+const { requireAdmin, logAdminAuthProbe } = require('./lib/auth');
 const { isMissingStepUpHoldExpiresColumn } = require('./lib/step-up-hold-column');
 
 const ENR_SELECT_WITH_HOLD =
@@ -115,6 +115,7 @@ module.exports = async (req, res) => {
   if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' });
 
   try {
+    logAdminAuthProbe(req, 'admin-camp-snapshot');
     await requireAdmin(req);
   } catch (e) {
     const code = e.statusCode || 500;

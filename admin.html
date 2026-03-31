@@ -267,8 +267,16 @@
           window.location.replace('/index.html#schedule');
           return null;
         }
-        const em = String(session.user && session.user.email ? session.user.email : '').toLowerCase();
-        if (profile.role !== 'admin' && !IMA.isAdminLoginEmail(em)) {
+        const em = String(session.user && session.user.email ? session.user.email : '')
+          .trim()
+          .toLowerCase();
+        const profileEm = String(profile.email || '')
+          .trim()
+          .toLowerCase();
+        const roleOk = String(profile.role || '')
+          .trim()
+          .toLowerCase() === 'admin';
+        if (!roleOk && !IMA.isAdminLoginEmail(em) && !IMA.isAdminLoginEmail(profileEm)) {
           showBanner('Admin access only.', false);
           window.location.replace('/index.html#schedule');
           return null;

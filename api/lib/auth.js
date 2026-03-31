@@ -137,35 +137,113 @@ async function requireParent(req) {
   return { user, profile, token };
 }
 
-/** Must match `IMA.ADMIN_LOGIN_EMAILS` in js/ima-core.js (profiles.role may still be parent). */
-const ADMIN_LOGIN_EMAIL_ALLOWLIST = ['tom@imaimpact.com', 'coachshick@imaimpact.com'];
+/** Base list; merge with ADMIN_EMAIL_ALLOWLIST / IMA_ADMIN_EMAILS (comma-separated) in env. */
+const ADMIN_LOGIN_EMAIL_BASE = ['tom@imaimpact.com', 'coachshick@imaimpact.com'];
+
+let _adminEmailAllowlistCache = null;
+function getAdminEmailAllowlist() {
+  if (_adminEmailAllowlistCache) return _adminEmailAllowlistCache;
+  const envRaw = process.env.ADMIN_EMAIL_ALLOWLIST || process.env.IMA_ADMIN_EMAILS || '';
+  const fromEnv = envRaw
+    .split(/[,;\s]+/)
+    .map((s) => String(s || '').trim().toLowerCase())
+    .filter(Boolean);
+  _adminEmailAllowlistCache = [...new Set([...ADMIN_LOGIN_EMAIL_BASE.map((e) => e.toLowerCase()), ...fromEnv])];
+  return _adminEmailAllowlistCache;
+}
 
 function isAdminLoginEmail(email) {
   const e = String(email || '')
     .trim()
     .toLowerCase();
-  return ADMIN_LOGIN_EMAIL_ALLOWLIST.indexOf(e) !== -1;
+  if (!e) return false;
+  return getAdminEmailAllowlist().indexOf(e) !== -1;
+}
+
+function maskToken(t) {
+  if (!t || typeof t !== 'string') return '(none)';
+  if (t.length <= 14) return '(len=' + t.length + ')';
+  return t.slice(0, 8) + '…' + t.slice(-4) + ' (len=' + t.length + ')';
+}
+
+/** Call from admin route handlers: logs Authorization presence before validation. */
+function logAdminAuthProbe(req, routeLabel) {
+  try {
+    const raw = bearerToken(req);
+    const path = (req && (req.url || req.path)) || '';
+    console.log(
+      '[admin-auth]',
+      JSON.stringify({
+        route: routeLabel || path,
+        hasBearer: !!raw,
+        tokenMask: maskToken(raw),
+      })
+    );
+  } catch (e) {
+    console.warn('[admin-auth] logAdminAuthProbe', e && e.message);
+  }
 }
 
 async function requireAdmin(req) {
+  const path = (req && (req.url || req.path)) || '';
+  const rawTok = bearerToken(req);
   const { user, token } = await getUserFromRequest(req);
   if (!user) {
+    console.warn(
+      '[admin-auth]',
+      JSON.stringify({
+        path,
+        step: 'jwt_invalid_or_missing_user',
+        hasBearer: !!rawTok,
+        tokenMask: maskToken(rawTok),
+      })
+    );
     const err = new Error('Unauthorized');
     err.statusCode = 401;
     throw err;
   }
   const profile = await getProfileForUser(user.id);
+  const userEmail = resolveUserEmail(user);
+  const profileEmail = profile && profile.email ? String(profile.email).trim().toLowerCase() : '';
+  const roleNorm = profile ? String(profile.role || '').trim().toLowerCase() : '';
+  const adminByRole = roleNorm === 'admin';
+  const adminByEmail = isAdminLoginEmail(userEmail) || isAdminLoginEmail(profileEmail);
+
   if (!profile) {
+    console.warn(
+      '[admin-auth]',
+      JSON.stringify({
+        path,
+        step: 'no_profile_row',
+        userId: user.id,
+        userEmail,
+        tokenMask: maskToken(rawTok),
+      })
+    );
     const err = new Error('Admin only');
     err.statusCode = 403;
     throw err;
   }
-  const email = resolveUserEmail(user);
-  if (profile.role !== 'admin' && !isAdminLoginEmail(email)) {
+  if (!adminByRole && !adminByEmail) {
+    console.warn(
+      '[admin-auth]',
+      JSON.stringify({
+        path,
+        step: 'forbidden_not_admin',
+        userId: user.id,
+        userEmail,
+        profileEmail,
+        profileRole: profile.role,
+        adminByRole,
+        adminByEmail,
+        allowlistCount: getAdminEmailAllowlist().length,
+      })
+    );
     const err = new Error('Admin only');
     err.statusCode = 403;
     throw err;
   }
+
   return { user, profile, token };
 }
 
@@ -179,4 +257,6 @@ module.exports = {
   requireParent,
   requireAdmin,
   isAdminLoginEmail,
+  logAdminAuthProbe,
+  getAdminEmailAllowlist,
 };

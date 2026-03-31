@@ -2,7 +2,7 @@
  * GET /api/admin-waitlist — per-week waitlist queue (admin only).
  */
 const { serviceClient } = require('./lib/supabase');
-const { requireAdmin } = require('./lib/auth');
+const { requireAdmin, logAdminAuthProbe } = require('./lib/auth');
 const { setNoStoreJsonHeaders } = require('./lib/http-no-store');
 
 function json(res, code, body) {
@@ -25,6 +25,7 @@ module.exports = async (req, res) => {
   }
 
   try {
+    logAdminAuthProbe(req, 'admin-waitlist');
     await requireAdmin(req);
   } catch (e) {
     return json(res, e.statusCode || 500, { error: e.message || 'Unauthorized' });
