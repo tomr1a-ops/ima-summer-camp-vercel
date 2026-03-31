@@ -4582,7 +4582,7 @@
       return;
     }
     if (campAgreementTextPromise) return;
-    campAgreementTextPromise = fetch('/agreement/camp-2026-v1.txt', { cache: 'no-store' })
+    campAgreementTextPromise = fetch('/agreement/camp-2026-v1.txt?v=2', { cache: 'no-store' })
       .then(function (r) {
         return r.text();
       })
