@@ -144,7 +144,7 @@
     </div>
 
     <div class="panel" id="panel-waitlist">
-      <div class="panel-head">Waitlist <span class="panel-hint">· per week: count waiting + full queue (position, child, parent, joined, status)</span></div>
+      <div class="panel-head">Waitlist <span class="panel-hint">· names waiting (below) + per-week tables (position, child, parent, joined, status)</span></div>
       <div class="panel-body" id="admin-waitlist-mount">
         <p class="empty-hint">Loading…</p>
       </div>
@@ -964,6 +964,28 @@
         }
       }
 
+      function buildWaitlistWaitingLines(weeksWl) {
+        var lines = [];
+        (weeksWl || []).forEach(function (w) {
+          var weekLabel =
+            (w.label && String(w.label).trim()) ||
+            (w.week_number != null ? 'Week ' + w.week_number : '') ||
+            String(w.weekId || 'Week');
+          (w.entries || []).forEach(function (e) {
+            if (String(e.status || '').toLowerCase() !== 'waiting') return;
+            var child = String(e.childName || '').trim() || '—';
+            var parent = String(e.parentName || '').trim() || '—';
+            lines.push({ child: child, week: weekLabel, parent: parent });
+          });
+        });
+        lines.sort(function (a, b) {
+          var c = a.child.localeCompare(b.child, undefined, { sensitivity: 'base' });
+          if (c !== 0) return c;
+          return String(a.week).localeCompare(String(b.week), undefined, { sensitivity: 'base' });
+        });
+        return lines;
+      }
+
       function renderAdminWaitlist(weeksWl) {
         var mount = document.getElementById('admin-waitlist-mount');
         if (!mount) return;
@@ -971,7 +993,28 @@
           mount.innerHTML = '<p class="empty-hint">No weeks or no waitlist data.</p>';
           return;
         }
-        var parts = [];
+        var waitingLines = buildWaitlistWaitingLines(weeksWl);
+        var summaryHtml =
+          '<div class="admin-waitlist-names" style="margin-bottom:22px;padding:14px 16px;border:1px solid rgba(255,255,255,0.12);border-radius:8px;background:rgba(0,0,0,0.2)">' +
+          '<h3 style="margin:0 0 8px;font-size:15px;font-weight:600">Currently on the waitlist</h3>' +
+          '<p class="panel-hint" style="margin:0 0 10px">Child name · camp week · parent (status = waiting only).</p>';
+        if (!waitingLines.length) {
+          summaryHtml += '<p class="empty-hint" style="margin:0">No one is waiting right now.</p></div>';
+        } else {
+          summaryHtml += '<ul style="margin:0;padding-left:1.25em;line-height:1.55">';
+          waitingLines.forEach(function (L) {
+            summaryHtml +=
+              '<li>' +
+              escapeHtml(L.child) +
+              ' · <span style="opacity:0.9">' +
+              escapeHtml(L.week) +
+              '</span> · ' +
+              escapeHtml(L.parent) +
+              '</li>';
+          });
+          summaryHtml += '</ul><p class="panel-hint" style="margin:10px 0 0">' + String(waitingLines.length) + ' waiting.</p></div>';
+        }
+        var parts = [summaryHtml];
         weeksWl.forEach(function (w) {
           var label = w.label || w.weekId || 'Week';
           var wn = w.week_number != null ? 'Week ' + w.week_number + ' · ' : '';
