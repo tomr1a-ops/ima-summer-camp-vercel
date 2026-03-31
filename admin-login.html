@@ -85,35 +85,30 @@
         msg.className = 'msg show ' + (ok ? 'ok' : 'error');
       }
 
-      function isStaff(profile, email) {
-        const em = String(email || '')
-          .trim()
-          .toLowerCase();
-        return (profile && profile.role === 'admin') || IMA.isAdminLoginEmail(em);
+      function isProfileAdmin(profile) {
+        return (
+          String((profile && profile.role) || '')
+            .trim()
+            .toLowerCase() === 'admin'
+        );
       }
 
-      async function redirectIfStaffSession() {
+      async function redirectIfSession() {
         const session = await IMA.getSession();
         if (!session) return false;
         const profile = await IMA.getProfile();
-        const email = session.user && session.user.email;
-        if (isStaff(profile, email)) {
+        if (isProfileAdmin(profile)) {
           window.location.replace('/admin.html');
           return true;
         }
-        const sb = await IMA.getSupabase();
-        await sb.auth.signOut();
-        show(
-          'This page is for IMA staff only. Parent accounts use the parent sign-in page.',
-          false
-        );
+        window.location.replace('/index.html');
         return true;
       }
 
       async function boot() {
         try {
           await IMA.getSupabase();
-          await redirectIfStaffSession();
+          await redirectIfSession();
         } catch (e) {
           show(e.message || String(e), false);
         }
@@ -141,13 +136,6 @@
             });
             if (pr.ok) profile = await IMA.getProfile();
           }
-          const em = signData.session && signData.session.user && signData.session.user.email;
-          if (!isStaff(profile, em)) {
-            await sb.auth.signOut();
-            throw new Error(
-              'This sign-in is for IMA staff only. Parents should use the parent sign-in page.'
-            );
-          }
           try {
             if (rememberEmail && rememberEmail.checked) {
               localStorage.setItem(REMEMBER_EMAIL_KEY, email);
@@ -155,7 +143,11 @@
               localStorage.removeItem(REMEMBER_EMAIL_KEY);
             }
           } catch (eSave) {}
-          window.location.replace('/admin.html');
+          if (isProfileAdmin(profile)) {
+            window.location.replace('/admin.html');
+          } else {
+            window.location.replace('/index.html');
+          }
         } catch (e) {
           show(e.message || 'Sign in failed', false);
           btn.disabled = false;
