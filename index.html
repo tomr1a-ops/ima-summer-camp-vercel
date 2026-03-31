@@ -1075,6 +1075,10 @@
     margin-top: 14px;
     box-sizing: border-box;
   }
+  /* .btn-primary display wins over [hidden] otherwise — keep button off-screen until ≥1 camper */
+  #btn-register-now[hidden] {
+    display: none !important;
+  }
   .register-now-gate-msg {
     margin-top: 10px;
     line-height: 1.5;
@@ -2576,6 +2580,8 @@
     var btnRegNow = document.getElementById('btn-register-now');
     if (btnRegNow) {
       btnRegNow.hidden = !simple;
+      btnRegNow.setAttribute('aria-hidden', simple ? 'false' : 'true');
+      btnRegNow.style.display = simple ? '' : 'none';
     }
     var regGate = document.getElementById('register-now-gate-msg');
     if (regGate && !simple) {
