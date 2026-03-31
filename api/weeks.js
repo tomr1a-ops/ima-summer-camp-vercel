@@ -1,4 +1,5 @@
 const { clientForWeeksApi, resolveSupabaseUrl, serviceClient } = require('./lib/supabase');
+const { waitingCountsByWeekIds } = require('./lib/waitlist-service');
 const { setNoStoreJsonHeaders } = require('./lib/http-no-store');
 
 /**
@@ -157,6 +158,15 @@ module.exports = async (req, res) => {
       });
     }
 
+    let waitlistWaitingByWeek = {};
+    try {
+      const svc2 = serviceClient();
+      const wids = (weeks || []).map((w) => w.id).filter(Boolean);
+      waitlistWaitingByWeek = await waitingCountsByWeekIds(svc2, wids);
+    } catch (wlErr) {
+      console.warn('[api/weeks]', requestId, 'waitlist_counts', wlErr && wlErr.message ? wlErr.message : wlErr);
+    }
+
     const capDefault = 35;
     const payload = (weeks || []).map((w) => {
       const max = Number(w.max_capacity) > 0 ? Number(w.max_capacity) : capDefault;
@@ -186,6 +196,7 @@ module.exports = async (req, res) => {
         is_no_camp: noCamp,
         week_peak_enrollment: peakEnrolled,
         distinct_camper_count: set ? set.size : 0,
+        waitlist_waiting_count: waitlistWaitingByWeek[String(w.id)] || 0,
         days: wdays,
         disabled: mergedFull || !w.is_active || noCamp,
       };

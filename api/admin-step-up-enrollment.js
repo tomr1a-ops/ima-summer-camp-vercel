@@ -9,6 +9,7 @@ const { sendStepUpMarkedPaidEmail } = require('./lib/email');
 const { isMissingStepUpHoldExpiresColumn } = require('./lib/step-up-hold-column');
 const { isCampRegistrationFeePaid } = require('./lib/camper-registration-fee');
 const { registrationFee } = require('./lib/pricing');
+const { tryPromoteWaitlistAfterEnrollmentRemoved, notifyWaitlistOffer } = require('./lib/waitlist-service');
 
 function json(res, code, body) {
   res.statusCode = code;
@@ -56,7 +57,7 @@ module.exports = async (req, res) => {
   const { data: row, error: fe } = await sb
     .from('enrollments')
     .select(
-      'id, status, camper_id, parent_id, price_paid, registration_fee_paid, checkout_batch_id, day_ids'
+      'id, status, camper_id, parent_id, price_paid, registration_fee_paid, checkout_batch_id, day_ids, week_id'
     )
     .eq('id', enrollmentId)
     .maybeSingle();
@@ -161,6 +162,14 @@ module.exports = async (req, res) => {
       if (ue) throw ue;
       if (!updated) return json(res, 200, { ok: true, already: true });
       await syncConfirmedDayCounts(sb, updated.day_ids || [], []);
+      if (row.week_id) {
+        try {
+          const nid = await tryPromoteWaitlistAfterEnrollmentRemoved(sb, row.week_id);
+          if (nid) await notifyWaitlistOffer(sb, nid);
+        } catch (wlE) {
+          console.error('[admin-step-up-enrollment] waitlist promote', wlE && wlE.message);
+        }
+      }
       return json(res, 200, { ok: true });
     }
 

@@ -1,6 +1,7 @@
 const { serviceClient } = require('./lib/supabase');
 const { getUserFromRequest } = require('./lib/auth');
 const { ENROLLMENT_STATUS } = require('./lib/enrollment-status');
+const { tryPromoteWaitlistAfterEnrollmentRemoved, notifyWaitlistOffer } = require('./lib/waitlist-service');
 
 function json(res, code, obj) {
   res.statusCode = code;
@@ -62,7 +63,7 @@ module.exports = async (req, res) => {
     const sb = serviceClient();
     const { data: rows, error: qe } = await sb
       .from('enrollments')
-      .select('id')
+      .select('id, week_id')
       .eq('checkout_batch_id', batchId)
       .eq('parent_id', user.id)
       .eq('status', ENROLLMENT_STATUS.PENDING);
@@ -70,6 +71,7 @@ module.exports = async (req, res) => {
     if (!rows || !rows.length) {
       return json(res, 200, { ok: true, deleted: 0 });
     }
+    const weekSet = [...new Set(rows.map((r) => r.week_id).filter(Boolean))];
     const { error: de } = await sb
       .from('enrollments')
       .delete()
@@ -77,6 +79,14 @@ module.exports = async (req, res) => {
       .eq('parent_id', user.id)
       .eq('status', ENROLLMENT_STATUS.PENDING);
     if (de) throw de;
+    for (const wid of weekSet) {
+      try {
+        const nid = await tryPromoteWaitlistAfterEnrollmentRemoved(sb, wid);
+        if (nid) await notifyWaitlistOffer(sb, nid);
+      } catch (wlE) {
+        console.error('[abandon-checkout-batch] waitlist promote', wlE && wlE.message);
+      }
+    }
     return json(res, 200, { ok: true, deleted: rows.length });
   } catch (e) {
     console.error('[abandon-checkout-batch]', e && e.message ? e.message : e);

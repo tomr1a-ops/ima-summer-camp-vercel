@@ -101,6 +101,7 @@
   <div class="admin-layout">
     <aside class="admin-sidebar" aria-label="Admin navigation">
       <a class="active" href="/admin.html">Dashboard</a>
+      <a href="#panel-waitlist">Waitlist</a>
       <div class="admin-sidebar-label">Admin</div>
       <a href="/admin/backup">Backup</a>
       <a href="/admin/system-health.html">System Health</a>
@@ -139,6 +140,13 @@
           <button type="button" class="btn-ghost" id="week-people-close">Close</button>
         </div>
         <div class="admin-modal-body" id="week-people-body"></div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-waitlist">
+      <div class="panel-head">Waitlist <span class="panel-hint">· per week: count waiting + full queue (position, child, parent, joined, status)</span></div>
+      <div class="panel-body" id="admin-waitlist-mount">
+        <p class="empty-hint">Loading…</p>
       </div>
     </div>
 
@@ -908,6 +916,85 @@
         }
       }
 
+      async function fetchAdminWaitlistWeeks() {
+        try {
+          var tok = await IMA.refreshSessionForApi();
+          var at = tok && tok.accessToken ? tok.accessToken : null;
+          if (!at) return [];
+          var res = await fetch('/api/admin-waitlist', {
+            method: 'GET',
+            headers: { Authorization: 'Bearer ' + at },
+            cache: 'no-store',
+          });
+          if (!res.ok) return [];
+          var j = await res.json();
+          return Array.isArray(j.weeks) ? j.weeks : [];
+        } catch (e) {
+          return [];
+        }
+      }
+
+      function formatWaitlistWhen(iso) {
+        if (!iso) return '—';
+        try {
+          var d = new Date(iso);
+          if (Number.isNaN(d.getTime())) return String(iso);
+          return d.toLocaleString();
+        } catch (e) {
+          return String(iso);
+        }
+      }
+
+      function renderAdminWaitlist(weeksWl) {
+        var mount = document.getElementById('admin-waitlist-mount');
+        if (!mount) return;
+        if (!weeksWl || !weeksWl.length) {
+          mount.innerHTML = '<p class="empty-hint">No weeks or no waitlist data.</p>';
+          return;
+        }
+        var parts = [];
+        weeksWl.forEach(function (w) {
+          var label = w.label || w.weekId || 'Week';
+          var wn = w.week_number != null ? 'Week ' + w.week_number + ' · ' : '';
+          parts.push(
+            '<div style="margin-bottom:22px"><h3 style="margin:0 0 10px;font-size:16px">' +
+              escapeHtml(wn + label) +
+              '</h3><p class="panel-hint" style="margin:0 0 8px">' +
+              String(w.waitingCount != null ? w.waitingCount : 0) +
+              ' waiting</p>'
+          );
+          var rows = w.entries || [];
+          if (!rows.length) {
+            parts.push('<p class="empty-hint">No waitlist entries for this week.</p></div>');
+            return;
+          }
+          parts.push(
+            '<div class="table-wrap"><table class="data"><thead><tr><th>Position</th><th>Child</th><th>Parent</th><th>Email</th><th>Joined</th><th>Status</th><th>Offer expires</th></tr></thead><tbody>'
+          );
+          rows.forEach(function (e) {
+            parts.push(
+              '<tr><td>' +
+                escapeHtml(String(e.position != null ? e.position : '')) +
+                '</td><td>' +
+                escapeHtml(e.childName || '') +
+                '</td><td>' +
+                escapeHtml(e.parentName || '') +
+                '</td><td>' +
+                escapeHtml(e.parentEmail || '') +
+                '</td><td>' +
+                escapeHtml(formatWaitlistWhen(e.created_at)) +
+                '</td><td>' +
+                escapeHtml(e.status || '') +
+                '</td><td>' +
+                escapeHtml(formatWaitlistWhen(e.expires_at)) +
+                '</td></tr>'
+            );
+          });
+          parts.push('</tbody></table></div></div>');
+        });
+        mount.innerHTML = parts.join('');
+      }
+
       /**
        * Reload dashboard from Supabase (initial load + debounced Realtime).
        * @param {{ initial?: boolean }} opts
@@ -948,6 +1035,8 @@
         renderTable(state.enr, state.parents);
         state.stepUpHolds = await fetchAdminStepUpHoldsRows();
         renderStepUpHolds(state.stepUpHolds, state.parents);
+        var waitWeeks = await fetchAdminWaitlistWeeks();
+        renderAdminWaitlist(waitWeeks);
       }
 
       var adminRealtimeBound = false;
@@ -972,7 +1061,7 @@
         document.addEventListener('visibilitychange', function () {
           if (document.visibilityState === 'visible') scheduleAdminRefresh();
         });
-        var tables = ['enrollments', 'campers', 'days', 'weeks'];
+        var tables = ['enrollments', 'campers', 'days', 'weeks', 'waitlist'];
         var ch = sb.channel('ima-admin-camp-live');
         tables.forEach(function (table) {
           ch.on(

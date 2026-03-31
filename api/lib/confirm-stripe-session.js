@@ -2,6 +2,7 @@ const { serviceClient } = require('./supabase');
 const { ENROLLMENT_STATUS } = require('./enrollment-status');
 const { dayRate, weekRate, registrationFee } = require('./pricing');
 const { subtractFamilyCampLedgerCents } = require('./family-camp-ledger');
+const { markWaitlistConverted } = require('./waitlist-service');
 
 /**
  * Set campers.extra_shirt_addon_paid from Stripe session metadata (same as finalize-batch-enrollments).
@@ -159,6 +160,24 @@ async function confirmStripeSession(stripe, session) {
         const safeIds = owned.map((r) => r.id);
         const { error: cu } = await sb.from('campers').update({ registration_fee_paid: true }).in('id', safeIds);
         if (cu) throw cu;
+      }
+    }
+  }
+
+  if (didConfirmAny) {
+    const wlRaw = session.metadata && session.metadata.waitlist_ids;
+    if (wlRaw && String(wlRaw).trim()) {
+      const wlIds = String(wlRaw)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const pid = enrollmentRows[0] && enrollmentRows[0].parent_id;
+      if (wlIds.length && pid) {
+        try {
+          await markWaitlistConverted(sb, wlIds, pid);
+        } catch (wlErr) {
+          console.error('[confirm-stripe-session] waitlist converted', wlErr && wlErr.message);
+        }
       }
     }
   }

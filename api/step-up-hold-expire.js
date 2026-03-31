@@ -5,6 +5,7 @@
 const { serviceClient } = require('./lib/supabase');
 const { ENROLLMENT_STATUS } = require('./lib/enrollment-status');
 const { syncConfirmedDayCounts } = require('./lib/capacity');
+const { tryPromoteWaitlistAfterEnrollmentRemoved, notifyWaitlistOffer } = require('./lib/waitlist-service');
 const { isMissingStepUpHoldExpiresColumn } = require('./lib/step-up-hold-column');
 
 function json(res, code, body) {
@@ -44,7 +45,7 @@ module.exports = async (req, res) => {
   try {
     const { data: expired, error: qe } = await sb
       .from('enrollments')
-      .select('id, day_ids')
+      .select('id, day_ids, week_id')
       .eq('status', ENROLLMENT_STATUS.PENDING_STEP_UP)
       .not('step_up_hold_expires_at', 'is', null)
       .lt('step_up_hold_expires_at', nowIso);
@@ -83,6 +84,14 @@ module.exports = async (req, res) => {
       if (!updated) continue;
       await syncConfirmedDayCounts(sb, updated.day_ids || [], []);
       released++;
+      if (row.week_id) {
+        try {
+          const nid = await tryPromoteWaitlistAfterEnrollmentRemoved(sb, row.week_id);
+          if (nid) await notifyWaitlistOffer(sb, nid);
+        } catch (wlE) {
+          console.error('[step-up-hold-expire] waitlist promote', wlE && wlE.message);
+        }
+      }
     }
 
     return json(res, 200, { ok: true, candidates: (expired || []).length, released });

@@ -459,11 +459,90 @@ async function sendStepUpMarkedPaidEmail(sb, enrollmentId) {
   return { ok: true, emailed: false };
 }
 
+/** Direct link to signed-in camp schedule (fragment). Uses BASE_URL when set. */
+function campScheduleRegistrationUrl() {
+  const raw = (process.env.BASE_URL || '').trim().replace(/\/$/, '');
+  if (raw && /^https?:\/\//i.test(raw)) return `${raw}/index.html#schedule`;
+  if (raw) return `https://${raw}/index.html#schedule`;
+  return 'https://ima-summer-camp.vercel.app/index.html#schedule';
+}
+
+/**
+ * Parent offered a spot from the waitlist (24h window).
+ */
+async function sendWaitlistSpotOfferEmail({ parentEmail, camperName, weekLabel, expiresAtIso }) {
+  const portalUrl = campScheduleRegistrationUrl();
+  const esc = escapeHtml;
+  const name = camperName || 'Your child';
+  const week = weekLabel || 'Camp week';
+  let expLine = '24 hours from this email';
+  if (expiresAtIso) {
+    try {
+      const d = new Date(expiresAtIso);
+      if (!Number.isNaN(d.getTime())) {
+        expLine = d.toLocaleString('en-US', {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          timeZoneName: 'short',
+        });
+      }
+    } catch (e) {
+      /* keep default */
+    }
+  }
+
+  const textBody = [
+    'A spot opened for IMA Summer Camp — complete registration soon.',
+    '',
+    `${name} — ${week}`,
+    '',
+    `Sign in at the camp portal, select this child for the offered week (Weekly or Daily tab), and complete checkout. This offer expires at ${expLine}. If it expires, we will offer the spot to the next family on the waitlist.`,
+    '',
+    `Open registration: ${portalUrl}`,
+    '',
+    'Questions? tom@imaimpact.com',
+    '',
+    '— Impact Martial Athletics',
+  ].join('\n');
+
+  const htmlBody = `<div style="font-family:system-ui,sans-serif;font-size:15px;line-height:1.5;color:#111">
+  <p>Hi,</p>
+  <p>A spot opened for <strong>IMA Summer Camp</strong>. You have a limited time to complete registration.</p>
+  <p><strong>${esc(name)}</strong> — ${esc(week)}</p>
+  <p><strong>This offer expires:</strong> ${esc(expLine)}. Use the Weekly or Daily registration tab, select this child for the week, then checkout. If you do not complete payment in time, we will move to the next family on the waitlist.</p>
+  <p><a href="${esc(portalUrl)}" style="display:inline-block;margin:12px 0;padding:12px 18px;background:#0ea5e9;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Open camp registration</a></p>
+  <p style="font-size:13px;color:#444">Use the same parent account you used to join the waitlist. If the link does not work, copy: ${esc(portalUrl)}</p>
+  <p>Questions? <a href="mailto:tom@imaimpact.com">tom@imaimpact.com</a></p>
+  <p>— <strong>Impact Martial Athletics</strong></p>
+</div>`;
+
+  const subject = '🥊 IMA Summer Camp — A spot opened (complete registration within 24 hours)';
+
+  if (!parentEmail || !String(parentEmail).trim()) {
+    console.warn('[email] waitlist offer skipped (no parent email)');
+    return { ok: false, emailed: false };
+  }
+
+  const r = await sendResend({
+    to: String(parentEmail).trim(),
+    subject,
+    text: textBody,
+    html: htmlBody,
+  });
+  console.log('[email] waitlist spot offer', r.ok ? 'ok' : 'fail', parentEmail, r.error || r.id || '');
+  return { ok: r.ok, emailed: r.ok, resend: r };
+}
+
 module.exports = {
   sendResend,
   sendCampPaymentEmails,
   sendStepUpReservationEmails,
   sendStepUpMarkedPaidEmail,
+  sendWaitlistSpotOfferEmail,
   sendResendToStaff,
   resolveResendApiKey,
   CAMP_STAFF_NOTIFY,

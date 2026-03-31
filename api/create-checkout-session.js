@@ -11,6 +11,7 @@ const {
   applyPoolToBookings,
 } = require('./lib/family-prepaid-credits');
 const { finalizePendingEnrollmentBatch, finalizeStepUpReservationBatch } = require('./lib/finalize-batch-enrollments');
+const { verifyWaitlistOfferForCheckout } = require('./lib/waitlist-service');
 const { normCamperKey, normalizeIncomingBookings } = require('./lib/normalize-checkout-bookings');
 const { isCampRegistrationFeePaid } = require('./lib/camper-registration-fee');
 const {
@@ -403,19 +404,49 @@ module.exports = async (req, res) => {
     }
   }
 
+  const waitlistIdsFromBookings = [];
   if (bookingsArray.length) {
     bookingModes = bookingsArray.map((b) => (b.pricingMode === 'full_week' ? 'full_week' : 'daily'));
+    const wlIds = bookingsArray.map((b) => b.waitlistEntryId).filter(Boolean);
+    if (wlIds.length !== new Set(wlIds.map(String)).size) {
+      return failCheckout(
+        res,
+        400,
+        'WAITLIST_DUPLICATE',
+        'Duplicate waitlist offer in checkout. Refresh and try again.',
+        {}
+      );
+    }
     try {
       await Promise.all(
-        bookingsArray.map((b, i) =>
-          validateBooking(sb, {
+        bookingsArray.map(async (b, i) => {
+          let skipCapacityChecks = false;
+          if (b.waitlistEntryId) {
+            const v = await verifyWaitlistOfferForCheckout(sb, {
+              waitlistId: b.waitlistEntryId,
+              parentId,
+              camperId: b.camperId,
+              weekId: b.weekId,
+            });
+            if (!v) {
+              const err = new Error(
+                'Your waitlist offer is no longer valid (expired or already used). Refresh the page or contact IMA.'
+              );
+              err.statusCode = 400;
+              throw err;
+            }
+            skipCapacityChecks = true;
+            waitlistIdsFromBookings.push(String(b.waitlistEntryId));
+          }
+          await validateBooking(sb, {
             weekId: b.weekId,
             dayIds: Array.isArray(b.dayIds) ? b.dayIds : [],
             camperId: b.camperId,
             excludeEnrollmentId: null,
             pricingMode: bookingModes[i],
-          })
-        )
+            skipCapacityChecks,
+          });
+        })
       );
     } catch (e) {
       logFullError('validateBooking', e);
@@ -679,6 +710,7 @@ module.exports = async (req, res) => {
         bookingModes,
         ledgerConsumeCents: ledgerConsumedCents,
         ledgerParentId: parentId,
+        waitlistIds: waitlistIdsFromBookings.length ? waitlistIdsFromBookings : undefined,
       });
       logStep('after_finalizeStepUpReservationBatch', { batchId });
     } catch (fz) {
@@ -740,6 +772,7 @@ module.exports = async (req, res) => {
           extraShirtCamperIds: shirtCamperIds,
           ledgerConsumeCents: ledgerConsumedCents,
           ledgerParentId: parentId,
+          waitlistIds: waitlistIdsFromBookings.length ? waitlistIdsFromBookings : undefined,
         });
       } catch (fz) {
         logFullError('finalizePendingEnrollmentBatch zero-dollar', fz);
@@ -809,6 +842,9 @@ module.exports = async (req, res) => {
     }
     if (agreementRecordId) {
       stripeMetadata.agreement_record_id = String(agreementRecordId);
+    }
+    if (waitlistIdsFromBookings.length) {
+      stripeMetadata.waitlist_ids = waitlistIdsFromBookings.join(',');
     }
     Object.keys(stripeMetadata).forEach((k) => {
       if (stripeMetadata[k] === '') delete stripeMetadata[k];

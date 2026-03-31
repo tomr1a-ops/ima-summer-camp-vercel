@@ -120,7 +120,10 @@ async function dayOccupancyFromDaysTable(sb, weekId) {
  * @param {object} opts
  * @param {'full_week'|'daily'} [opts.pricingMode='daily'] — full_week requires all Mon–Fri days for the week.
  */
-async function validateBooking(sb, { weekId, dayIds, camperId, excludeEnrollmentId, pricingMode = 'daily' }) {
+async function validateBooking(
+  sb,
+  { weekId, dayIds, camperId, excludeEnrollmentId, pricingMode = 'daily', skipCapacityChecks = false }
+) {
   const raw = Array.isArray(dayIds) ? dayIds : [];
   const ids = [...new Set(raw.map((id) => String(id).trim()).filter(Boolean))];
   if (!weekId || !ids.length) {
@@ -148,7 +151,7 @@ async function validateBooking(sb, { weekId, dayIds, camperId, excludeEnrollment
 
   const max = week.max_capacity || 35;
   const { byDay, peak } = await dayOccupancyFromDaysTable(sb, weekId);
-  if (peak >= max) {
+  if (!skipCapacityChecks && peak >= max) {
     const err = new Error('Week is full: ' + week.label);
     err.statusCode = 400;
     throw err;
@@ -184,7 +187,7 @@ async function validateBooking(sb, { weekId, dayIds, camperId, excludeEnrollment
       throw err;
     }
     const n = byDay[String(d.id)] || 0;
-    if (n >= max) {
+    if (!skipCapacityChecks && n >= max) {
       const err = new Error('A selected day is at capacity');
       err.statusCode = 400;
       throw err;
@@ -214,7 +217,7 @@ async function validateBooking(sb, { weekId, dayIds, camperId, excludeEnrollment
 
   const inWeek = await countDistinctCampersInWeek(sb, weekId, excludeEnrollmentId);
   const camperAlready = await camperHasEnrollmentInWeek(sb, weekId, camperId, excludeEnrollmentId);
-  if (!camperAlready && inWeek >= max) {
+  if (!skipCapacityChecks && !camperAlready && inWeek >= max) {
     const err = new Error('Week is full');
     err.statusCode = 400;
     throw err;
@@ -291,4 +294,5 @@ module.exports = {
   validateAddedDaysOnly,
   syncConfirmedDayCounts,
   loadOrderedDaysForWeek,
+  dayOccupancyFromDaysTable,
 };

@@ -1204,6 +1204,38 @@
     z-index: 3;
     pointer-events: auto;
   }
+  .waitlist-week-count {
+    font-size: 13px;
+    color: #a5b4fc;
+    margin: 6px 0 4px;
+    font-weight: 600;
+  }
+  .waitlist-kid-line {
+    font-size: 13px;
+    color: #c4c4e0;
+    margin-top: 4px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .btn-waitlist-join {
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(125, 211, 252, 0.55);
+    background: rgba(14, 165, 233, 0.2);
+    color: #7dd3fc;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .btn-waitlist-join:hover {
+    background: rgba(14, 165, 233, 0.32);
+  }
+  .btn-waitlist-join:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
   .day-chips {
     display: flex;
     flex-wrap: wrap;
@@ -2159,6 +2191,10 @@
   let confirmedEnrollmentsCache = [];
   /** Same fetch, before dedupe — needed to cancel every DB row for a camper+week. */
   let confirmedEnrollmentsRaw = [];
+  /** camperId|weekId keys with status pending (open checkout). */
+  let pendingEnrollmentWeekKeys = new Set();
+  /** camperId|weekId → waitlist row from GET /api/waitlist */
+  let waitlistMineByKey = {};
   let pricingPreview = {
     dayRate: 85,
     weekRate: 375,
@@ -3729,7 +3765,10 @@
         const k = String(cid) + ':' + String(w.id);
         fullWeekKey.add(k);
         if (enrollmentType === 'full') {
-          out.push({ weekId: w.id, dayIds: ids, pricingMode: 'full_week', camperId: cid });
+          var lineFw = { weekId: w.id, dayIds: ids, pricingMode: 'full_week', camperId: cid };
+          var wlIdFw = waitlistOfferIdForCheckout(cid, w.id);
+          if (wlIdFw) lineFw.waitlistEntryId = wlIdFw;
+          out.push(lineFw);
         }
       });
     });
@@ -3769,7 +3808,10 @@
         const orderedIds = dayObjs.map(function (d) {
           return d.id;
         });
-        out.push({ weekId: w.id, dayIds: orderedIds, pricingMode: 'daily', camperId: cid });
+        var lineD = { weekId: w.id, dayIds: orderedIds, pricingMode: 'daily', camperId: cid };
+        var wlIdD = waitlistOfferIdForCheckout(cid, w.id);
+        if (wlIdD) lineD.waitlistEntryId = wlIdD;
+        out.push(lineD);
       });
     });
     return out;
@@ -3828,6 +3870,11 @@
       if (!res.ok) return;
       const j = await res.json();
       const rows = j.enrollments || [];
+      pendingEnrollmentWeekKeys = new Set();
+      rows.forEach(function (r) {
+        if (!r || r.status !== 'pending') return;
+        pendingEnrollmentWeekKeys.add(String(r.camper_id) + '|' + String(r.week_id));
+      });
       const confirmed = rows.filter(function (r) {
         return r && (r.status === 'confirmed' || r.status === 'pending_step_up');
       });
@@ -3851,6 +3898,7 @@
     } catch (e) {
       confirmedEnrollmentsCache = [];
       confirmedEnrollmentsRaw = [];
+      pendingEnrollmentWeekKeys = new Set();
     }
   }
 
@@ -4984,6 +5032,15 @@
     lab.className = 'wkc-label';
     lab.textContent = mode === 'full' ? 'Children in this week (full week)' : 'Children for these days';
     wrap.appendChild(lab);
+    if (signedInParent && weekBlocked && !wObj.is_no_camp && wObj._imaDbFull) {
+      const nw = Number(wObj.waitlist_waiting_count) || 0;
+      if (nw > 0) {
+        const cnt = document.createElement('div');
+        cnt.className = 'waitlist-week-count';
+        cnt.textContent = String(nw) + ' on waitlist';
+        wrap.appendChild(cnt);
+      }
+    }
     const map = mode === 'full' ? fullWeekCampersByWeek : dailyCampersByWeek;
     const wk = String(weekId);
     parentCampers.forEach(function (c) {
@@ -5001,6 +5058,7 @@
       const localInWeek = !!(st && st.has(cid));
       const soldOutOwnPick =
         mode === 'full' && weekBlocked && (paidWeekOwnChild || localInWeek);
+      const offeredWaitlist = waitlistOfferActiveForCamperWeek(cid, weekId);
       if (mode === 'full' && conflictMsg && !paidWeekOwnChild) {
         if (st && st.has(cid)) {
           st.delete(cid);
@@ -5019,15 +5077,21 @@
           : 'Your selection counts toward this week’s capacity — uncheck to clear.';
       } else {
         cb.checked = !!(st && st.has(cid));
-        cb.disabled = weekBlocked;
-        row.title = weekBlocked ? 'This week is sold out — you cannot add children here.' : '';
+        cb.disabled = weekBlocked && !offeredWaitlist;
+        row.title =
+          weekBlocked && !offeredWaitlist
+            ? 'This week is sold out — you cannot add children here.'
+            : offeredWaitlist
+              ? 'Waitlist spot — select your child and complete checkout within 24 hours.'
+              : '';
       }
       cb.addEventListener('change', function () {
         if (enrollDomApplyLock) return;
         const paidHere =
           mode === 'full' && camperHasConfirmedEnrollmentInWeek(weekId, cid);
         const inMapBefore = !!(map[wk] && map[wk].has(cid));
-        if (weekBlocked && mode === 'full' && cb.checked && !paidHere && !inMapBefore) {
+        const offerHere = waitlistOfferActiveForCamperWeek(cid, weekId);
+        if (weekBlocked && mode === 'full' && cb.checked && !paidHere && !inMapBefore && !offerHere) {
           cb.checked = false;
           return;
         }
@@ -5235,6 +5299,93 @@
           })();
         });
         row.appendChild(rm);
+      }
+      if (signedInParent && !wObj.is_no_camp) {
+        const wlKey = cid + '|' + wk;
+        const wl = waitlistMineByKey[wlKey];
+        const hasPending = pendingEnrollmentWeekKeys.has(wlKey);
+        const hasPaid = camperHasConfirmedEnrollmentInWeek(weekId, cid);
+        const dbSoldOut = !!wObj._imaDbFull;
+        if (wl && wl.status === 'offered' && !hasPaid) {
+          const wlLine = document.createElement('div');
+          wlLine.className = 'waitlist-kid-line';
+          wlLine.innerHTML =
+            '<span style="color:#86efac;font-weight:600">Spot offered — complete checkout within 24 hours.</span>';
+          row.appendChild(wlLine);
+        } else if (wl && wl.status === 'waiting' && !hasPaid) {
+          const wlLine = document.createElement('div');
+          wlLine.className = 'waitlist-kid-line';
+          wlLine.textContent =
+            wl.queueRank != null ? 'You are #' + String(wl.queueRank) + ' on the waitlist' : 'On the waitlist';
+          row.appendChild(wlLine);
+        } else if (dbSoldOut && weekBlocked && !hasPaid && !hasPending && !localInWeek) {
+          const joinBtn = document.createElement('button');
+          joinBtn.type = 'button';
+          joinBtn.className = 'btn-waitlist-join';
+          joinBtn.textContent = 'Join waitlist';
+          joinBtn.addEventListener('click', function (ev) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            void (async function () {
+              var tokJ = await freshAccessTokenForApi();
+              if (!tokJ) {
+                var m0 = document.getElementById('msg');
+                if (m0) {
+                  m0.className = 'msg error';
+                  m0.textContent = 'Sign in again to join the waitlist.';
+                }
+                return;
+              }
+              joinBtn.disabled = true;
+              try {
+                var resJ = await imaNoStoreFetch('/api/waitlist', {
+                  method: 'POST',
+                  headers: {
+                    Authorization: 'Bearer ' + tokJ,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ camperId: cid, weekId: weekId }),
+                });
+                var jj = await resJ.json().catch(function () {
+                  return {};
+                });
+                if (!resJ.ok) {
+                  var m1 = document.getElementById('msg');
+                  if (m1) {
+                    m1.className = 'msg error';
+                    m1.textContent = (jj && jj.error) || 'Could not join waitlist.';
+                  }
+                  return;
+                }
+                (jj.entries || []).forEach(function (e) {
+                  if (!e || e.camper_id == null || e.week_id == null) return;
+                  waitlistMineByKey[String(e.camper_id) + '|' + String(e.week_id)] = e;
+                });
+                await loadWeeks();
+                await loadWaitlistMine();
+                renderFullWeeks();
+                renderDailyWeeks();
+                var m2 = document.getElementById('msg');
+                if (m2) {
+                  m2.className = 'msg ok';
+                  m2.textContent = "You're on the waitlist — we'll email you if a spot opens.";
+                }
+              } catch (eJ) {
+                var m3 = document.getElementById('msg');
+                if (m3) {
+                  m3.className = 'msg error';
+                  m3.textContent = (eJ && eJ.message) || 'Could not join waitlist.';
+                }
+              } finally {
+                joinBtn.disabled = false;
+              }
+            })();
+          });
+          const wlLine = document.createElement('div');
+          wlLine.className = 'waitlist-kid-line';
+          wlLine.appendChild(joinBtn);
+          row.appendChild(wlLine);
+        }
       }
       if (mode === 'full' && conflictMsg && !paidWeekOwnChild) {
         const hint = document.createElement('small');
@@ -5457,7 +5608,12 @@
     weeksPayload.forEach(function (w) {
       const wk = String(w.id);
       const noCamp = w.is_no_camp === true;
-      const weekFull = w.disabled || w.is_full;
+      const weekOfferBypass =
+        signedInParent &&
+        parentCampers.some(function (pc) {
+          return waitlistOfferActiveForCamperWeek(pc.id, w.id);
+        });
+      const weekFull = (w.disabled || w.is_full) && !weekOfferBypass;
       const kids = getDailyKids(wk);
       const block = document.createElement('div');
       block.className = 'week-block' + (weekFull ? ' full' : '');
@@ -5563,8 +5719,16 @@
               return s.has(String(pc.id));
             });
           }
+          function parentHasOfferBypassWeek() {
+            return parentCampers.some(function (pc) {
+              return waitlistOfferActiveForCamperWeek(pc.id, w.id);
+            });
+          }
           const canOpenThisDay =
-            (!weekFull && !atCap) || parentHasPaidOnThisDay() || parentHasDraftOnThisDay();
+            (!weekFull && !atCap) ||
+            parentHasPaidOnThisDay() ||
+            parentHasDraftOnThisDay() ||
+            parentHasOfferBypassWeek();
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'day-chip daily-perday-btn';
@@ -5615,6 +5779,7 @@
             const paidDayHere = covered.has(String(d.id));
             const st0 = getDayCamperSetMain(wk, d.id);
             const inDraft = !!(st0 && st0.has(cid));
+            const offerB = waitlistOfferActiveForCamperWeek(cid, w.id);
             const row = document.createElement('div');
             row.className = 'week-kid-cb';
             const inner = document.createElement('label');
@@ -5622,19 +5787,21 @@
             const cb = document.createElement('input');
             cb.type = 'checkbox';
             cb.checked = paidDayHere || inDraft;
-            cb.disabled = paidDayHere || (dayBlocked && !inDraft);
+            cb.disabled = paidDayHere || (dayBlocked && !inDraft && !offerB);
             row.title = paidDayHere
               ? 'Paid registration this day — use × to remove.'
-              : dayBlocked
+              : dayBlocked && !offerB
                 ? 'Sold out — cannot add children here.'
-                : '';
+                : offerB
+                  ? 'Waitlist spot — select days and checkout within 24 hours.'
+                  : '';
             cb.addEventListener('click', function (ev) {
               ev.stopPropagation();
             });
             cb.addEventListener('change', function () {
               if (enrollDomApplyLock) return;
               if (paidDayHere) return;
-              if (dayBlocked && !inDraft) return;
+              if (dayBlocked && !inDraft && !offerB) return;
               const set = ensureDayCamperSetMain(wk, d.id);
               const dk = String(d.id);
               if (cb.checked) {
@@ -5786,11 +5953,47 @@
       document.getElementById('weeks-loading-daily').style.display = 'none';
       /* Tab (weekly vs daily) comes from restoreEnrollLocal / bootAuth — do not force “full” here or refresh/bfcache drops daily drafts */
       updateEnrollmentGate();
+      await loadWaitlistMine();
     } catch (e) {
       const err = '<p class="empty-state" style="color:#f88">Could not load weeks. Check API and Supabase env.</p>';
       document.getElementById('weeks-mount-full').innerHTML = err;
       document.getElementById('weeks-mount-daily').innerHTML = err;
     }
+  }
+
+  async function loadWaitlistMine() {
+    waitlistMineByKey = {};
+    if (!session) return;
+    try {
+      var tokWl = await freshAccessTokenForApi();
+      if (!tokWl) return;
+      var resWl = await imaNoStoreFetch('/api/waitlist', {
+        headers: { Authorization: 'Bearer ' + tokWl },
+      });
+      if (!resWl.ok) return;
+      var jWl = await resWl.json();
+      (jWl.entries || []).forEach(function (e) {
+        if (!e || e.camper_id == null || e.week_id == null) return;
+        waitlistMineByKey[String(e.camper_id) + '|' + String(e.week_id)] = e;
+      });
+    } catch (eWl) {}
+  }
+
+  function waitlistOfferIdForCheckout(camperId, weekId) {
+    var e = waitlistMineByKey[String(camperId) + '|' + String(weekId)];
+    if (!e || e.status !== 'offered') return null;
+    if (e.expires_at && new Date(e.expires_at) <= new Date()) return null;
+    return e.id;
+  }
+
+  /** True when this camper has an active 24h waitlist offer for the week (may check out despite sold-out UI). */
+  function waitlistOfferActiveForCamperWeek(camperId, weekId) {
+    if (!session) return false;
+    var e = waitlistMineByKey[String(camperId) + '|' + String(weekId)];
+    if (!e || e.status !== 'offered') return false;
+    if (camperHasConfirmedEnrollmentInWeek(weekId, camperId)) return false;
+    if (e.expires_at && new Date(e.expires_at) <= new Date()) return false;
+    return true;
   }
 
   function showAuthPanels() {
@@ -5870,6 +6073,8 @@
       session = null;
       confirmedEnrollmentsCache = [];
       confirmedEnrollmentsRaw = [];
+      pendingEnrollmentWeekKeys = new Set();
+      waitlistMineByKey = {};
       try {
         localStorage.removeItem('ima_post_checkout_clear_enroll');
         sessionStorage.removeItem('ima_post_checkout_clear_enroll');
@@ -5911,6 +6116,7 @@
       } else {
         await refreshConfirmedEnrollmentsFromServer();
       }
+      await loadWaitlistMine();
       applyPostCheckoutEnrollClearIfFlag();
       restoreEnrollLocal();
       hydrateSelectionFromConfirmedEnrollments();
@@ -5922,6 +6128,8 @@
     } else {
       confirmedEnrollmentsCache = [];
       confirmedEnrollmentsRaw = [];
+      pendingEnrollmentWeekKeys = new Set();
+      waitlistMineByKey = {};
       try {
         localStorage.removeItem('ima_post_checkout_clear_enroll');
         sessionStorage.removeItem('ima_post_checkout_clear_enroll');

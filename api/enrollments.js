@@ -10,6 +10,7 @@ const {
 const { campCreditCentsForConfirmedRow, addFamilyCampLedgerCents } = require('./lib/family-camp-ledger');
 const { enrollmentQualifiesForCampCredit } = require('./lib/enrollment-credit-eligibility');
 const { ENROLLMENT_STATUS } = require('./lib/enrollment-status');
+const { tryPromoteWaitlistAfterEnrollmentRemoved, notifyWaitlistOffer } = require('./lib/waitlist-service');
 
 async function readJsonBody(req) {
   if (req.body !== undefined && req.body !== null) {
@@ -258,6 +259,19 @@ module.exports = async (req, res) => {
         .update({ status: ENROLLMENT_STATUS.CANCELLED })
         .eq('id', enrollmentId);
       if (ue) throw ue;
+      if (
+        row.week_id &&
+        (row.status === ENROLLMENT_STATUS.CONFIRMED ||
+          row.status === ENROLLMENT_STATUS.PENDING_STEP_UP ||
+          row.status === ENROLLMENT_STATUS.PENDING)
+      ) {
+        try {
+          const nid = await tryPromoteWaitlistAfterEnrollmentRemoved(sb, row.week_id);
+          if (nid) await notifyWaitlistOffer(sb, nid);
+        } catch (wlE) {
+          console.error('[enrollments DELETE] waitlist promote', wlE && wlE.message);
+        }
+      }
       res.statusCode = 200;
       return res.end(JSON.stringify({ ok: true }));
     }

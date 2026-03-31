@@ -34,11 +34,15 @@ function normalizeIncomingBookings(rawBookings) {
     const ck = normCamperKey(camperId);
     if (weekId == null || String(weekId).trim() === '' || !ck) continue;
     const idList = [...new Set(dayIds.map((id) => String(id).trim()).filter(Boolean))];
+    const wle = b.waitlistEntryId != null ? b.waitlistEntryId : b.waitlist_entry_id;
+    const waitlistEntryId =
+      wle != null && String(wle).trim() !== '' ? String(wle).trim() : null;
     out.push({
       weekId: String(weekId).trim(),
       camperId: ck,
       dayIds: idList,
       pricingMode,
+      waitlistEntryId,
     });
   }
   return out;

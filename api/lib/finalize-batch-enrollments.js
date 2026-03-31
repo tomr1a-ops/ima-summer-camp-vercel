@@ -2,6 +2,7 @@ const { dayRate, weekRate, registrationFee } = require('./pricing');
 const { subtractFamilyCampLedgerCents } = require('./family-camp-ledger');
 const { ENROLLMENT_STATUS } = require('./enrollment-status');
 const { isMissingStepUpHoldExpiresColumn } = require('./step-up-hold-column');
+const { markWaitlistConverted } = require('./waitlist-service');
 
 /**
  * After payment (Stripe) or $0 prepaid checkout: confirm pending rows, bump day counts,
@@ -20,6 +21,7 @@ async function finalizePendingEnrollmentBatch(sb, batchId, options) {
     extraShirtCamperIds,
     ledgerConsumeCents,
     ledgerParentId,
+    waitlistIds,
   } = options;
 
   const { data: rows, error: qe } = await sb
@@ -125,6 +127,14 @@ async function finalizePendingEnrollmentBatch(sb, batchId, options) {
     await subtractFamilyCampLedgerCents(sb, lid, lc);
   }
 
+  if (didConfirmAny && waitlistIds && waitlistIds.length && lid) {
+    try {
+      await markWaitlistConverted(sb, waitlistIds, lid);
+    } catch (wlErr) {
+      console.error('[finalizePendingEnrollmentBatch] waitlist converted', wlErr && wlErr.message);
+    }
+  }
+
   return { ok: true, count: rows.length };
 }
 
@@ -140,6 +150,7 @@ async function finalizeStepUpReservationBatch(sb, batchId, options) {
     bookingModes,
     ledgerConsumeCents,
     ledgerParentId,
+    waitlistIds,
   } = options;
 
   const { data: rows, error: qe } = await sb
@@ -218,6 +229,14 @@ async function finalizeStepUpReservationBatch(sb, batchId, options) {
   const lid = ledgerParentId || (rows[0] && rows[0].parent_id);
   if (didAny && lc > 0 && lid) {
     await subtractFamilyCampLedgerCents(sb, lid, lc);
+  }
+
+  if (didAny && waitlistIds && waitlistIds.length && lid) {
+    try {
+      await markWaitlistConverted(sb, waitlistIds, lid);
+    } catch (wlErr) {
+      console.error('[finalizeStepUpReservationBatch] waitlist converted', wlErr && wlErr.message);
+    }
   }
 
   return { ok: true, count: rows.length, didAny };
