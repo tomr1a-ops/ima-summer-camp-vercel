@@ -4226,15 +4226,15 @@
   }
 
   /**
-   * One $65 reg per camper across multiple Step Up weeks — only the first pending row (by week #) shows +reg in copy.
-   * Rows with registration_fee_paid (set when Step Up checkout included reg) show camp tuition only.
+   * One registration fee per camper across Step Up holds — only the earliest week row (by week #) carries it in “owed” copy.
+   * enrollment.registration_fee_paid here means “reg was part of this checkout batch,” not money collected; do not use it to drop reg from amount owed.
    */
-  function pendingStepUpRowOwnsUnpaidRegDisplay(row) {
-    if (!row || row.status !== 'pending_step_up' || row.registration_fee_paid) return false;
+  function pendingStepUpRowOwnsRegFeeInHold(row) {
+    if (!row || row.status !== 'pending_step_up') return false;
     var cid = String(row.camper_id || '');
     if (!cid) return false;
     var siblings = (confirmedEnrollmentsCache || []).filter(function (r) {
-      return r && r.status === 'pending_step_up' && String(r.camper_id) === cid && !r.registration_fee_paid;
+      return r && r.status === 'pending_step_up' && String(r.camper_id) === cid;
     });
     if (!siblings.length) return false;
     siblings.sort(function (a, b) {
@@ -4250,22 +4250,24 @@
   }
 
   /**
-   * Step Up “owed” for schedule copy — enrollment row + camper/preview reg state (not IMA member checkbox).
+   * Step Up “owed” for schedule copy — camp from price_paid + reg when still due (not Stripe-paid yet).
+   * Do not use registrationAlreadyPaidPerPreview: preview treats “reg in a hold” as satisfied for *new* checkouts, which would hide the $65 still owed on the hold.
    */
   function pendingStepUpAmountOwedDollars(row) {
     if (!row || row.status !== 'pending_step_up') return null;
     var fromDb = Number(row.price_paid);
     var camp =
       Number.isFinite(fromDb) && fromDb > 0 ? fromDb : estimateStepUpCampTuitionDollars(row);
-    if (row.registration_fee_paid) return camp;
     var reg = 0;
-    if (pendingStepUpRowOwnsUnpaidRegDisplay(row) && row.camper_id) {
+    if (pendingStepUpRowOwnsRegFeeInHold(row) && row.camper_id) {
       var cid = row.camper_id;
       var c = parentCampers.find(function (x) {
         return String(x.id) === String(cid);
       });
-      var regSatisfiedGlobally = !!(c && c.registration_fee_paid === true) || registrationAlreadyPaidPerPreview(cid);
-      if (!regSatisfiedGlobally) reg = regFeeClient();
+      var regPaidOnCamperRecord = !!(c && c.registration_fee_paid === true);
+      if (!regPaidOnCamperRecord && registrationFeeAppliesToCamper(cid)) {
+        reg = regFeeClient();
+      }
     }
     return camp + reg;
   }

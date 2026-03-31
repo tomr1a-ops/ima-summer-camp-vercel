@@ -5,7 +5,6 @@ const { serviceClient } = require('./lib/supabase');
 const { requireAdmin } = require('./lib/auth');
 const { ENROLLMENT_STATUS } = require('./lib/enrollment-status');
 const { registrationFee } = require('./lib/pricing');
-const { isCampRegistrationFeePaid } = require('./lib/camper-registration-fee');
 
 function json(res, code, body) {
   res.statusCode = code;
@@ -34,12 +33,12 @@ module.exports = async (req, res) => {
 
   const selectWithExpiry =
     'id,parent_id,camper_id,week_id,status,day_ids,guest_email,created_at,step_up_hold_expires_at,price_paid,registration_fee_paid,' +
-    'campers(first_name,last_name),' +
+    'campers(first_name,last_name,registration_fee_paid),' +
     'weeks(label,week_number)';
 
   const selectBase =
     'id,parent_id,camper_id,week_id,status,day_ids,guest_email,created_at,price_paid,registration_fee_paid,' +
-    'campers(first_name,last_name),' +
+    'campers(first_name,last_name,registration_fee_paid),' +
     'weeks(label,week_number)';
 
   try {
@@ -81,29 +80,39 @@ module.exports = async (req, res) => {
     }
 
     const regFeeDollars = registrationFee(false);
-    const holds = await Promise.all(
-      (list || []).map(async (r) => {
-        let camp = Number(r.price_paid);
-        if (!Number.isFinite(camp) || camp < 0) camp = 0;
-        let regDollars = 0;
-        if (r.camper_id) {
-          try {
-            const regOk = await isCampRegistrationFeePaid(sb, r.camper_id);
-            if (!regOk) regDollars = regFeeDollars;
-          } catch (e) {
-            regDollars = regFeeDollars;
-          }
-        } else {
+    const listArr = list || [];
+    const firstHoldRowIdByCamper = new Map();
+    listArr.forEach((r) => {
+      const cid = String(r.camper_id || '');
+      if (!cid) return;
+      const wn = Number(r.weeks && r.weeks.week_number) || 0;
+      const prev = firstHoldRowIdByCamper.get(cid);
+      if (prev == null || wn < prev.wn) {
+        firstHoldRowIdByCamper.set(cid, { wn, id: String(r.id) });
+      }
+    });
+    const holds = listArr.map((r) => {
+      let camp = Number(r.price_paid);
+      if (!Number.isFinite(camp) || camp < 0) camp = 0;
+      const camper = r.campers || {};
+      const camperRegPaid = camper.registration_fee_paid === true;
+      const cid = String(r.camper_id || '');
+      let regDollars = 0;
+      if (!camperRegPaid && cid) {
+        const first = firstHoldRowIdByCamper.get(cid);
+        if (first && first.id === String(r.id)) {
           regDollars = regFeeDollars;
         }
-        const amount_owed = camp + regDollars;
-        return {
-          ...r,
-          profiles: r.parent_id ? profilesById[String(r.parent_id)] || null : null,
-          amount_owed,
-        };
-      })
-    );
+      } else if (!r.camper_id) {
+        regDollars = regFeeDollars;
+      }
+      const amount_owed = camp + regDollars;
+      return {
+        ...r,
+        profiles: r.parent_id ? profilesById[String(r.parent_id)] || null : null,
+        amount_owed,
+      };
+    });
 
     return json(res, 200, { holds });
   } catch (e) {

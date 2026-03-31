@@ -1,7 +1,9 @@
 /**
- * Whether this camper should not be charged the one-time registration fee again:
- * campers.registration_fee_paid, any confirmed/pending_step_up row with registration_fee_paid,
- * or any active pending_step_up hold (reg is part of that flow / legacy rows).
+ * Whether this camper should not be charged the one-time registration fee again on a *new* checkout:
+ * campers.registration_fee_paid, or any confirmed / pending_step_up row with registration_fee_paid
+ * (reg was included in that enrollment / hold — do not add another reg line for another week).
+ *
+ * Do not treat “any pending_step_up” as paid: money may still be owed; only the row flag means reg was bundled.
  */
 async function isCampRegistrationFeePaid(sb, camperId) {
   const id = String(camperId);
@@ -16,16 +18,7 @@ async function isCampRegistrationFeePaid(sb, camperId) {
     .eq('registration_fee_paid', true)
     .limit(1);
   if (error) throw error;
-  if (rows && rows.length) return true;
-  /** Active Step Up hold: registration was part of that checkout (or legacy rows) — do not charge again for another week. */
-  const { data: su, error: sue } = await sb
-    .from('enrollments')
-    .select('id')
-    .eq('camper_id', id)
-    .eq('status', 'pending_step_up')
-    .limit(1);
-  if (sue) throw sue;
-  return !!(su && su.length);
+  return !!(rows && rows.length);
 }
 
 module.exports = { isCampRegistrationFeePaid };

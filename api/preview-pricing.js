@@ -79,15 +79,7 @@ module.exports = async (req, res) => {
               if (error) throw error;
               regPaid = !!(paidRows && paidRows.length);
             }
-            if (!regPaid) {
-              const { data: suHold, error: suErr } = await sb
-                .from('enrollments')
-                .select('id')
-                .eq('camper_id', String(camperId))
-                .eq('status', 'pending_step_up')
-                .limit(1);
-              if (!suErr && suHold && suHold.length) regPaid = true;
-            }
+            /* Do not treat any pending_step_up as “reg paid” unless that row has registration_fee_paid (reg was in that hold). */
             perCamperNeedsReg[String(camperId)] = !regPaid;
           } catch (cntErr) {
             console.warn('[preview-pricing] reg fee check:', cntErr.message);

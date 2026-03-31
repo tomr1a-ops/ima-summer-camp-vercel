@@ -7,7 +7,6 @@ const { ENROLLMENT_STATUS } = require('./lib/enrollment-status');
 const { syncConfirmedDayCounts } = require('./lib/capacity');
 const { sendStepUpMarkedPaidEmail } = require('./lib/email');
 const { isMissingStepUpHoldExpiresColumn } = require('./lib/step-up-hold-column');
-const { isCampRegistrationFeePaid } = require('./lib/camper-registration-fee');
 const { registrationFee } = require('./lib/pricing');
 const { tryPromoteWaitlistAfterEnrollmentRemoved, notifyWaitlistOffer } = require('./lib/waitlist-service');
 
@@ -68,7 +67,27 @@ module.exports = async (req, res) => {
 
   try {
     if (action === 'mark_paid') {
-      const regAlreadyPaid = await isCampRegistrationFeePaid(sb, row.camper_id);
+      /** Do not use pending_step_up rows (or their registration_fee_paid) — reg may still be owed until staff confirms. */
+      let regAlreadyPaid = false;
+      if (row.camper_id) {
+        const { data: camperRec } = await sb
+          .from('campers')
+          .select('registration_fee_paid')
+          .eq('id', row.camper_id)
+          .maybeSingle();
+        if (camperRec && camperRec.registration_fee_paid === true) regAlreadyPaid = true;
+        if (!regAlreadyPaid) {
+          const { data: otherConf } = await sb
+            .from('enrollments')
+            .select('id')
+            .eq('camper_id', row.camper_id)
+            .eq('status', ENROLLMENT_STATUS.CONFIRMED)
+            .eq('registration_fee_paid', true)
+            .neq('id', enrollmentId)
+            .limit(1);
+          regAlreadyPaid = !!(otherConf && otherConf.length);
+        }
+      }
       const regDollars = regAlreadyPaid ? 0 : registrationFee(false);
       const prevPrice = Number(row.price_paid) || 0;
       const nextPrice = prevPrice + regDollars;
