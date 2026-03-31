@@ -4269,7 +4269,8 @@
 
   /**
    * Step Up “owed” for schedule copy — camp from price_paid + reg when still due (not Stripe-paid yet).
-   * Do not use registrationAlreadyPaidPerPreview: preview treats “reg in a hold” as satisfied for *new* checkouts, which would hide the $65 still owed on the hold.
+   * For pending_step_up, `registration_fee_paid` on the enrollment row means “reg was included in this hold” (still owed), not money collected — see finalizeStepUpReservationBatch.
+   * After a successful hold, clearEnrollmentSelections() wipes regFeeIncludeByCamper; use the row flag so summary lines match the total immediately (no 750→815 flash).
    */
   function pendingStepUpAmountOwedDollars(row) {
     if (!row || row.status !== 'pending_step_up') return null;
@@ -4283,8 +4284,12 @@
         return String(x.id) === String(cid);
       });
       var regPaidOnCamperRecord = !!(c && c.registration_fee_paid === true);
-      if (!regPaidOnCamperRecord && registrationFeeAppliesToCamper(cid)) {
-        reg = regFeeClient();
+      var rfAmt = Number(
+        testPriceMode ? 1 : pricingPreview.registrationFee != null ? pricingPreview.registrationFee : regFeeClient()
+      );
+      var regBundledInHold = row.registration_fee_paid === true;
+      if (!regPaidOnCamperRecord && (regBundledInHold || registrationFeeAppliesToCamper(cid))) {
+        reg = rfAmt;
       }
     }
     return camp + reg;
@@ -5170,7 +5175,7 @@
     if (!bookings.length) {
       serverPrepaidApply = null;
     }
-    if (bookings.length && stepUpHoldSummarySnapshot) {
+    if (bookings.length && stepUpHoldSummarySnapshot && !checkoutSessionInFlight) {
       stepUpHoldSummarySnapshot = null;
     }
     var creditApplied = applyFamilyPrepaidCredits(bookings, wr, dr);
