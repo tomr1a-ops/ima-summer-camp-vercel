@@ -581,6 +581,11 @@
     cursor: not-allowed;
     opacity: 0.65;
   }
+  /* Confirmed / Step Up days: checkbox stays non-toggleable but matches a normal checked control (not “grayed first child”). */
+  .week-kid-cb--enrolled-day input:disabled {
+    opacity: 1;
+    cursor: default;
+  }
 
   .credit-by-camper {
     margin: 0 0 14px;
@@ -2533,16 +2538,23 @@
         : '';
     }
     const inner = dailyPerDayCampers[wk];
-    if (!inner) return '';
     const all = new Set();
-    Object.keys(inner).forEach(function (dk) {
-      const s = inner[dk];
-      if (s) s.forEach(function (cid) { all.add(String(cid)); });
+    if (inner) {
+      Object.keys(inner).forEach(function (dk) {
+        const s = inner[dk];
+        if (s) s.forEach(function (cid) { all.add(String(cid)); });
+      });
+    }
+    parentCampers.forEach(function (pc) {
+      if (daysCoveredByConfirmedForCamperWeek(weekId, pc.id).size > 0) {
+        all.add(String(pc.id));
+      }
     });
     if (!all.size) return '';
     const names = Array.from(all)
       .map(function (id) { return getCamperNameById(id); })
-      .filter(Boolean);
+      .filter(Boolean)
+      .sort(function (a, b) { return a.localeCompare(b, undefined, { sensitivity: 'base' }); });
     return names.length
       ? '<div class="child-context">Children this week: ' + escapeHtml(names.join(', ')) + '</div>'
       : '';
@@ -6366,17 +6378,30 @@
           if (dailyExpandedKeysMain.has(ek)) panel.classList.add('open');
           function refreshMainDayBtn() {
             const s = getDayCamperSetMain(wk, d.id);
-            const n = s ? s.size : 0;
+            const did = String(d.id);
+            const onDay = new Set();
+            if (s) s.forEach(function (id) {
+              onDay.add(String(id));
+            });
+            parentCampers.forEach(function (pc) {
+              if (daysCoveredByConfirmedForCamperWeek(w.id, pc.id).has(did)) {
+                onDay.add(String(pc.id));
+              }
+            });
+            const n = onDay.size;
             btn.classList.toggle('has-kids', n > 0);
             btn.classList.toggle('expanded', dailyExpandedKeysMain.has(ek));
             dpm.textContent = formatDayLabel(d);
             if (n === 0) dps.textContent = 'Tap to choose children';
             else if (n <= 3) {
-              dps.textContent = Array.from(s)
+              dps.textContent = Array.from(onDay)
                 .map(function (id) {
                   return getCamperNameById(id);
                 })
                 .filter(Boolean)
+                .sort(function (a, b) {
+                  return a.localeCompare(b, undefined, { sensitivity: 'base' });
+                })
                 .join(', ');
             } else dps.textContent = n + ' children';
           }
@@ -6403,7 +6428,7 @@
             const inDraft = !!(st0 && st0.has(cid));
             const offerB = waitlistOfferActiveForCamperWeek(cid, w.id);
             const row = document.createElement('div');
-            row.className = 'week-kid-cb';
+            row.className = 'week-kid-cb' + (paidDayHere ? ' week-kid-cb--enrolled-day' : '');
             const inner = document.createElement('label');
             inner.className = 'week-kid-cb-inner';
             const cb = document.createElement('input');
