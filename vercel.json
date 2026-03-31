@@ -155,6 +155,13 @@
       ]
     },
     {
+      "source": "/api/preview-prepaid-apply",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, private" },
+        { "key": "Pragma", "value": "no-cache" }
+      ]
+    },
+    {
       "source": "/api/backup",
       "headers": [
         { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, private" },

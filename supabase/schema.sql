@@ -40,6 +40,7 @@ CREATE TABLE public.campers (
   first_name TEXT NOT NULL,
   last_name  TEXT NOT NULL,
   age        INTEGER NOT NULL CHECK (age >= 0 AND age <= 18),
+  registration_fee_paid BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

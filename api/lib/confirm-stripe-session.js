@@ -87,6 +87,9 @@ async function confirmStripeSession(stripe, session) {
   const paidReg = session.metadata.registration_fee_cents
     ? Number(session.metadata.registration_fee_cents) > 0
     : false;
+  const regIdsRaw = String((session.metadata && session.metadata.registration_camper_ids) || '').trim();
+  const regCamperMetaList = regIdsRaw ? regIdsRaw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+  const regCampSet = new Set(regCamperMetaList.map((x) => String(x)));
 
   let didConfirmAny = false;
   for (let i = 0; i < enrollmentRows.length; i++) {
@@ -100,6 +103,8 @@ async function confirmStripeSession(stripe, session) {
     const camp = mode === 'full_week' ? wr : nDays * dr;
     const reg = i === 0 && paidReg ? regDollars : 0;
     const pricePaid = camp + reg;
+    const rowGetsRegFlag =
+      paidReg && (regCampSet.size ? regCampSet.has(String(row.camper_id)) : i === 0);
 
     const { data: updated, error: ue } = await sb
       .from('enrollments')
@@ -107,7 +112,7 @@ async function confirmStripeSession(stripe, session) {
         status: 'confirmed',
         stripe_session_id: session.id,
         price_paid: pricePaid,
-        registration_fee_paid: i === 0 && paidReg,
+        registration_fee_paid: rowGetsRegFlag,
         guest_email: row.parent_id ? null : customerEmail || null,
       })
       .eq('id', row.id)
@@ -131,6 +136,28 @@ async function confirmStripeSession(stripe, session) {
   const lc = Math.max(0, Math.round(Number(session.metadata && session.metadata.ledger_consume_cents) || 0));
   if (didConfirmAny && lc > 0 && enrollmentRows[0].parent_id) {
     await subtractFamilyCampLedgerCents(sb, enrollmentRows[0].parent_id, lc);
+  }
+
+  if (paidReg && didConfirmAny && enrollmentRows[0] && enrollmentRows[0].parent_id) {
+    const parentId = enrollmentRows[0].parent_id;
+    const idsToFlag =
+      regCamperMetaList.length > 0
+        ? regCamperMetaList
+        : enrollmentRows[0].camper_id
+          ? [String(enrollmentRows[0].camper_id)]
+          : [];
+    if (idsToFlag.length) {
+      const { data: owned, error: ownErr } = await sb
+        .from('campers')
+        .select('id')
+        .eq('parent_id', parentId)
+        .in('id', idsToFlag);
+      if (!ownErr && owned && owned.length) {
+        const safeIds = owned.map((r) => r.id);
+        const { error: cu } = await sb.from('campers').update({ registration_fee_paid: true }).in('id', safeIds);
+        if (cu) throw cu;
+      }
+    }
   }
 
   return { ok: true, count: enrollmentRows.length, email: customerEmail };

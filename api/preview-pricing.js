@@ -58,7 +58,7 @@ module.exports = async (req, res) => {
         for (const camperId of camperIds) {
           const { data: camper, error: ce } = await sb
             .from('campers')
-            .select('parent_id, extra_shirt_addon_paid')
+            .select('parent_id, extra_shirt_addon_paid, registration_fee_paid')
             .eq('id', camperId)
             .single();
           if (ce || !camper || String(camper.parent_id) !== String(user.id)) {
@@ -67,21 +67,21 @@ module.exports = async (req, res) => {
           }
           perCamperExtraShirtPaid[String(camperId)] = !!camper.extra_shirt_addon_paid;
           try {
-            const { data: paidRows, error } = await sb
-              .from('enrollments')
-              .select('id')
-              .eq('camper_id', String(camperId))
-              .eq('status', 'confirmed')
-              .eq('registration_fee_paid', true)
-              .limit(1);
-            if (error) {
-              console.warn('[preview-pricing] enrollment count:', error.message);
-              perCamperNeedsReg[String(camperId)] = true;
-            } else {
-              perCamperNeedsReg[String(camperId)] = !(paidRows && paidRows.length);
+            let regPaid = camper.registration_fee_paid === true;
+            if (!regPaid) {
+              const { data: paidRows, error } = await sb
+                .from('enrollments')
+                .select('id')
+                .eq('camper_id', String(camperId))
+                .eq('status', 'confirmed')
+                .eq('registration_fee_paid', true)
+                .limit(1);
+              if (error) throw error;
+              regPaid = !!(paidRows && paidRows.length);
             }
+            perCamperNeedsReg[String(camperId)] = !regPaid;
           } catch (cntErr) {
-            console.warn('[preview-pricing] count error:', cntErr.message);
+            console.warn('[preview-pricing] reg fee check:', cntErr.message);
             perCamperNeedsReg[String(camperId)] = true;
           }
         }

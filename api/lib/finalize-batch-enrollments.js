@@ -97,6 +97,15 @@ async function finalizePendingEnrollmentBatch(sb, batchId, options) {
       const { error: leg } = await sb.from('enrollments').update({ registration_fee_paid: true }).eq('id', rows[0].id);
       if (leg) throw leg;
     }
+    const camperIdsForRegFlag =
+      regCampers.length > 0 ? regCampers : rows[0] && rows[0].camper_id ? [String(rows[0].camper_id)] : [];
+    if (camperIdsForRegFlag.length) {
+      const { error: campReg } = await sb
+        .from('campers')
+        .update({ registration_fee_paid: true })
+        .in('id', camperIdsForRegFlag);
+      if (campReg) throw campReg;
+    }
   }
 
   const shirtC = Number(extraShirtCents) || 0;

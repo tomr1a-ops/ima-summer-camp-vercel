@@ -1625,6 +1625,17 @@
     line-height: 1.45;
     color: var(--muted);
   }
+  .reg-fee-camper-row.reg-fee-registration-paid-row {
+    opacity: 0.72;
+    pointer-events: none;
+  }
+  .reg-fee-registration-paid-badge {
+    color: var(--muted) !important;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
   .reg-fee-shirt-row input[type='checkbox']:disabled {
     opacity: 0.85;
     cursor: not-allowed;
@@ -1988,6 +1999,10 @@
   /** True during any create-checkout-session call (manual or $0 auto-save) — avoids duplicate POSTs. */
   let checkoutSessionInFlight = false;
   let zeroBalanceAutoSaveTimer = null;
+  /** Last POST /api/preview-prepaid-apply — camp credit lines must match Supabase (not client enrollment cache). */
+  let serverPrepaidApply = null;
+  let serverPrepaidTimer = null;
+  let serverPrepaidFetchGen = 0;
   const API_ADD_CAMPER = '/api/add-camper';
   const ENROLL_SS = 'ima_reg_enroll_v1';
   /** Survives post-checkout enroll draft wipe; value = IMA member checkbox checked (waive fee when still applicable). */
@@ -2227,6 +2242,7 @@
   }
 
   function applyPricingFromServer(j) {
+    serverPrepaidApply = null;
     const dr = j && j.dayRate != null ? Number(j.dayRate) : dayRateClient();
     const wr = j && j.weekRate != null ? Number(j.weekRate) : weekRateClient();
     const rf = j && j.registrationFee != null ? Number(j.registrationFee) : regFeeClient();
@@ -2349,11 +2365,14 @@
       .map(function (c) {
         const nm = escapeHtml(String(c.first_name + ' ' + c.last_name).trim());
         const id = escapeHtml(String(c.id));
+        const regPaidOnFile = registrationAlreadyPaidPerPreview(c.id);
         const feeApplies = getRegFeeInclude(c.id);
         const chk = feeApplies ? '' : ' checked';
-        const feeRight = feeApplies
-          ? '<span class="reg-fee-amt">' + escapeHtml(fmt(rfNum)) + '</span>'
-          : '<span class="reg-fee-amt reg-fee-waived-badge">No charge</span>';
+        const feeRight = regPaidOnFile
+          ? '<span class="reg-fee-amt reg-fee-registration-paid-badge">Paid</span>'
+          : feeApplies
+            ? '<span class="reg-fee-amt">' + escapeHtml(fmt(rfNum)) + '</span>'
+            : '<span class="reg-fee-amt reg-fee-waived-badge">No charge</span>';
         const shirtPaid = extraShirtAddonAlreadyPaid(c.id);
         const shirtUserPick = !!(extraShirtByCamper[c.id] || extraShirtByCamper[String(c.id)]);
         const shirtChk = shirtPaid || shirtUserPick ? ' checked' : '';
@@ -2366,24 +2385,30 @@
         const shirtHint = shirtPaid
           ? '<p class="reg-fee-shirt-paid-hint">Extra shirt add-on already paid for this child — no additional charge.</p>'
           : '';
+        const regRowHtml = regPaidOnFile
+          ? '<div class="reg-fee-camper-row reg-fee-registration-paid-row">' +
+            '<span class="reg-fee-lbl"><strong>One-time camp registration</strong></span>' +
+            feeRight +
+            '</div>'
+          : '<label class="reg-fee-camper-row" for="reg-fee-cb-' +
+            id +
+            '">' +
+            '<input type="checkbox" id="reg-fee-cb-' +
+            id +
+            '" data-reg-camper="' +
+            id +
+            '"' +
+            chk +
+            ' />' +
+            '<span class="reg-fee-lbl"><strong>IMA Member</strong> (no registration fee)</span>' +
+            feeRight +
+            '</label>';
         return (
           '<div class="reg-fee-camper-block">' +
           '<div class="reg-fee-camper-name">' +
           nm +
           '</div>' +
-          '<label class="reg-fee-camper-row" for="reg-fee-cb-' +
-          id +
-          '">' +
-          '<input type="checkbox" id="reg-fee-cb-' +
-          id +
-          '" data-reg-camper="' +
-          id +
-          '"' +
-          chk +
-          ' />' +
-          '<span class="reg-fee-lbl"><strong>IMA Member</strong> (no registration fee)</span>' +
-          feeRight +
-          '</label>' +
+          regRowHtml +
           '<label class="' +
           shirtRowClass +
           '" for="shirt-cb-' +
@@ -3663,44 +3688,6 @@
     return coalesceEnrollmentRowsForSidebar(paidRows);
   }
 
-  /** Confirmed rows that completed checkout — same pool as server prepaid (excludes stray confirmed rows). */
-  function coalescedCreditEligibleRowsForCamper(cid) {
-    const rows = (confirmedEnrollmentsCache || []).filter(function (row) {
-      return (
-        row &&
-        String(row.camper_id) === String(cid) &&
-        enrollmentRowQualifiesForCampCredit(row)
-      );
-    });
-    return coalesceEnrollmentRowsForSidebar(rows);
-  }
-
-  /** Paid weeks/days that are NOT reflected in the grid below = unused (“floating”) credit for this child. */
-  function unusedPaidWeekDayCountsForCamper(cid) {
-    var weeks = 0;
-    var days = 0;
-    const camperId = String(cid);
-    coalescedCreditEligibleRowsForCamper(cid).forEach(function (r) {
-      var w = weeksPayload.find(function (x) {
-        return String(x.id) === String(r.week_id);
-      });
-      if (!w) return;
-      if (enrollmentCoversFullWeek(r, w)) {
-        if (paidEnrollmentMatchesPicker(r, camperId)) return;
-        weeks += 1;
-        return;
-      }
-      var dayIds = (r.day_ids || []).map(String).filter(Boolean);
-      if (!dayIds.length) return;
-      var wk = String(r.week_id);
-      dayIds.forEach(function (did) {
-        var s = getDayCamperSetMain(wk, did);
-        if (!s || !s.has(camperId)) days += 1;
-      });
-    });
-    return { weeks: weeks, days: days };
-  }
-
   function formatWeekDayCreditLabel(weeks, days) {
     var parts = [];
     if (weeks > 0) {
@@ -3710,19 +3697,6 @@
       parts.push(days + ' day' + (days === 1 ? '' : 's'));
     }
     return parts.join(' · ');
-  }
-
-  /** Pooled across all children on this parent account (matches checkout credit application). */
-  function familyUnusedPaidWeekDayCounts() {
-    var w = 0;
-    var d = 0;
-    if (!session || !parentCampers.length) return { weeks: 0, days: 0 };
-    parentCampers.forEach(function (c) {
-      var u = unusedPaidWeekDayCountsForCamper(String(c.id));
-      w += u.weeks;
-      d += u.days;
-    });
-    return { weeks: w, days: d };
   }
 
   /** Same sort as server `sortBookingsForCreditApply` (week_number, then camper id). */
@@ -3739,6 +3713,20 @@
       if (na !== nb) return na - nb;
       return String(a.camperId).localeCompare(String(b.camperId));
     });
+  }
+
+  function bookingsAlignWithServerPrepaid(bookings, srv) {
+    if (!srv || !Array.isArray(srv.lines) || !srv.lines.length) return false;
+    var sorted = sortBookingsStable(bookings.slice());
+    if (sorted.length !== srv.lines.length) return false;
+    for (var i = 0; i < sorted.length; i++) {
+      var a = sorted[i];
+      var L = srv.lines[i];
+      if (String(a.weekId) !== String(L.weekId)) return false;
+      if (normCamperKeyForPrepaidApi(a.camperId) !== String(L.camperId || '').trim().toLowerCase()) return false;
+      if (String(a.pricingMode || 'daily') !== String(L.pricingMode || 'daily')) return false;
+    }
+    return true;
   }
 
   /** Match server `applyPoolToBookings`: prepaid pool valued in cents so week credits apply to daily lines. */
@@ -3758,12 +3746,59 @@
   function applyFamilyPrepaidCredits(bookings, wr, dr) {
     var wrC = Math.round(Number(wr) * 100);
     var drC = Math.round(Number(dr) * 100);
-    var pool = familyUnusedPaidWeekDayCounts();
-    var encPool = Math.max(0, (pool.weeks | 0) * wrC + (pool.days | 0) * drC);
+    var sorted = sortBookingsStable(bookings.slice());
+    var srv = serverPrepaidApply;
+    if (srv && bookingsAlignWithServerPrepaid(bookings, srv)) {
+      var campTotalCents = 0;
+      var lines = [];
+      for (var si = 0; si < sorted.length; si++) {
+        var b = sorted[si];
+        var sl = srv.lines[si];
+        var needCents = Math.round(Number(sl.needCents) || 0);
+        var chargeCents = Math.round(Number(sl.chargeCents) || 0);
+        var applyCents = Math.max(0, Math.round(Number(sl.applyCents) || 0));
+        campTotalCents += chargeCents;
+        if (b.pricingMode === 'full_week') {
+          lines.push({
+            b: b,
+            chargeCents: chargeCents,
+            sub: chargeCents / 100,
+            fullCredit: chargeCents === 0 && needCents > 0,
+            applyCents: applyCents,
+            needCents: needCents,
+          });
+        } else {
+          var n = (b.dayIds || []).length;
+          var creditDays = drC > 0 ? Math.min(n, Math.floor(applyCents / drC + 1e-9)) : 0;
+          lines.push({
+            b: b,
+            chargeCents: chargeCents,
+            sub: chargeCents / 100,
+            creditDays: creditDays,
+            nDays: n,
+            applyCents: applyCents,
+            needCents: needCents,
+          });
+        }
+      }
+      var pc = Math.max(0, Math.round(Number(srv.remainingPrepaidCents) || 0));
+      var remSrv =
+        srv.remainingWeeks != null || srv.remainingDays != null
+          ? { weeks: srv.remainingWeeks | 0, days: srv.remainingDays | 0 }
+          : decomposeRemainingPrepaidCentsClient(pc, wrC, drC);
+      return {
+        campTotal: campTotalCents / 100,
+        campTotalCents: campTotalCents,
+        lines: lines,
+        remainingWeeks: remSrv.weeks,
+        remainingDays: remSrv.days,
+        remainingPrepaidCents: pc,
+      };
+    }
     var ledPool = Math.max(0, Math.round(Number(pricingPreview.prepaidCampBalanceCents) || 0));
-    var sorted = sortBookingsStable(bookings);
-    var campTotalCents = 0;
-    var lines = [];
+    var encPool = 0;
+    var campTotalCents2 = 0;
+    var lines2 = [];
     var pcEnc = encPool;
     var pcLed = ledPool;
     sorted.forEach(function (b) {
@@ -3780,39 +3815,39 @@
       pcLed -= fromLed;
       var applyCents = fromEnc + fromLed;
       var chargeCents = needCents - applyCents;
-      campTotalCents += chargeCents;
+      campTotalCents2 += chargeCents;
       if (b.pricingMode === 'full_week') {
-        lines.push({
+        lines2.push({
           b: b,
           chargeCents: chargeCents,
           sub: chargeCents / 100,
-          fullCredit: chargeCents === 0,
+          fullCredit: chargeCents === 0 && needCents > 0,
           applyCents: applyCents,
           needCents: needCents,
         });
       } else {
-        var n = (b.dayIds || []).length;
-        var creditDays = drC > 0 ? Math.min(n, Math.floor(applyCents / drC + 1e-9)) : 0;
-        lines.push({
+        var n2 = (b.dayIds || []).length;
+        var creditDays2 = drC > 0 ? Math.min(n2, Math.floor(applyCents / drC + 1e-9)) : 0;
+        lines2.push({
           b: b,
           chargeCents: chargeCents,
           sub: chargeCents / 100,
-          creditDays: creditDays,
-          nDays: n,
+          creditDays: creditDays2,
+          nDays: n2,
           applyCents: applyCents,
           needCents: needCents,
         });
       }
     });
-    var pc = pcEnc + pcLed;
-    var rem = decomposeRemainingPrepaidCentsClient(pc, wrC, drC);
+    var pc2 = pcEnc + pcLed;
+    var rem2 = decomposeRemainingPrepaidCentsClient(pc2, wrC, drC);
     return {
-      campTotal: campTotalCents / 100,
-      campTotalCents: campTotalCents,
-      lines: lines,
-      remainingWeeks: rem.weeks,
-      remainingDays: rem.days,
-      remainingPrepaidCents: pc,
+      campTotal: campTotalCents2 / 100,
+      campTotalCents: campTotalCents2,
+      lines: lines2,
+      remainingWeeks: rem2.weeks,
+      remainingDays: rem2.days,
+      remainingPrepaidCents: pc2,
     };
   }
 
@@ -3993,15 +4028,26 @@
       el.innerHTML = '';
       return;
     }
-    var gross = familyUnusedPaidWeekDayCounts();
-    var grossLedgerC = Math.max(0, Math.round(Number(pricingPreview.prepaidCampBalanceCents) || 0));
-    if (gross.weeks <= 0 && gross.days <= 0 && grossLedgerC <= 0) {
+    var bookings = collectBookings();
+    var srv = serverPrepaidApply;
+    var grossCents = 0;
+    if (srv && srv.prepaidGrossCents != null) {
+      grossCents = Math.max(0, Math.round(Number(srv.prepaidGrossCents)));
+    } else if (!bookings.length) {
+      grossCents = Math.max(0, Math.round(Number(pricingPreview.prepaidCampBalanceCents) || 0));
+    }
+    if (bookings.length && !srv) {
       el.hidden = true;
       el.innerHTML = '';
       return;
     }
-    var remW = creditApplied ? creditApplied.remainingWeeks | 0 : gross.weeks;
-    var remD = creditApplied ? creditApplied.remainingDays | 0 : gross.days;
+    if (grossCents <= 0) {
+      el.hidden = true;
+      el.innerHTML = '';
+      return;
+    }
+    var remW = creditApplied ? creditApplied.remainingWeeks | 0 : 0;
+    var remD = creditApplied ? creditApplied.remainingDays | 0 : 0;
     el.hidden = false;
     var balLabel = formatWeekDayCreditLabel(remW, remD);
     var remCents = creditApplied ? Math.max(0, Math.round(Number(creditApplied.remainingPrepaidCents) || 0)) : 0;
@@ -4084,7 +4130,60 @@
     }
   }
 
+  function scheduleServerPrepaidApply() {
+    if (!session) {
+      serverPrepaidApply = null;
+      return;
+    }
+    clearTimeout(serverPrepaidTimer);
+    serverPrepaidTimer = setTimeout(runServerPrepaidApply, 130);
+  }
+
+  async function runServerPrepaidApply() {
+    var gen = ++serverPrepaidFetchGen;
+    const bookings = collectBookings();
+    if (!bookings.length) {
+      if (gen !== serverPrepaidFetchGen) return;
+      serverPrepaidApply = null;
+      updateSummaryImmediate();
+      return;
+    }
+    try {
+      var tok = await freshAccessTokenForApi();
+      if (!tok) {
+        if (gen === serverPrepaidFetchGen) updateSummaryImmediate();
+        return;
+      }
+      var res = await imaNoStoreFetch('/api/preview-prepaid-apply', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + tok,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          testPricing: !!testPriceMode,
+          bookings: bookings,
+          prepaidCoverageKeys: prepaidCoverageKeysForApi(),
+        }),
+      });
+      if (gen !== serverPrepaidFetchGen) return;
+      if (res.ok) {
+        serverPrepaidApply = await res.json();
+      } else {
+        serverPrepaidApply = null;
+      }
+    } catch (e) {
+      if (gen === serverPrepaidFetchGen) serverPrepaidApply = null;
+    }
+    if (gen === serverPrepaidFetchGen) updateSummaryImmediate();
+  }
+
   function updateSummary() {
+    scheduleServerPrepaidApply();
+    updateSummaryImmediate();
+  }
+
+  function updateSummaryImmediate() {
     updateEnrollmentGate();
     renderScheduleOverview();
     const empty = document.getElementById('empty-state');

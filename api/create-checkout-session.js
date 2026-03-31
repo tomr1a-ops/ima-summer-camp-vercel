@@ -14,6 +14,8 @@ const {
   applyPoolToBookings,
 } = require('./lib/family-prepaid-credits');
 const { finalizePendingEnrollmentBatch } = require('./lib/finalize-batch-enrollments');
+const { normCamperKey, normalizeIncomingBookings } = require('./lib/normalize-checkout-bookings');
+const { isCampRegistrationFeePaid } = require('./lib/camper-registration-fee');
 
 function json(res, code, obj) {
   res.statusCode = code;
@@ -28,13 +30,6 @@ function failCheckout(res, httpStatus, code, message, logDetail) {
   res.statusCode = httpStatus;
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify({ error: message, code: code || 'ERROR' }));
-}
-
-/** Stable camper id key for maps (UUID casing differs between client and DB). */
-function normCamperKey(id) {
-  if (id == null) return '';
-  const s = String(id).trim();
-  return s ? s.toLowerCase() : '';
 }
 
 /**
@@ -63,62 +58,6 @@ function publicSiteBaseUrl(req) {
   return '';
 }
 
-/**
- * index.html uses camelCase; older clients may send snake_case. Coerce dayIds if sent as object map.
- */
-function normalizeIncomingBookings(rawBookings) {
-  if (!Array.isArray(rawBookings)) return [];
-  const out = [];
-  for (let i = 0; i < rawBookings.length; i++) {
-    const b = rawBookings[i];
-    if (!b || typeof b !== 'object') {
-      console.warn('[create-checkout-session] BOOKING_SKIP index=%s (not an object)', i);
-      continue;
-    }
-    const weekId = b.weekId != null ? b.weekId : b.week_id;
-    const camperId = b.camperId != null ? b.camperId : b.camper_id;
-    let dayIds = b.dayIds != null ? b.dayIds : b.day_ids;
-    if (!Array.isArray(dayIds)) {
-      if (dayIds && typeof dayIds === 'object') {
-        dayIds = Object.keys(dayIds)
-          .filter((k) => /^\d+$/.test(String(k)))
-          .sort((a, b) => Number(a) - Number(b))
-          .map((k) => dayIds[k]);
-      } else {
-        dayIds = [];
-      }
-    }
-    const pm = b.pricingMode != null ? b.pricingMode : b.pricing_mode;
-    const pricingMode =
-      pm === 'full_week' || pm === 'weekly' || pm === 'full' || pm === 'fullWeek' ? 'full_week' : 'daily';
-
-    const ck = normCamperKey(camperId);
-    if (weekId == null || String(weekId).trim() === '' || !ck) {
-      console.warn('[create-checkout-session] BOOKING_SKIP index=%s missing weekId/camperId keys=%j', i, Object.keys(b));
-      continue;
-    }
-    const idList = [...new Set(dayIds.map((id) => String(id).trim()).filter(Boolean))];
-    out.push({
-      weekId: String(weekId).trim(),
-      camperId: ck,
-      dayIds: idList,
-      pricingMode,
-    });
-  }
-  return out;
-}
-
-async function hasRegistrationFeePaid(sb, camperId) {
-  const { data, error } = await sb
-    .from('enrollments')
-    .select('id')
-    .eq('camper_id', String(camperId))
-    .eq('status', 'confirmed')
-    .eq('registration_fee_paid', true)
-    .limit(1);
-  if (error) throw error;
-  return !!(data && data.length);
-}
 
 /** Normalize client map so lookups always use string keys (JSON keys are strings; camper ids may vary). */
 function normalizeRegFeeChoice(raw) {
@@ -374,7 +313,7 @@ module.exports = async (req, res) => {
       if (regFeeWaivedByParentChoice(regFeeChoice, cid)) {
         return { cid, waived: true, paid: true };
       }
-      const paid = await hasRegistrationFeePaid(sb, cid);
+      const paid = await isCampRegistrationFeePaid(sb, cid);
       return { cid, waived: false, paid };
     })
   );

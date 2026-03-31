@@ -27,8 +27,11 @@ DELETE FROM public.enrollments;
 DELETE FROM public.family_camp_credit_ledger;
 
 UPDATE public.campers
-SET extra_shirt_addon_paid = false
-WHERE extra_shirt_addon_paid IS DISTINCT FROM false;
+SET
+  extra_shirt_addon_paid = false,
+  registration_fee_paid = false
+WHERE extra_shirt_addon_paid IS DISTINCT FROM false
+   OR registration_fee_paid IS DISTINCT FROM false;
 
 UPDATE public.days
 SET current_enrollment = 0;
