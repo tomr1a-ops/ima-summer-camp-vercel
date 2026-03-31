@@ -2001,7 +2001,7 @@
           <ul id="parent-camper-list" class="parent-camper-list" aria-label="Children on file"></ul>
           <p id="parent-camper-empty" class="week-dates-label" style="display:none;margin-top:10px;line-height:1.5">No campers on file yet. Add one here (uses your account securely).</p>
           <button type="button" class="add-camper-toggle" id="btn-toggle-add-camper" aria-expanded="false">+ Add a child</button>
-          <button type="button" class="btn-primary btn-register-now" id="btn-register-now">Register Now</button>
+          <button type="button" class="btn-primary btn-register-now" id="btn-register-now" hidden>Register Now</button>
           <p id="register-now-gate-msg" class="week-dates-label register-now-gate-msg" hidden></p>
           <div class="add-camper-panel" id="add-camper-panel">
             <div class="add-camper-grid">
@@ -2561,6 +2561,15 @@
     if (!main) return;
     const simple = !!(session && parentCampers.length > 0);
     main.classList.toggle('reg-flow-simple', simple);
+    var btnRegNow = document.getElementById('btn-register-now');
+    if (btnRegNow) {
+      btnRegNow.hidden = !simple;
+    }
+    var regGate = document.getElementById('register-now-gate-msg');
+    if (regGate && !simple) {
+      regGate.hidden = true;
+      regGate.textContent = '';
+    }
   }
 
   function applyPricingFromServer(j) {
