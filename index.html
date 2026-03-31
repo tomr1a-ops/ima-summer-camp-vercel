@@ -2297,6 +2297,8 @@
   let stepUpHoldSummarySnapshot = null;
   /** While > Date.now(), do not drop snapshot when enrollments fetch has not listed pending_step_up yet (post-checkout race). */
   var stepUpHoldSnapshotProtectUntil = 0;
+  var stepUpPendingBannerRaf = null;
+  var stepUpSummaryCoalesceTimer = null;
   var IMA_STEP_UP_HOLD_TOTALS_SS = 'ima_step_up_hold_totals';
   var STEP_UP_HOLD_SUCCESS_MSG =
     'Hold successful — your spot is reserved for 24 hours. Check your email — complete Step Up for Students funding to IMA Impact Martial Athletics; staff will confirm when allocation is received.';
@@ -4340,12 +4342,20 @@
     return camp + reg;
   }
 
-  /** Server checkout totals while Step Up holds exist — suppresses per-row $ flash from pricing/enrollment refetch. */
+  /**
+   * Snapshot is the only source for Step Up owed $ while holds exist (or briefly after checkout before rows appear).
+   * Avoids flashing client recalculations from pricing preview / partial cache.
+   */
   function stepUpHoldOrderUsesStableServerTotal() {
     var s = stepUpHoldSummarySnapshot;
     if (!s) return false;
     var t = Number(s.total);
-    return Number.isFinite(t) && t >= 0;
+    if (!Number.isFinite(t) || t < 0) return false;
+    var hasPsu = (confirmedEnrollmentsCache || []).some(function (r) {
+      return r && r.status === 'pending_step_up';
+    });
+    if (hasPsu) return true;
+    return Date.now() < stepUpHoldSnapshotProtectUntil;
   }
 
   function pendingStepUpAmountOwedHtml(row) {
@@ -4388,7 +4398,17 @@
     var raw = (confirmedEnrollmentsCache || []).filter(function (r) {
       return r && r.status === 'pending_step_up';
     });
-    if (!raw.length) return { sum: 0, html: '' };
+    if (!raw.length) {
+      if (stepUpHoldOrderUsesStableServerTotal()) {
+        var stOnly = Number(stepUpHoldSummarySnapshot.total);
+        var htmlOnly =
+          '<div class="summary-line"><span class="label">Step Up hold <span class="summary-line-detail">· Active reservation — total from checkout</span></span><span class="val">' +
+          fmt(stOnly) +
+          '</span></div>';
+        return { sum: stOnly, html: htmlOnly };
+      }
+      return { sum: 0, html: '' };
+    }
     /**
      * Non-empty cart path: previously summed pendingStepUpAmountOwedDollars per row (recalculates with
      * pricing preview) and skipped rows when camper|week was in cart — so adding days in the same week
@@ -4879,6 +4899,14 @@
   }
 
   function renderStepUpPendingBanner() {
+    if (stepUpPendingBannerRaf) cancelAnimationFrame(stepUpPendingBannerRaf);
+    stepUpPendingBannerRaf = requestAnimationFrame(function () {
+      stepUpPendingBannerRaf = null;
+      renderStepUpPendingBannerImpl();
+    });
+  }
+
+  function renderStepUpPendingBannerImpl() {
     var el = document.getElementById('step-up-pending-banner');
     if (!el) return;
     if (!session || !parentCampers.length) {
@@ -4890,14 +4918,25 @@
       return r && r.status === 'pending_step_up';
     });
     var holds = coalesceEnrollmentRowsForSidebar(rawHolds);
+    var stableSuBanner = stepUpHoldOrderUsesStableServerTotal();
+    var snapTotBanner = stableSuBanner ? Number(stepUpHoldSummarySnapshot.total) : null;
     if (!holds.length) {
+      if (stableSuBanner && snapTotBanner != null) {
+        el.hidden = false;
+        var nextPlaceholder =
+          '<div class="step-up-pending-banner-title">Step Up — payment required</div>' +
+          '<p class="step-up-pending-hint">Updating your held enrollments…</p>' +
+          '<p class="step-up-pending-hint" style="margin-top:12px"><strong>Total due:</strong> ' +
+          escapeHtml(fmt(snapTotBanner)) +
+          '</p>';
+        if (el.innerHTML !== nextPlaceholder) el.innerHTML = nextPlaceholder;
+        return;
+      }
       el.hidden = true;
       el.innerHTML = '';
       return;
     }
     el.hidden = false;
-    var stableSuBanner = stepUpHoldOrderUsesStableServerTotal();
-    var snapTotBanner = stableSuBanner ? Number(stepUpHoldSummarySnapshot.total) : null;
     var parts = holds.map(function (row) {
       var cid = String(row.camper_id);
       var name = getCamperNameById(cid) || 'Child';
@@ -4953,6 +4992,13 @@
       parts.join('') +
       bannerStableTotalFoot;
     if (el.innerHTML !== nextBan) el.innerHTML = nextBan;
+  }
+
+  function cancelStepUpSummaryCoalesce() {
+    if (stepUpSummaryCoalesceTimer) {
+      clearTimeout(stepUpSummaryCoalesceTimer);
+      stepUpSummaryCoalesceTimer = null;
+    }
   }
 
   /**
@@ -5063,7 +5109,9 @@
         console.error(e);
       } catch (e2) {}
     } finally {
-      updateSummary();
+      var skipSum =
+        stepUpHoldOrderUsesStableServerTotal() && !collectBookings().length;
+      if (!skipSum) updateSummary();
     }
   }
 
@@ -5116,12 +5164,23 @@
   }
 
   var summaryImmediateRaf = null;
-  function scheduleUpdateSummaryImmediate() {
+  function scheduleUpdateSummaryImmediateNow() {
     if (summaryImmediateRaf != null) return;
     summaryImmediateRaf = requestAnimationFrame(function () {
       summaryImmediateRaf = null;
       updateSummaryImmediate();
     });
+  }
+  function scheduleUpdateSummaryImmediate() {
+    if (stepUpHoldOrderUsesStableServerTotal()) {
+      if (stepUpSummaryCoalesceTimer) clearTimeout(stepUpSummaryCoalesceTimer);
+      stepUpSummaryCoalesceTimer = setTimeout(function () {
+        stepUpSummaryCoalesceTimer = null;
+        scheduleUpdateSummaryImmediateNow();
+      }, 90);
+      return;
+    }
+    scheduleUpdateSummaryImmediateNow();
   }
 
   function updateSummary() {
@@ -5423,8 +5482,7 @@
           ? Number(stepUpHoldSummarySnapshot.extraShirts)
           : 0;
       var useStepUpHoldOrderSummary =
-        session &&
-        (stepUpRowsForSummary.length > 0 || (snapTot != null && snapTot >= 0));
+        session && (stepUpRowsForSummary.length > 0 || stepUpHoldOrderUsesStableServerTotal());
 
       if (useStepUpHoldOrderSummary) {
         empty.textContent = '';
@@ -7030,6 +7088,10 @@
       clearEnrollmentSelections();
       await refreshConfirmedEnrollmentsFromServer();
       refreshScheduleUiAfterEnrollStorageChange();
+      cancelStepUpSummaryCoalesce();
+      try {
+        updateSummaryImmediate();
+      } catch (eSu) {}
       schedulePostCheckoutEnrollmentRefetchRetries();
       var msgOk = document.getElementById('msg');
       if (msgOk) {
