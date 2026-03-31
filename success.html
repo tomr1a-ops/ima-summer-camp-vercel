@@ -70,7 +70,10 @@
         }
       }
 
-      /** First time we see this Checkout session → tell index to drop the local draft (Stripe only sends users here after success). */
+      /**
+       * Only after the server verifies payment (confirm-checkout → ok) tell index to drop the local draft.
+       * Do not run before confirm: a session can reach this page in edge cases while unpaid — clearing early would wipe the cart / owed total.
+       */
       function emitClearForSessionOnce() {
         try {
           var arr = readSeen();
@@ -88,8 +91,6 @@
         } catch (eB) {}
       }
 
-      emitClearForSessionOnce();
-
       var el = document.getElementById('sync');
       el.textContent = 'Confirming registration…';
       fetch('/api/confirm-checkout', {
@@ -97,19 +98,27 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId: sid }),
       })
-        .then(function (r) { return r.json(); })
-        .then(function (j) {
-          if (j && j.ok) {
-            try {
-              localStorage.setItem(FLAG, '1');
-              sessionStorage.setItem(FLAG, '1');
-            } catch (e) {}
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { httpOk: r.ok, j: j };
+          });
+        })
+        .then(function (res) {
+          var j = res.j;
+          if (res.httpOk && j && j.ok) {
+            emitClearForSessionOnce();
             el.textContent = j.already ? '' : 'Registration saved.';
           } else {
-            el.textContent = '';
+            var reason = j && j.reason ? String(j.reason) : '';
+            el.textContent =
+              reason === 'not_paid'
+                ? 'Payment did not complete. Go back to camp registration — your week selections should still be there.'
+                : '';
           }
         })
-        .catch(function () { el.textContent = ''; });
+        .catch(function () {
+          el.textContent = '';
+        });
     })();
   </script>
 </body>
