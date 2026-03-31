@@ -2321,8 +2321,13 @@
   let regFeeIncludeByCamper = {};
   /** camper id -> true = add extra camp T-shirt at checkout */
   let extraShirtByCamper = {};
-  /** Last order-summary total ($) — compared to server totals on checkout to catch UI vs Stripe mismatches. */
+  /** Last order-summary total ($) — includes active Step Up holds shown in the summary. */
   let lastSummaryGrandDollars = 0;
+  /**
+   * Portion of the summary that this Stripe session actually charges (new camp + reg + shirt in cart).
+   * Excludes Step Up hold dollars — those are never in the same Checkout session.
+   */
+  let lastSummaryStripeSessionDollars = 0;
   /** True during any create-checkout-session call (manual or $0 auto-save) — avoids duplicate POSTs. */
   let checkoutSessionInFlight = false;
   /** Profile.waiver_signed from Supabase — hide camp agreement block permanently for this parent. */
@@ -5570,6 +5575,8 @@
           displayGrandSU = snapTot;
         }
         lastSummaryGrandDollars = displayGrandSU;
+        /** Card checkout in this UI path only charges new shirt add-ons; hold stays Step Up. */
+        lastSummaryStripeSessionDollars = shirtTotal;
         var totalAmtEl = document.getElementById('total-amount');
         var nextGrandTxt = fmt(displayGrandSU);
         if (totalAmtEl && totalAmtEl.textContent !== nextGrandTxt) totalAmtEl.textContent = nextGrandTxt;
@@ -5823,9 +5830,10 @@
       });
     }
     lines.innerHTML = html;
-    const grand =
-      Number(campTotal) + Number(reg) + Number(shirtTotal) + Number(stepUpHeldAddon.sum || 0);
+    const stripeSessionPart = Number(campTotal) + Number(reg) + Number(shirtTotal);
+    const grand = stripeSessionPart + Number(stepUpHeldAddon.sum || 0);
     lastSummaryGrandDollars = grand;
+    lastSummaryStripeSessionDollars = stripeSessionPart;
     document.getElementById('total-amount').textContent = fmt(grand);
     var btnMain = document.querySelector('#checkout-btn .btn-text');
     var secureNote = document.querySelector('.order-summary .secure-note');
@@ -7195,82 +7203,95 @@
   }
 
   async function runCreateCheckoutSessionRequest(signal) {
-    if (session) {
-      pruneConflictingFullWeekSelections();
-      pruneFullWeekCampersUnknownToParent();
-    }
-    const bookings = sortBookingsStable(collectBookings());
-    var fwBlock = getFullWeekPaidDayConflictMessages();
-    if (fwBlock.length) return { error: fwBlock[0] };
-    var hasShirt = hasShirtCheckoutSelection();
-    if (!bookings.length && !hasShirt) return { skip: true };
+    try {
+      if (session) {
+        pruneConflictingFullWeekSelections();
+        pruneFullWeekCampersUnknownToParent();
+      }
+      const bookings = sortBookingsStable(collectBookings());
+      var fwBlock = getFullWeekPaidDayConflictMessages();
+      if (fwBlock.length) return { error: fwBlock[0] };
+      var hasShirt = hasShirtCheckoutSelection();
+      if (!bookings.length && !hasShirt) return { skip: true };
 
-    const headers = { 'Content-Type': 'application/json' };
-    if (session) {
-      var tokCo = await freshAccessTokenForApi();
-      if (tokCo) headers['Authorization'] = 'Bearer ' + tokCo;
-    }
+      const headers = { 'Content-Type': 'application/json' };
+      if (session) {
+        var tokCo = await freshAccessTokenForApi();
+        if (tokCo) headers['Authorization'] = 'Bearer ' + tokCo;
+      }
 
-    const ids = [...new Set(bookings.map(function (b) { return b.camperId; }).filter(Boolean))];
-    const regMap = {};
-    const shirtMap = {};
-    ids.forEach(function (cid) {
-      const ck = String(cid);
-      regMap[ck] = registrationFeeAppliesToCamper(cid);
-    });
-    if (session && parentCampers.length) {
-      parentCampers.forEach(function (c) {
-        const ck = String(c.id);
-        shirtMap[ck] = !!(extraShirtByCamper[ck] || extraShirtByCamper[c.id]);
-      });
-    } else {
+      const ids = [...new Set(bookings.map(function (b) { return b.camperId; }).filter(Boolean))];
+      const regMap = {};
+      const shirtMap = {};
       ids.forEach(function (cid) {
         const ck = String(cid);
-        shirtMap[ck] = !!(extraShirtByCamper[ck] || extraShirtByCamper[cid]);
+        regMap[ck] = registrationFeeAppliesToCamper(cid);
       });
-    }
-    var agreeElReq = document.getElementById('camp-agreement-accept');
-    var agreementAcceptedReq = !!(parentProfileWaiverSigned || (agreeElReq && agreeElReq.checked));
-    var pmReq = document.getElementById('payment-method-select');
-    var pmOut =
-      pmReq && pmReq.value === 'step_up' ? 'step_up' : pmReq && pmReq.value === 'credit_card' ? 'credit_card' : '';
-    const body = {
-      bookings: bookings,
-      testPricing: testPriceMode,
-      registrationFeeForCamper: regMap,
-      extraShirtByCamper: shirtMap,
-      prepaidCoverageKeys: prepaidCoverageKeysForApi(),
-      imaMember: ids.some(function (cid) {
-        return !registrationFeeAppliesToCamper(cid);
-      }),
-      agreementAccepted: agreementAcceptedReq,
-      agreementVersion: CAMP_AGREEMENT_VERSION,
-      paymentMethod: pmOut,
-    };
+      if (session && parentCampers.length) {
+        parentCampers.forEach(function (c) {
+          const ck = String(c.id);
+          shirtMap[ck] = !!(extraShirtByCamper[ck] || extraShirtByCamper[c.id]);
+        });
+      } else {
+        ids.forEach(function (cid) {
+          const ck = String(cid);
+          shirtMap[ck] = !!(extraShirtByCamper[ck] || extraShirtByCamper[cid]);
+        });
+      }
+      var agreeElReq = document.getElementById('camp-agreement-accept');
+      var agreementAcceptedReq = !!(parentProfileWaiverSigned || (agreeElReq && agreeElReq.checked));
+      var pmReq = document.getElementById('payment-method-select');
+      var pmOut =
+        pmReq && pmReq.value === 'step_up' ? 'step_up' : pmReq && pmReq.value === 'credit_card' ? 'credit_card' : '';
+      const body = {
+        bookings: bookings,
+        testPricing: testPriceMode,
+        registrationFeeForCamper: regMap,
+        extraShirtByCamper: shirtMap,
+        prepaidCoverageKeys: prepaidCoverageKeysForApi(),
+        imaMember: ids.some(function (cid) {
+          return !registrationFeeAppliesToCamper(cid);
+        }),
+        agreementAccepted: agreementAcceptedReq,
+        agreementVersion: CAMP_AGREEMENT_VERSION,
+        paymentMethod: pmOut,
+      };
 
-    const res = await fetch(API_CHECKOUT, {
-      method: 'POST',
-      headers: headers,
-      body: JSON.stringify(body),
-      signal: signal,
-    });
-    const data = await res.json().catch(function () {
-      return {};
-    });
-    if (!res.ok) {
-      console.error('[create-checkout-session] HTTP', res.status, data);
-      var errParts = [];
-      if (data && data.code) errParts.push(String(data.code));
-      if (data && data.stripeCode) errParts.push('Stripe ' + String(data.stripeCode));
-      if (data && data.stripeType) errParts.push(String(data.stripeType));
-      if (data && data.error) errParts.push(String(data.error));
-      var errMsg =
-        errParts.length > 0
-          ? errParts.join(' — ')
-          : 'Server error ' + res.status;
-      return { error: errMsg, data: data };
+      const res = await fetch(API_CHECKOUT, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(body),
+        signal: signal,
+      });
+      const data = await res.json().catch(function () {
+        return {};
+      });
+      if (!res.ok) {
+        console.error('[create-checkout-session] HTTP', res.status, data);
+        var errParts = [];
+        if (data && data.code) errParts.push(String(data.code));
+        if (data && data.stripeCode) errParts.push('Stripe ' + String(data.stripeCode));
+        if (data && data.stripeType) errParts.push(String(data.stripeType));
+        if (data && data.error) errParts.push(String(data.error));
+        var errMsg =
+          errParts.length > 0
+            ? errParts.join(' — ')
+            : 'Server error ' + res.status;
+        return { error: errMsg, data: data };
+      }
+      if (!data || typeof data !== 'object') {
+        return { error: 'Invalid response from payment server. Refresh and try again.' };
+      }
+      return { data: data };
+    } catch (e) {
+      try {
+        console.error('[create-checkout-session] request failed', e);
+      } catch (eLog) {}
+      var abortMsg = e && e.name === 'AbortError' ? 'Request timed out. Check your connection and try again.' : '';
+      return {
+        error: abortMsg || (e && e.message) || 'Could not reach the payment server. Check your connection and try again.',
+      };
     }
-    return { data: data };
   }
 
   function clearCheckoutButtonLoading() {
@@ -7308,7 +7329,15 @@
       await refreshPricingPreview();
       if (lastSummaryGrandDollars >= 0.01) return;
       const r = await runCreateCheckoutSessionRequest(ac.signal);
-      if (r.skip) return;
+      if (r.skip) {
+        var msgSk0 = document.getElementById('msg');
+        if (msgSk0) {
+          msgSk0.className = 'msg error';
+          msgSk0.textContent =
+            'Nothing new to save ($0). Add camp dates or a shirt, or use Step Up if you only have a hold.';
+        }
+        return;
+      }
       if (r.error) {
         var msgBad = document.getElementById('msg');
         if (msgBad) {
@@ -7382,6 +7411,20 @@
       }
       const r = await runCreateCheckoutSessionRequest(ac.signal);
       if (r.skip) {
+        var grandSkip = Number(lastSummaryGrandDollars);
+        var bookSkip = collectBookings();
+        var hasStepUpRows = (confirmedEnrollmentsCache || []).some(function (row) {
+          return row && row.status === 'pending_step_up';
+        });
+        if (grandSkip >= 0.01 && !bookSkip.length && hasStepUpRows) {
+          showCheckoutErr(
+            'Credit card checkout only covers new items in your cart (camp days or an extra T-shirt). Your total right now is mostly an active Step Up hold, which is not paid by card here. Choose Step Up for that balance, or add new camp dates (or a shirt) to pay by card.'
+          );
+        } else {
+          showCheckoutErr(
+            'Add at least one camp week or an extra T-shirt to your cart before checking out. (Nothing was sent to Stripe.)'
+          );
+        }
         return;
       }
       if (r.error) {
@@ -7438,7 +7481,7 @@
       }
       if (data.totals != null && data.totals.total != null) {
         const serverT = Number(data.totals.total);
-        const clientT = Number(lastSummaryGrandDollars);
+        const clientT = Number(lastSummaryStripeSessionDollars);
         if (Number.isFinite(serverT) && Number.isFinite(clientT) && Math.abs(serverT - clientT) > 0.02) {
           await refreshPricingPreview();
           throw new Error(
