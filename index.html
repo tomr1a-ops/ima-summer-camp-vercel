@@ -2299,6 +2299,7 @@
   var stepUpHoldSnapshotProtectUntil = 0;
   var stepUpPendingBannerRaf = null;
   var stepUpSummaryCoalesceTimer = null;
+  var stepUpSaveInProgress = false;
   var IMA_STEP_UP_HOLD_TOTALS_SS = 'ima_step_up_hold_totals';
   var STEP_UP_HOLD_SUCCESS_MSG =
     'Hold successful — your spot is reserved for 24 hours. Check your email — complete Step Up for Students funding to IMA Impact Martial Athletics; staff will confirm when allocation is received.';
@@ -2328,8 +2329,6 @@
    * Excludes Step Up hold dollars — those are never in the same Checkout session.
    */
   let lastSummaryStripeSessionDollars = 0;
-  /** True while applyStepUpRegistrationSavedUi runs — suppresses summary scheduling from nested preview refresh. */
-  let stepUpUiUpdateInProgress = false;
   /** True during any create-checkout-session call (manual or $0 auto-save) — avoids duplicate POSTs. */
   let checkoutSessionInFlight = false;
   /** Profile.waiver_signed from Supabase — hide camp agreement block permanently for this parent. */
@@ -5069,6 +5068,7 @@
   }
 
   async function refreshPricingPreview() {
+    if (stepUpSaveInProgress) return;
     const headers = {};
     if (session) {
       var tokPv = await freshAccessTokenForApi();
@@ -5129,11 +5129,12 @@
         stepUpHoldOrderUsesStableServerTotal() &&
         !collectBookings().length &&
         !shirtPickForSum;
-      if (!skipSum && !stepUpUiUpdateInProgress) updateSummary();
+      if (!skipSum) updateSummary();
     }
   }
 
   function scheduleServerPrepaidApply() {
+    if (stepUpSaveInProgress) return;
     if (!session) {
       serverPrepaidApply = null;
       return;
@@ -5183,6 +5184,7 @@
 
   var summaryImmediateRaf = null;
   function scheduleUpdateSummaryImmediateNow() {
+    if (stepUpSaveInProgress) return;
     if (summaryImmediateRaf != null) return;
     summaryImmediateRaf = requestAnimationFrame(function () {
       summaryImmediateRaf = null;
@@ -5190,7 +5192,7 @@
     });
   }
   function scheduleUpdateSummaryImmediate() {
-    if (stepUpUiUpdateInProgress) return;
+    if (stepUpSaveInProgress) return;
     if (stepUpHoldOrderUsesStableServerTotal()) {
       if (stepUpSummaryCoalesceTimer) clearTimeout(stepUpSummaryCoalesceTimer);
       stepUpSummaryCoalesceTimer = setTimeout(function () {
@@ -5412,6 +5414,7 @@
   }
 
   function updateSummaryImmediate() {
+    if (stepUpSaveInProgress) return;
     updateEnrollmentGate();
     renderScheduleOverview();
     renderStepUpPendingBanner();
@@ -7147,7 +7150,25 @@
   }
 
   async function applyStepUpRegistrationSavedUi(data) {
-    stepUpUiUpdateInProgress = true;
+    if (summaryImmediateRaf != null) {
+      try {
+        cancelAnimationFrame(summaryImmediateRaf);
+      } catch (eRafSu) {}
+      summaryImmediateRaf = null;
+    }
+    if (stepUpSummaryCoalesceTimer) {
+      clearTimeout(stepUpSummaryCoalesceTimer);
+      stepUpSummaryCoalesceTimer = null;
+    }
+    if (serverPrepaidTimer) {
+      clearTimeout(serverPrepaidTimer);
+      serverPrepaidTimer = null;
+    }
+    if (parentEnrollmentsRefreshTimer) {
+      clearTimeout(parentEnrollmentsRefreshTimer);
+      parentEnrollmentsRefreshTimer = null;
+    }
+    stepUpSaveInProgress = true;
     try {
       var baseTot = 0;
       var baseSh = 0;
@@ -7202,8 +7223,8 @@
       void refreshParentProfileWaiverFromServer();
     } catch (e) {
     } finally {
-      stepUpUiUpdateInProgress = false;
-      updateSummary();
+      stepUpSaveInProgress = false;
+      updateSummaryImmediate();
     }
   }
 
