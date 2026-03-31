@@ -7,6 +7,7 @@
  */
 
 const { getFamilyCampLedgerCents } = require('./family-camp-ledger');
+const { enrollmentQualifiesForCampCredit } = require('./enrollment-credit-eligibility');
 
 function normUuid(v) {
   if (v == null) return '';
@@ -153,17 +154,20 @@ async function loadFloatingPrepaidPool(sb, parentId, bookingsArray, normCamperKe
   const { data: campers, error: ce } = await sb.from('campers').select('id').eq('parent_id', parentId);
   if (ce) throw ce;
   const camperIds = (campers || []).map((c) => String(c.id));
+  const ledgerCents = await getFamilyCampLedgerCents(sb, parentId);
   if (!camperIds.length) {
-    return { poolW: 0, poolD: 0, weekMetaMap: new Map() };
+    return { poolW: 0, poolD: 0, weekMetaMap: new Map(), ledgerCents };
   }
 
-  const { data: enrollRows, error: ee } = await sb
+  const { data: enrollRowsRaw, error: ee } = await sb
     .from('enrollments')
-    .select('camper_id,week_id,day_ids')
+    .select('camper_id,week_id,day_ids,status,price_paid,stripe_session_id,checkout_batch_id')
     .eq('parent_id', parentId)
     .eq('status', 'confirmed')
     .in('camper_id', camperIds);
   if (ee) throw ee;
+
+  const enrollRows = (enrollRowsRaw || []).filter((r) => enrollmentQualifiesForCampCredit(r));
 
   const weekIds = [...new Set((enrollRows || []).map((r) => String(r.week_id)))];
   const weekMetaMap = new Map();
@@ -200,7 +204,6 @@ async function loadFloatingPrepaidPool(sb, parentId, bookingsArray, normCamperKe
     normCamperKeyFn,
     prepaidUiCoverageKeys
   );
-  const ledgerCents = await getFamilyCampLedgerCents(sb, parentId);
   return { poolW, poolD, weekMetaMap, ledgerCents };
 }
 

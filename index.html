@@ -2960,6 +2960,16 @@
     );
   }
 
+  /** Match server `enrollmentQualifiesForCampCredit` — only settled checkouts count toward prepaid / ledger UI. */
+  function enrollmentRowQualifiesForCampCredit(row) {
+    if (!row || row.status !== 'confirmed') return false;
+    if (row.stripe_session_id != null && String(row.stripe_session_id).trim() !== '') return true;
+    var pp = Number(row.price_paid);
+    if (Number.isFinite(pp) && pp > 0) return true;
+    if (row.checkout_batch_id != null && String(row.checkout_batch_id).trim() !== '') return true;
+    return false;
+  }
+
   /** True if this confirmed row is reflected by current week/day checkboxes (sidebar follows the form). */
   function paidEnrollmentMatchesPicker(row, cid) {
     const w = weeksPayload.find(function (x) {
@@ -2999,6 +3009,7 @@
       var cid = String(c.id);
       (confirmedEnrollmentsCache || []).forEach(function (row) {
         if (!row || row.status !== 'confirmed') return;
+        if (!enrollmentRowQualifiesForCampCredit(row)) return;
         if (String(row.camper_id) !== cid) return;
         if (paidEnrollmentMatchesPicker(row, cid)) {
           out.push(normCamperKeyForPrepaidApi(cid) + '|' + String(row.week_id));
@@ -3652,12 +3663,24 @@
     return coalesceEnrollmentRowsForSidebar(paidRows);
   }
 
+  /** Confirmed rows that completed checkout — same pool as server prepaid (excludes stray confirmed rows). */
+  function coalescedCreditEligibleRowsForCamper(cid) {
+    const rows = (confirmedEnrollmentsCache || []).filter(function (row) {
+      return (
+        row &&
+        String(row.camper_id) === String(cid) &&
+        enrollmentRowQualifiesForCampCredit(row)
+      );
+    });
+    return coalesceEnrollmentRowsForSidebar(rows);
+  }
+
   /** Paid weeks/days that are NOT reflected in the grid below = unused (“floating”) credit for this child. */
   function unusedPaidWeekDayCountsForCamper(cid) {
     var weeks = 0;
     var days = 0;
     const camperId = String(cid);
-    coalescedConfirmedRowsForCamper(cid).forEach(function (r) {
+    coalescedCreditEligibleRowsForCamper(cid).forEach(function (r) {
       var w = weeksPayload.find(function (x) {
         return String(x.id) === String(r.week_id);
       });
