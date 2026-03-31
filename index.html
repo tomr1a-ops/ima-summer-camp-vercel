@@ -2328,6 +2328,8 @@
    * Excludes Step Up hold dollars — those are never in the same Checkout session.
    */
   let lastSummaryStripeSessionDollars = 0;
+  /** True while applyStepUpRegistrationSavedUi runs — suppresses summary scheduling from nested preview refresh. */
+  let stepUpUiUpdateInProgress = false;
   /** True during any create-checkout-session call (manual or $0 auto-save) — avoids duplicate POSTs. */
   let checkoutSessionInFlight = false;
   /** Profile.waiver_signed from Supabase — hide camp agreement block permanently for this parent. */
@@ -5127,7 +5129,7 @@
         stepUpHoldOrderUsesStableServerTotal() &&
         !collectBookings().length &&
         !shirtPickForSum;
-      if (!skipSum) updateSummary();
+      if (!skipSum && !stepUpUiUpdateInProgress) updateSummary();
     }
   }
 
@@ -5188,6 +5190,7 @@
     });
   }
   function scheduleUpdateSummaryImmediate() {
+    if (stepUpUiUpdateInProgress) return;
     if (stepUpHoldOrderUsesStableServerTotal()) {
       if (stepUpSummaryCoalesceTimer) clearTimeout(stepUpSummaryCoalesceTimer);
       stepUpSummaryCoalesceTimer = setTimeout(function () {
@@ -7144,6 +7147,7 @@
   }
 
   async function applyStepUpRegistrationSavedUi(data) {
+    stepUpUiUpdateInProgress = true;
     try {
       var baseTot = 0;
       var baseSh = 0;
@@ -7186,7 +7190,6 @@
       resetCampAgreementAfterSuccessfulCheckout();
       cancelStepUpSummaryCoalesce();
       refreshScheduleUiAfterEnrollStorageChange();
-      updateSummary();
       schedulePostCheckoutEnrollmentRefetchRetries();
       var msgOk = document.getElementById('msg');
       if (msgOk) {
@@ -7196,10 +7199,12 @@
       try {
         persistEnrollLocal();
       } catch (eP) {}
-      void refreshParentProfileWaiverFromServer().then(function () {
-        updateSummary();
-      });
-    } catch (e) {}
+      void refreshParentProfileWaiverFromServer();
+    } catch (e) {
+    } finally {
+      stepUpUiUpdateInProgress = false;
+      updateSummary();
+    }
   }
 
   async function runCreateCheckoutSessionRequest(signal) {
