@@ -529,6 +529,12 @@
     color: rgba(0, 229, 204, 0.88);
   }
 
+  .schedule-overview-list .sov-step-up-owed {
+    color: #bdbdbd;
+    font-size: 0.92em;
+    font-weight: 500;
+  }
+
   .week-kid-cb input:disabled {
     cursor: not-allowed;
     opacity: 0.65;
@@ -2238,9 +2244,9 @@
   const ENROLL_SS = 'ima_reg_enroll_v1';
   /** Survives post-checkout enroll draft wipe; value = IMA member checkbox checked (waive fee when still applicable). */
   const IMA_MEMBER_PREF_SS = 'ima_ima_member_pref_v1';
-  /** Legacy key — cleared on hide so old sessions do not pre-check the box without scrolling. */
+  /** Same tab: user checked the agreement (versioned). Cleared after a successful checkout so the next order re-confirms. */
   const CAMP_AGREEMENT_ACCEPT_SS = 'ima_camp_agreement_accepted_v2';
-  /** Same tab only: user scrolled agreement to bottom (version in key). Never stores checkbox checked — user must tick each time. */
+  /** Same tab only: user scrolled agreement to bottom (version in key). Cleared when the agreement section is hidden (e.g. empty cart). */
   const CAMP_AGREEMENT_SCROLL_SS = 'ima_camp_agreement_scrolled_v2';
 
   function dayRateClient() {
@@ -4101,6 +4107,28 @@
     return deleteEnrollmentIdsByApi(tokCx, ids);
   }
 
+  /** Camp line + registration fee (if still due) for Step Up holds — matches server mark_paid math. */
+  function pendingStepUpAmountOwedDollars(row) {
+    if (!row || row.status !== 'pending_step_up') return null;
+    var camp = Number(row.price_paid);
+    if (!Number.isFinite(camp) || camp < 0) camp = 0;
+    var reg = 0;
+    if (!row.registration_fee_paid && row.camper_id && registrationFeeAppliesToCamper(row.camper_id)) {
+      reg = regFeeClient();
+    }
+    return camp + reg;
+  }
+
+  function pendingStepUpAmountOwedHtml(row) {
+    var t = pendingStepUpAmountOwedDollars(row);
+    if (t == null) return '';
+    return (
+      '<span class="sov-step-up-owed"> · Owed ' +
+      escapeHtml(fmt(t)) +
+      ' until staff confirms Step Up payment</span>'
+    );
+  }
+
   function enrollmentRowToScheduleLi(row) {
     const w = weeksPayload.find(function (x) {
       return String(x.id) === String(row.week_id);
@@ -4120,6 +4148,7 @@
         rangeHtml +
         '</span><span class="sov-type sov-paid">' +
         fullLabel +
+        pendingStepUpAmountOwedHtml(row) +
         '</span></li>'
       );
     }
@@ -4141,6 +4170,7 @@
       '</span><span class="sov-type sov-paid">' +
         dailyPrefix +
       escapeHtml(dTxt) +
+      pendingStepUpAmountOwedHtml(row) +
       '</span></li>'
     );
   }
@@ -4674,6 +4704,32 @@
     return CAMP_AGREEMENT_ACCEPT_SS + ':' + (uid || 'guest') + ':' + CAMP_AGREEMENT_VERSION;
   }
 
+  function readCampAgreementAcceptOk() {
+    try {
+      return sessionStorage.getItem(campAgreementLegacyAcceptedSessionKey()) === '1';
+    } catch (eA) {
+      return false;
+    }
+  }
+
+  function writeCampAgreementAcceptOk(on) {
+    try {
+      var k = campAgreementLegacyAcceptedSessionKey();
+      if (on) sessionStorage.setItem(k, '1');
+      else sessionStorage.removeItem(k);
+    } catch (eW) {}
+  }
+
+  /** After payment / hold saved — require a fresh agreement tick for the next checkout. */
+  function resetCampAgreementAfterSuccessfulCheckout() {
+    try {
+      sessionStorage.removeItem(campAgreementScrollSessionKey());
+      sessionStorage.removeItem(campAgreementLegacyAcceptedSessionKey());
+    } catch (eR) {}
+    var agreeChk = document.getElementById('camp-agreement-accept');
+    if (agreeChk) agreeChk.checked = false;
+  }
+
   function readCampAgreementScrollOk() {
     try {
       return sessionStorage.getItem(campAgreementScrollSessionKey()) === '1';
@@ -4690,10 +4746,10 @@
     } catch (eW) {}
   }
 
+  /** Cleared when the agreement block is hidden (empty cart, etc.). Checkbox acceptance persists until checkout succeeds. */
   function clearCampAgreementSessionStorageKeys() {
     try {
       sessionStorage.removeItem(campAgreementScrollSessionKey());
-      sessionStorage.removeItem(campAgreementLegacyAcceptedSessionKey());
     } catch (eC) {}
   }
 
@@ -4735,6 +4791,7 @@
     }
     if (campAgreementScrollUnlocked) {
       agreeChk.disabled = false;
+      agreeChk.checked = !!readCampAgreementAcceptOk();
     } else {
       agreeChk.disabled = true;
       agreeChk.checked = false;
@@ -4775,6 +4832,7 @@
     sc.dataset.agreementInit = '1';
     sc.addEventListener('scroll', updateCampAgreementScrollGate, { passive: true });
     agreeChk.addEventListener('change', function () {
+      writeCampAgreementAcceptOk(agreeChk.checked);
       updateSummary();
     });
   }
@@ -6157,6 +6215,7 @@
           msgPay.className = 'msg ok';
           msgPay.textContent = 'Payment successful — your registration is saved.';
         }
+        resetCampAgreementAfterSuccessfulCheckout();
       } else {
         await refreshConfirmedEnrollmentsFromServer();
       }
@@ -6261,6 +6320,7 @@
 
   function applyZeroDollarRegistrationSavedUi() {
     try {
+      resetCampAgreementAfterSuccessfulCheckout();
       clearEnrollmentSelections();
       refreshScheduleUiAfterEnrollStorageChange();
       schedulePostCheckoutEnrollmentRefetchRetries();
@@ -6277,6 +6337,7 @@
 
   function applyStepUpRegistrationSavedUi() {
     try {
+      resetCampAgreementAfterSuccessfulCheckout();
       showStepUpHoldSuccessCheckoutUi = true;
       clearEnrollmentSelections();
       refreshScheduleUiAfterEnrollStorageChange();

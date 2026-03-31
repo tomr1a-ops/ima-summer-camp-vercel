@@ -160,6 +160,7 @@
               <th>Camper</th>
               <th>Week</th>
               <th>Schedule</th>
+              <th>Amount owed</th>
               <th>Hold started</th>
               <th>Hours left</th>
               <th>Actions</th>
@@ -692,6 +693,10 @@
             var cname = escapeHtml((c.first_name || '') + ' ' + (c.last_name || ''));
             var eid = escapeHtml(String(e.id));
             var hrs = escapeHtml(stepUpHoursRemainingLabel(e.step_up_hold_expires_at));
+            var owed =
+              e.amount_owed != null && Number.isFinite(Number(e.amount_owed))
+                ? Number(e.amount_owed)
+                : Number(e.price_paid) || 0;
             return (
               '<tr>' +
               '<td>' +
@@ -702,6 +707,8 @@
               escapeHtml(w.label || '') +
               '</td><td>' +
               escapeHtml(scheduleLabel(e)) +
+              '</td><td>' +
+              escapeHtml(IMA.formatMoney(owed)) +
               '</td><td>' +
               escapeHtml(IMA.formatDate(e.created_at)) +
               '</td><td>' +
