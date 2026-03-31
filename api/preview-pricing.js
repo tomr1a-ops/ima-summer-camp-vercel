@@ -79,6 +79,15 @@ module.exports = async (req, res) => {
               if (error) throw error;
               regPaid = !!(paidRows && paidRows.length);
             }
+            if (!regPaid) {
+              const { data: suHold, error: suErr } = await sb
+                .from('enrollments')
+                .select('id')
+                .eq('camper_id', String(camperId))
+                .eq('status', 'pending_step_up')
+                .limit(1);
+              if (!suErr && suHold && suHold.length) regPaid = true;
+            }
             perCamperNeedsReg[String(camperId)] = !regPaid;
           } catch (cntErr) {
             console.warn('[preview-pricing] reg fee check:', cntErr.message);

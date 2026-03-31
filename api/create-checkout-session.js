@@ -712,6 +712,8 @@ module.exports = async (req, res) => {
         ledgerConsumeCents: ledgerConsumedCents,
         ledgerParentId: parentId,
         waitlistIds: waitlistIdsFromBookings.length ? waitlistIdsFromBookings : undefined,
+        registrationFeeCents: String(regCentsTotal),
+        registrationCamperIds,
       });
       logStep('after_finalizeStepUpReservationBatch', { batchId });
     } catch (fz) {

@@ -151,6 +151,8 @@ async function finalizeStepUpReservationBatch(sb, batchId, options) {
     ledgerConsumeCents,
     ledgerParentId,
     waitlistIds,
+    registrationFeeCents,
+    registrationCamperIds,
   } = options;
 
   const { data: rows, error: qe } = await sb
@@ -168,6 +170,11 @@ async function finalizeStepUpReservationBatch(sb, batchId, options) {
   const modes = bookingModes || [];
   const centsArr = Array.isArray(campLineCents) ? campLineCents : [];
   const holdExpiresIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const paidReg = registrationFeeCents ? Number(registrationFeeCents) > 0 : false;
+  let regCampers = [];
+  if (registrationCamperIds != null && registrationCamperIds.length) {
+    regCampers = registrationCamperIds.map(String).filter(Boolean);
+  }
 
   let didAny = false;
   for (let i = 0; i < rows.length; i++) {
@@ -223,6 +230,15 @@ async function finalizeStepUpReservationBatch(sb, batchId, options) {
       const { error: incErr } = await sb.from('days').update({ current_enrollment: next }).eq('id', dayId);
       if (incErr) throw incErr;
     }
+  }
+
+  if (didAny && paidReg && regCampers.length) {
+    const { error: regUp } = await sb
+      .from('enrollments')
+      .update({ registration_fee_paid: true })
+      .eq('checkout_batch_id', batchId)
+      .in('camper_id', regCampers);
+    if (regUp) throw regUp;
   }
 
   const lc = Math.max(0, Math.round(Number(ledgerConsumeCents) || 0));

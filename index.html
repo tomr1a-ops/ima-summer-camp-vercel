@@ -2248,6 +2248,8 @@
   const CAMP_AGREEMENT_ACCEPT_SS = 'ima_camp_agreement_accepted_v2';
   /** Same tab only: user scrolled agreement to bottom (version in key). Cleared when the agreement section is hidden (e.g. empty cart). */
   const CAMP_AGREEMENT_SCROLL_SS = 'ima_camp_agreement_scrolled_v2';
+  /** Last payment method picked for checkout (restored when the order summary is visible again). */
+  const CAMP_PAYMENT_METHOD_SS = 'ima_camp_pm_v1';
 
   function dayRateClient() {
     if (testPriceMode) return 1;
@@ -2897,6 +2899,7 @@
       try {
         persistEnrollLocal();
       } catch (eP) {}
+      await refreshPricingPreview();
     } catch (e) {}
   }
 
@@ -4016,6 +4019,9 @@
             persistEnrollLocal();
           } catch (eP) {}
         })
+        .then(function () {
+          void refreshPricingPreview();
+        })
         .catch(function () {});
     }, 400);
   }
@@ -4141,16 +4147,40 @@
   }
 
   /**
-   * Step Up “owed” for schedule copy — use enrollment + camper/server reg state only.
-   * Do not use registrationFeeAppliesToCamper (IMA member checkbox); that can hide the fee after the hold.
+   * One $65 reg per camper across multiple Step Up weeks — only the first pending row (by week #) shows +reg in copy.
+   * Rows with registration_fee_paid (set when Step Up checkout included reg) show camp tuition only.
+   */
+  function pendingStepUpRowOwnsUnpaidRegDisplay(row) {
+    if (!row || row.status !== 'pending_step_up' || row.registration_fee_paid) return false;
+    var cid = String(row.camper_id || '');
+    if (!cid) return false;
+    var siblings = (confirmedEnrollmentsCache || []).filter(function (r) {
+      return r && r.status === 'pending_step_up' && String(r.camper_id) === cid && !r.registration_fee_paid;
+    });
+    if (!siblings.length) return false;
+    siblings.sort(function (a, b) {
+      var wa = weeksPayload.find(function (w) {
+        return String(w.id) === String(a.week_id);
+      });
+      var wb = weeksPayload.find(function (w) {
+        return String(w.id) === String(b.week_id);
+      });
+      return (Number(wa && wa.week_number) || 0) - (Number(wb && wb.week_number) || 0);
+    });
+    return String(siblings[0].id) === String(row.id);
+  }
+
+  /**
+   * Step Up “owed” for schedule copy — enrollment row + camper/preview reg state (not IMA member checkbox).
    */
   function pendingStepUpAmountOwedDollars(row) {
     if (!row || row.status !== 'pending_step_up') return null;
     var fromDb = Number(row.price_paid);
     var camp =
       Number.isFinite(fromDb) && fromDb > 0 ? fromDb : estimateStepUpCampTuitionDollars(row);
+    if (row.registration_fee_paid) return camp;
     var reg = 0;
-    if (!row.registration_fee_paid && row.camper_id) {
+    if (pendingStepUpRowOwnsUnpaidRegDisplay(row) && row.camper_id) {
       var cid = row.camper_id;
       var c = parentCampers.find(function (x) {
         return String(x.id) === String(cid);
@@ -4762,11 +4792,34 @@
     } catch (eW) {}
   }
 
+  function campPaymentMethodSessionKey() {
+    var uid = enrollUserId();
+    return CAMP_PAYMENT_METHOD_SS + ':' + (uid || 'guest') + ':' + CAMP_AGREEMENT_VERSION;
+  }
+
+  function readCampPaymentMethodOk() {
+    try {
+      var v = sessionStorage.getItem(campPaymentMethodSessionKey());
+      return v === 'step_up' || v === 'credit_card' ? v : '';
+    } catch (eP) {
+      return '';
+    }
+  }
+
+  function writeCampPaymentMethodOk(val) {
+    try {
+      var k = campPaymentMethodSessionKey();
+      if (val === 'step_up' || val === 'credit_card') sessionStorage.setItem(k, val);
+      else sessionStorage.removeItem(k);
+    } catch (eW) {}
+  }
+
   /** After payment / hold saved — require a fresh agreement tick for the next checkout. */
   function resetCampAgreementAfterSuccessfulCheckout() {
     try {
       sessionStorage.removeItem(campAgreementScrollSessionKey());
       sessionStorage.removeItem(campAgreementLegacyAcceptedSessionKey());
+      sessionStorage.removeItem(campPaymentMethodSessionKey());
     } catch (eR) {}
     var agreeChk = document.getElementById('camp-agreement-accept');
     if (agreeChk) agreeChk.checked = false;
@@ -4996,6 +5049,9 @@
     var agreeSection = document.getElementById('camp-agreement-section');
     if (agreeSection) {
       agreeSection.hidden = false;
+      if (readCampAgreementAcceptOk()) {
+        writeCampAgreementScrollOk(true);
+      }
       ensureCampAgreementTextLoaded();
       try {
         requestAnimationFrame(function () {
@@ -5007,6 +5063,13 @@
     }
     var paySection = document.getElementById('payment-method-section');
     if (paySection) paySection.hidden = false;
+    var pmSelRestore = document.getElementById('payment-method-select');
+    if (pmSelRestore) {
+      var pmSav = readCampPaymentMethodOk();
+      if (pmSav === 'step_up' || pmSav === 'credit_card') {
+        pmSelRestore.value = pmSav;
+      }
+    }
 
     let html = '';
     creditApplied.lines.forEach(function (row) {
@@ -6269,6 +6332,7 @@
       try {
         persistEnrollLocal();
       } catch (ePe) {}
+      await refreshPricingPreview();
       void subscribeParentEnrollmentsRealtime();
     } else {
       confirmedEnrollmentsCache = [];
@@ -6724,6 +6788,7 @@
     if (p && !p.dataset.pmInit) {
       p.dataset.pmInit = '1';
       p.addEventListener('change', function () {
+        writeCampPaymentMethodOk(p.value);
         updateSummary();
       });
     }
