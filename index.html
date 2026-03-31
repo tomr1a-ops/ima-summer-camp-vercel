@@ -7172,14 +7172,12 @@
           stepUpHoldSnapshotProtectUntil = Date.now() + 20000;
         }
       }
-      resetCampAgreementAfterSuccessfulCheckout();
-      clearEnrollmentSelections();
       await refreshConfirmedEnrollmentsFromServer();
-      refreshScheduleUiAfterEnrollStorageChange();
+      clearEnrollmentSelections();
+      resetCampAgreementAfterSuccessfulCheckout();
       cancelStepUpSummaryCoalesce();
-      try {
-        updateSummaryImmediate();
-      } catch (eSu) {}
+      refreshScheduleUiAfterEnrollStorageChange();
+      updateSummary();
       schedulePostCheckoutEnrollmentRefetchRetries();
       var msgOk = document.getElementById('msg');
       if (msgOk) {
