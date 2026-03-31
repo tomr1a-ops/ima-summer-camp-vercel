@@ -705,12 +705,96 @@ module.exports = async (req, res) => {
       try {
         await sb.from('enrollments').delete().eq('checkout_batch_id', batchId);
       } catch (delE) {}
-      return failCheckout(
-        res,
-        400,
-        'STEP_UP_NEEDS_CAMP',
-        'Step Up for Students requires at least one camp week or day selection. Add camp dates first, or choose Credit Card if you only need an extra item.'
-      );
+      if (!shirtIdsRequested.length) {
+        return failCheckout(
+          res,
+          400,
+          'STEP_UP_NEEDS_CAMP',
+          'Step Up for Students requires at least one camp week or day selection. Add camp dates first, or choose Credit Card if you only need an extra item.'
+        );
+      }
+      /** Extra shirts on Step Up with no new camp lines — merge into existing pending_step_up tuition (price_paid). */
+      if (shirtCentsTotal <= 0) {
+        return failCheckout(
+          res,
+          400,
+          'SHIRT_ALREADY_PAID',
+          'Those extra shirt add-ons are already paid. Refresh the page if the summary looks wrong.'
+        );
+      }
+      const { data: heldRows, error: heldErr } = await sb
+        .from('enrollments')
+        .select('id, camper_id, price_paid, created_at')
+        .eq('parent_id', parentId)
+        .eq('status', ENROLLMENT_STATUS.PENDING_STEP_UP)
+        .order('created_at', { ascending: true });
+      if (heldErr) {
+        logFullError('step_up_shirt_addon held rows', heldErr);
+        return failCheckout(res, 500, 'STEP_UP_SHIRT_LOAD', heldErr.message || 'Could not load holds', heldErr);
+      }
+      const heldList = heldRows || [];
+      if (!heldList.length) {
+        return failCheckout(
+          res,
+          400,
+          'STEP_UP_NEEDS_CAMP',
+          'Step Up for Students requires at least one camp week or day selection. Add camp dates first, or choose Credit Card if you only need an extra item.'
+        );
+      }
+      const byCamper = new Map();
+      for (const row of heldList) {
+        const k = normCamperKey(row.camper_id);
+        if (!byCamper.has(k)) byCamper.set(k, []);
+        byCamper.get(k).push(row);
+      }
+      for (const cidStr of shirtIdsRequested) {
+        if (shirtAddonPaidByCamper[String(cidStr)]) continue;
+        const k = normCamperKey(cidStr);
+        const rowsForCamper = byCamper.get(k);
+        if (!rowsForCamper || !rowsForCamper.length) {
+          return failCheckout(
+            res,
+            400,
+            'STEP_UP_SHIRT_NEEDS_HOLD',
+            'Extra T-shirt on Step Up requires an active hold for that child. Add camp to your cart first, or choose Credit Card for shirt-only checkout.'
+          );
+        }
+        const target = rowsForCamper[0];
+        const prevPaid = Number(target.price_paid);
+        const base = Number.isFinite(prevPaid) && prevPaid >= 0 ? prevPaid : 0;
+        const nextPaid = base + shirtDollars;
+        const { error: upShirtErr } = await sb
+          .from('enrollments')
+          .update({ price_paid: nextPaid })
+          .eq('id', target.id)
+          .eq('status', ENROLLMENT_STATUS.PENDING_STEP_UP);
+        if (upShirtErr) {
+          logFullError('step_up_shirt_addon update', upShirtErr);
+          return failCheckout(res, 500, 'STEP_UP_SHIRT_SAVE', upShirtErr.message || 'Could not save shirt add-on', upShirtErr);
+        }
+        target.price_paid = nextPaid;
+      }
+      logStep('step_up_shirt_addon_only', { shirtCentsTotal, parentId });
+      const parentMailShirt = (profile && profile.email) || user.email || '';
+      if (agreementRecordId) {
+        try {
+          await sendAgreementAcknowledgmentEmailOnce(sb, agreementRecordId, parentMailShirt);
+        } catch (ackE) {
+          console.error('[create-checkout-session] agreement ack email (step-up shirt)', ackE && ackE.message);
+        }
+      }
+      return json(res, 200, {
+        sessionId: null,
+        checkoutUrl: null,
+        batchId: null,
+        stepUpComplete: true,
+        totals: {
+          camp: 0,
+          registration: 0,
+          extraShirts: shirtCentsTotal / 100,
+          total: shirtCentsTotal / 100,
+        },
+      });
     }
     try {
       logStep('before_finalizeStepUpReservationBatch', { batchId });
