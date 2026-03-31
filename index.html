@@ -7174,6 +7174,7 @@
       }
       await refreshConfirmedEnrollmentsFromServer();
       clearEnrollmentSelections();
+      await loadParentCampers();
       resetCampAgreementAfterSuccessfulCheckout();
       cancelStepUpSummaryCoalesce();
       refreshScheduleUiAfterEnrollStorageChange();

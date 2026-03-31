@@ -774,6 +774,23 @@ module.exports = async (req, res) => {
         }
         target.price_paid = nextPaid;
       }
+      for (const camId of shirtCamperIds) {
+        const { error: campShirtErr } = await sb
+          .from('campers')
+          .update({ extra_shirt_addon_paid: true })
+          .eq('id', camId)
+          .eq('parent_id', parentId);
+        if (campShirtErr) {
+          logFullError('step_up_shirt_addon camper flag', campShirtErr);
+          return failCheckout(
+            res,
+            500,
+            'STEP_UP_SHIRT_SAVE',
+            campShirtErr.message || 'Could not record shirt add-on',
+            campShirtErr
+          );
+        }
+      }
       logStep('step_up_shirt_addon_only', { shirtCentsTotal, parentId });
       const parentMailShirt = (profile && profile.email) || user.email || '';
       if (agreementRecordId) {
@@ -808,6 +825,8 @@ module.exports = async (req, res) => {
         waitlistIds: waitlistIdsFromBookings.length ? waitlistIdsFromBookings : undefined,
         registrationFeeCents: String(regCentsTotal),
         registrationCamperIds,
+        extraShirtCents: String(shirtCentsTotal),
+        extraShirtCamperIds: shirtCamperIds,
       });
       logStep('after_finalizeStepUpReservationBatch', { batchId });
     } catch (fz) {

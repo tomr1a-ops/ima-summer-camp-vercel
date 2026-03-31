@@ -162,6 +162,8 @@ async function finalizeStepUpReservationBatch(sb, batchId, options) {
     waitlistIds,
     registrationFeeCents,
     registrationCamperIds,
+    extraShirtCents,
+    extraShirtCamperIds,
   } = options;
 
   const { data: rows, error: qe } = await sb
@@ -248,6 +250,15 @@ async function finalizeStepUpReservationBatch(sb, batchId, options) {
       .eq('checkout_batch_id', batchId)
       .in('camper_id', regCampers);
     if (regUp) throw regUp;
+  }
+
+  const shirtC = Number(extraShirtCents) || 0;
+  if (didAny && shirtC > 0) {
+    const shirtIds = (extraShirtCamperIds || []).map(String).filter(Boolean);
+    for (const camId of shirtIds) {
+      const { error: shirtUp } = await sb.from('campers').update({ extra_shirt_addon_paid: true }).eq('id', camId);
+      if (shirtUp) throw shirtUp;
+    }
   }
 
   const lc = Math.max(0, Math.round(Number(ledgerConsumeCents) || 0));
