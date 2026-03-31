@@ -6411,7 +6411,7 @@
             cb.checked = paidDayHere || inDraft;
             cb.disabled = paidDayHere || (dayBlocked && !inDraft && !offerB);
             row.title = paidDayHere
-              ? 'Paid registration this day — use × to remove.'
+              ? 'Already registered or on Step Up hold this day — tap × to remove this day.'
               : dayBlocked && !offerB
                 ? 'Sold out — cannot add children here.'
                 : offerB
@@ -6457,14 +6457,14 @@
             inner.appendChild(cb);
             inner.appendChild(sp);
             row.appendChild(inner);
-            if (paidDayHere && weekFull) {
+            if (paidDayHere) {
               const rm = document.createElement('button');
               rm.type = 'button';
               rm.className = 'week-kid-remove';
               rm.textContent = '×';
               rm.setAttribute(
                 'aria-label',
-                'Remove ' + (c.first_name || '') + ' from ' + formatDayLabel(d) + ' (cancel paid day)'
+                'Remove ' + (c.first_name || '') + ' from ' + formatDayLabel(d) + ' (cancel registration or Step Up day)'
               );
               rm.addEventListener('click', function (ev) {
                 ev.preventDefault();
