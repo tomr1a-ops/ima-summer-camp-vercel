@@ -140,6 +140,11 @@ async function validateBooking(sb, { weekId, dayIds, camperId, excludeEnrollment
     err.statusCode = 400;
     throw err;
   }
+  if (week.is_no_camp === true) {
+    const err = new Error('No camp this week: ' + week.label);
+    err.statusCode = 400;
+    throw err;
+  }
 
   const max = week.max_capacity || 35;
   const { byDay, peak } = await dayOccupancyFromDaysTable(sb, weekId);
@@ -221,9 +226,14 @@ async function validateBooking(sb, { weekId, dayIds, camperId, excludeEnrollment
  */
 async function validateAddedDaysOnly(sb, weekId, addedDayIds) {
   if (!addedDayIds.length) return;
-  const { data: week, error: we } = await sb.from('weeks').select('max_capacity').eq('id', weekId).single();
+  const { data: week, error: we } = await sb.from('weeks').select('max_capacity,is_no_camp,label').eq('id', weekId).single();
   if (we || !week) {
     const err = new Error('Invalid week');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (week.is_no_camp === true) {
+    const err = new Error('No camp this week: ' + (week.label || ''));
     err.statusCode = 400;
     throw err;
   }

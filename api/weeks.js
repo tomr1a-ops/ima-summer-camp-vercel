@@ -105,7 +105,7 @@ module.exports = async (req, res) => {
 
     const { data: weeks, error: we } = await sb
       .from('weeks')
-      .select('id,week_number,label,start_date,end_date,max_capacity,is_active,is_full')
+      .select('id,week_number,label,start_date,end_date,max_capacity,is_active,is_full,is_no_camp')
       .eq('is_active', true)
       .order('week_number');
 
@@ -177,15 +177,17 @@ module.exports = async (req, res) => {
         peakEnrolled = Math.max(peakEnrolled, Number(d.current_enrollment) || 0);
       });
       const weekSoldOut = wdays.some((d) => Number(d.current_enrollment) >= max);
-      const mergedFull = !!(w.is_full || weekSoldOut);
+      const noCamp = !!w.is_no_camp;
+      const mergedFull = !!(w.is_full || weekSoldOut || noCamp);
       const set = distinctByWeekId[String(w.id)];
       return {
         ...w,
         is_full: mergedFull,
+        is_no_camp: noCamp,
         week_peak_enrollment: peakEnrolled,
         distinct_camper_count: set ? set.size : 0,
         days: wdays,
-        disabled: mergedFull || !w.is_active,
+        disabled: mergedFull || !w.is_active || noCamp,
       };
     });
 

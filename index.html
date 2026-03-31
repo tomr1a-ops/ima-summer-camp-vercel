@@ -1167,6 +1167,29 @@
     background: rgba(125, 211, 252, 0.12);
     border-color: rgba(125, 211, 252, 0.5);
   }
+  .full-badge.no-camp-badge {
+    color: #c4c4d4;
+    background: rgba(100, 100, 120, 0.22);
+    border-color: rgba(150, 150, 170, 0.5);
+    font-weight: 700;
+    letter-spacing: 1.5px;
+  }
+  .week-no-camp-line {
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--muted);
+    margin-top: 6px;
+  }
+  .week-no-camp-dates {
+    font-size: 14px;
+    color: #d8d8d8;
+    margin-top: 2px;
+  }
+  .week-no-camp-dates u {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
   .week-card.full-card .week-kids-ctrl {
     pointer-events: none;
   }
@@ -2213,15 +2236,30 @@
       return !!d.at_capacity;
     });
     const inactive = w.is_active === false;
+    const noCamp = w.is_no_camp === true;
     const dbFull = !!w._imaDbFull;
     w.is_full = !!(numericFull || dbFull);
-    w.disabled = !!(w.is_full || inactive);
+    w.disabled = !!(w.is_full || inactive || noCamp);
     /** True when capacity is hit only because this parent's draft is included — server days still have room. */
     const serverDaysFull = (w.days || []).some(function (d) {
       const mc = Number(d.max_capacity) > 0 ? Number(d.max_capacity) : cap;
       return (Number(d._imaServerEnr) || 0) >= mc;
     });
-    w._imaFullOnlyBecauseOfDraft = !inactive && !!numericFull && !serverDaysFull && !dbFull;
+    w._imaFullOnlyBecauseOfDraft = !inactive && !noCamp && !!numericFull && !serverDaysFull && !dbFull;
+  }
+
+  /** e.g. "June 29 to July 3" for closed-week display */
+  function formatNoCampDateRangePretty(w) {
+    const s = w && w.start_date;
+    const e = w && w.end_date;
+    if (!s || !e) return '';
+    const a = String(s).split('-');
+    const b = String(e).split('-');
+    const d1 = new Date(Number(a[0]), Number(a[1]) - 1, Number(a[2]));
+    const d2 = new Date(Number(b[0]), Number(b[1]) - 1, Number(b[2]));
+    if (Number.isNaN(d1.getTime()) || Number.isNaN(d2.getTime())) return '';
+    const o = { month: 'long', day: 'numeric' };
+    return d1.toLocaleDateString('en-US', o) + ' to ' + d2.toLocaleDateString('en-US', o);
   }
 
   function formatDayLabel(d) {
@@ -5091,7 +5129,7 @@
     const w = weeksPayload.find(function (x) {
       return String(x.id) === String(wid);
     });
-    if (!w || w.disabled || w.is_full) return;
+    if (!w || w.disabled || w.is_full || w.is_no_camp) return;
     const cur = fullWeekQty[wid] || 0;
     const next = Math.max(0, Math.min(1, cur + delta));
     fullWeekQty[wid] = next;
@@ -5104,7 +5142,7 @@
     const w = weeksPayload.find(function (x) {
       return String(x.id) === String(wid);
     });
-    if (w && (w.disabled || w.is_full)) return;
+    if (w && (w.disabled || w.is_full || w.is_no_camp)) return;
     const cur = getDailyKids(wid);
     const next = Math.max(0, Math.min(1, cur + delta));
     dailyKidsByWeek[wid] = next;
@@ -5152,6 +5190,7 @@
     const signedInParent = !!(session && parentCampers.length > 0);
     weeksPayload.forEach(function (w) {
       const wk = String(w.id);
+      const noCamp = w.is_no_camp === true;
       const full = w.disabled || w.is_full;
       const qty = signedInParent
         ? fullWeekCampersByWeek[wk] && fullWeekCampersByWeek[wk].size > 0
@@ -5164,13 +5203,33 @@
       const head = document.createElement('div');
       head.className = 'week-card-head';
       const left = document.createElement('div');
-      left.innerHTML =
-        '<div class="week-card-title">' +
-        escapeHtml(w.label) +
-        '</div>' +
-        weekChildContextHtml(w.id);
+      const wnum = w.week_number != null ? String(w.week_number) : '';
+      const datePretty = formatNoCampDateRangePretty(w);
+      if (noCamp) {
+        left.innerHTML =
+          '<div class="week-card-title">Week ' +
+          escapeHtml(wnum) +
+          '</div>' +
+          '<div class="week-no-camp-line">No camp</div>' +
+          '<div class="week-no-camp-dates"><u>' +
+          escapeHtml(datePretty) +
+          '</u></div>' +
+          weekChildContextHtml(w.id);
+      } else {
+        left.innerHTML =
+          '<div class="week-card-title">' +
+          escapeHtml(w.label) +
+          '</div>' +
+          weekChildContextHtml(w.id);
+      }
       head.appendChild(left);
-      if (full) {
+      if (noCamp) {
+        const b = document.createElement('span');
+        b.className = 'full-badge no-camp-badge';
+        b.textContent = 'Closed';
+        b.title = 'IMA is closed this week — no registration.';
+        head.appendChild(b);
+      } else if (full) {
         const b = document.createElement('span');
         const draftOnly = !!w._imaFullOnlyBecauseOfDraft;
         b.className = 'full-badge sold-out-badge' + (draftOnly ? ' sold-out-badge--draft' : '');
@@ -5181,52 +5240,72 @@
         head.appendChild(b);
       }
       card.appendChild(head);
-      if (signedInParent) card.appendChild(buildWeekCamperCheckboxes(w.id, 'full'));
+      if (signedInParent && !noCamp) card.appendChild(buildWeekCamperCheckboxes(w.id, 'full'));
       const price = document.createElement('div');
       price.className = 'week-card-price';
-      price.textContent = fmt(wr) + '/week · Mon–Fri';
+      if (noCamp) {
+        price.textContent = '';
+        price.style.display = 'none';
+      } else {
+        price.style.display = '';
+        price.textContent = fmt(wr) + '/week · Mon–Fri';
+      }
       card.appendChild(price);
       if (!signedInParent) {
-        const ctrl = document.createElement('div');
-        ctrl.className = 'week-kids-ctrl';
-        const minus = document.createElement('button');
-        minus.type = 'button';
-        minus.className = 'mini-btn';
-        minus.textContent = '−';
-        minus.disabled = full || qty < 1;
-        minus.addEventListener('click', function () {
-          adjustFullWeek(w.id, -1);
-        });
-        const val = document.createElement('input');
-        val.type = 'text';
-        val.className = 'mini-val';
-        val.readOnly = true;
-        val.value = String(qty);
-        val.title = 'Child attending full week (this camper)';
-        const plus = document.createElement('button');
-        plus.type = 'button';
-        plus.className = 'mini-btn';
-        plus.textContent = '+';
-        plus.disabled = full || qty > 0;
-        plus.addEventListener('click', function () {
-          adjustFullWeek(w.id, 1);
-        });
-        ctrl.appendChild(minus);
-        ctrl.appendChild(val);
-        ctrl.appendChild(plus);
-        const tag = document.createElement('div');
-        tag.className = 'kids-tag';
-        tag.textContent = qty > 0 ? 'Attending full week' : 'Not attending';
-        const wrap = document.createElement('div');
-        wrap.className = 'week-kids-wrap';
-        wrap.appendChild(ctrl);
-        wrap.appendChild(tag);
-        card.appendChild(wrap);
+        if (noCamp) {
+          const tag = document.createElement('div');
+          tag.className = 'kids-tag';
+          tag.style.marginTop = '10px';
+          tag.style.color = '#888';
+          tag.textContent = 'Camp closed this week';
+          card.appendChild(tag);
+        } else {
+          const ctrl = document.createElement('div');
+          ctrl.className = 'week-kids-ctrl';
+          const minus = document.createElement('button');
+          minus.type = 'button';
+          minus.className = 'mini-btn';
+          minus.textContent = '−';
+          minus.disabled = full || qty < 1;
+          minus.addEventListener('click', function () {
+            adjustFullWeek(w.id, -1);
+          });
+          const val = document.createElement('input');
+          val.type = 'text';
+          val.className = 'mini-val';
+          val.readOnly = true;
+          val.value = String(qty);
+          val.title = 'Child attending full week (this camper)';
+          const plus = document.createElement('button');
+          plus.type = 'button';
+          plus.className = 'mini-btn';
+          plus.textContent = '+';
+          plus.disabled = full || qty > 0;
+          plus.addEventListener('click', function () {
+            adjustFullWeek(w.id, 1);
+          });
+          ctrl.appendChild(minus);
+          ctrl.appendChild(val);
+          ctrl.appendChild(plus);
+          const tag = document.createElement('div');
+          tag.className = 'kids-tag';
+          tag.textContent = qty > 0 ? 'Attending full week' : 'Not attending';
+          const wrap = document.createElement('div');
+          wrap.className = 'week-kids-wrap';
+          wrap.appendChild(ctrl);
+          wrap.appendChild(tag);
+          card.appendChild(wrap);
+        }
       } else {
         const tag = document.createElement('div');
         tag.className = 'kids-tag';
         tag.style.marginTop = '10px';
-        tag.textContent = hasKids ? 'Full week for selected children' : 'Check which children above';
+        if (noCamp) {
+          tag.style.color = '#888';
+          tag.textContent = 'No registration this week';
+        } else {
+          tag.textContent = hasKids ? 'Full week for selected children' : 'Check which children above';
+        }
         card.appendChild(tag);
       }
       grid.appendChild(card);
@@ -5254,21 +5333,43 @@
     const signedInParent = !!(session && parentCampers.length > 0);
     weeksPayload.forEach(function (w) {
       const wk = String(w.id);
+      const noCamp = w.is_no_camp === true;
       const weekFull = w.disabled || w.is_full;
       const kids = getDailyKids(wk);
       const block = document.createElement('div');
       block.className = 'week-block' + (weekFull ? ' full' : '');
       const head = document.createElement('div');
       head.className = 'week-block-head';
-      head.innerHTML =
-        '<div><div class="wn">' +
-        escapeHtml(w.label) +
-        '</div><div class="week-dates-label">' +
-        fmt(dr) +
-        '/day</div>' +
-        weekChildContextHtml(w.id) +
-        '</div>';
-      if (weekFull) {
+      const wnumD = w.week_number != null ? String(w.week_number) : '';
+      const datePrettyD = formatNoCampDateRangePretty(w);
+      if (noCamp) {
+        head.innerHTML =
+          '<div><div class="wn">Week ' +
+          escapeHtml(wnumD) +
+          '</div>' +
+          '<div class="week-no-camp-line">No camp</div>' +
+          '<div class="week-no-camp-dates"><u>' +
+          escapeHtml(datePrettyD) +
+          '</u></div>' +
+          weekChildContextHtml(w.id) +
+          '</div>';
+      } else {
+        head.innerHTML =
+          '<div><div class="wn">' +
+          escapeHtml(w.label) +
+          '</div><div class="week-dates-label">' +
+          escapeHtml(fmt(dr)) +
+          '/day</div>' +
+          weekChildContextHtml(w.id) +
+          '</div>';
+      }
+      if (noCamp) {
+        const b = document.createElement('span');
+        b.className = 'full-badge no-camp-badge';
+        b.textContent = 'Closed';
+        b.title = 'IMA is closed this week — no registration.';
+        head.appendChild(b);
+      } else if (weekFull) {
         const b = document.createElement('span');
         const draftOnly = !!w._imaFullOnlyBecauseOfDraft;
         b.className = 'full-badge sold-out-badge' + (draftOnly ? ' sold-out-badge--draft' : '');
@@ -5280,7 +5381,7 @@
       }
       block.appendChild(head);
 
-      if (!signedInParent) {
+      if (!signedInParent && !noCamp) {
         const dk = document.createElement('div');
         dk.className = 'daily-week-kids';
         const lbl = document.createElement('span');
@@ -5319,7 +5420,7 @@
 
       const chips = document.createElement('div');
       chips.className = 'day-chips';
-      if (signedInParent) {
+      if (!noCamp && signedInParent) {
         (w.days || []).forEach(function (d) {
           const cap = Number(d.max_capacity) > 0 ? Number(d.max_capacity) : maxCap(w);
           const enrolled = Number(d.current_enrollment) || 0;
@@ -5525,7 +5626,7 @@
           col.appendChild(panel);
           chips.appendChild(col);
         });
-      } else {
+      } else if (!noCamp) {
         (w.days || []).forEach(function (d) {
           const col = document.createElement('div');
           col.className = 'day-chip-wrap';

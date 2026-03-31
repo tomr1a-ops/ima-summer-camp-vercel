@@ -46,6 +46,7 @@ CREATE TABLE public.weeks (
   max_capacity  INTEGER NOT NULL DEFAULT 35 CHECK (max_capacity > 0),
   is_active     BOOLEAN NOT NULL DEFAULT true,
   is_full       BOOLEAN NOT NULL DEFAULT false,
+  is_no_camp    BOOLEAN NOT NULL DEFAULT false,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT weeks_date_range CHECK (end_date >= start_date)
 );
@@ -312,25 +313,25 @@ CREATE TRIGGER enrollments_refresh_week_full_del
   EXECUTE PROCEDURE public.refresh_week_full_flag();
 
 -- -----------------------------------------------------------------------------
--- Seed: 7 camp weeks (2026), Mon–Fri each
--- Week numbers 1,2,3,5,6,7,8 (no week 4 on calendar)
+-- Seed: camp weeks (2026), Mon–Fri each; week 4 = closed (no camp)
 -- -----------------------------------------------------------------------------
-INSERT INTO public.weeks (week_number, label, start_date, end_date, max_capacity, is_active)
+INSERT INTO public.weeks (week_number, label, start_date, end_date, max_capacity, is_active, is_no_camp)
 VALUES
-  (1, 'Week 1: June 8–12', '2026-06-08', '2026-06-12', 35, true),
-  (2, 'Week 2: June 15–19', '2026-06-15', '2026-06-19', 35, true),
-  (3, 'Week 3: June 22–26', '2026-06-22', '2026-06-26', 35, true),
-  (5, 'Week 5: July 6–10', '2026-07-06', '2026-07-10', 35, true),
-  (6, 'Week 6: July 13–17', '2026-07-13', '2026-07-17', 35, true),
-  (7, 'Week 7: July 20–24', '2026-07-20', '2026-07-24', 35, true),
-  (8, 'Week 8: July 27–31', '2026-07-27', '2026-07-31', 35, true)
+  (1, 'Week 1: June 8–12', '2026-06-08', '2026-06-12', 35, true, false),
+  (2, 'Week 2: June 15–19', '2026-06-15', '2026-06-19', 35, true, false),
+  (3, 'Week 3: June 22–26', '2026-06-22', '2026-06-26', 35, true, false),
+  (4, 'Week 4: June 29 – July 3', '2026-06-29', '2026-07-03', 35, true, true),
+  (5, 'Week 5: July 6–10', '2026-07-06', '2026-07-10', 35, true, false),
+  (6, 'Week 6: July 13–17', '2026-07-13', '2026-07-17', 35, true, false),
+  (7, 'Week 7: July 20–24', '2026-07-20', '2026-07-24', 35, true, false),
+  (8, 'Week 8: July 27–31', '2026-07-27', '2026-07-31', 35, true, false)
 ON CONFLICT (week_number) DO NOTHING;
 
 INSERT INTO public.days (week_id, date, day_name, current_enrollment)
 SELECT w.id, gs::date, TRIM(TO_CHAR(gs::date, 'Day')), 0
 FROM public.weeks w
 CROSS JOIN LATERAL generate_series(w.start_date::timestamp, w.end_date::timestamp, interval '1 day') AS gs
-WHERE w.week_number IN (1, 2, 3, 5, 6, 7, 8)
+WHERE w.week_number IN (1, 2, 3, 4, 5, 6, 7, 8)
 ON CONFLICT (week_id, date) DO NOTHING;
 
 -- =============================================================================
