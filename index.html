@@ -2990,13 +2990,13 @@
     });
   }
 
-  function refreshScheduleUiAfterEnrollStorageChange() {
+  function refreshScheduleUiAfterEnrollStorageChange(skipSummary) {
     try {
       renderFullWeeks();
       renderDailyWeeks();
       renderRegFeeCamperBoxes();
       updateEnrollmentGate();
-      updateSummary();
+      if (!skipSummary) updateSummary();
     } catch (eU) {}
   }
 
@@ -3012,7 +3012,7 @@
       await loadParentCampers();
       await loadWeeks();
       hydrateSelectionFromConfirmedEnrollments();
-      refreshScheduleUiAfterEnrollStorageChange();
+      refreshScheduleUiAfterEnrollStorageChange(true);
       try {
         persistEnrollLocal();
       } catch (eP) {}
@@ -3024,8 +3024,10 @@
    * After Step Up / $0 / Stripe success, re-sync enrollments + weeks without stacking 5 rapid full re-renders
    * (was causing visible flicker with Supabase realtime firing at the same time).
    */
-  function schedulePostCheckoutEnrollmentRefetchRetries() {
-    suppressEnrollmentRealtimeRefreshUntil = Date.now() + 4000;
+  function schedulePostCheckoutEnrollmentRefetchRetries(opts) {
+    if (!opts || !opts.skipRealtimeSuppress) {
+      suppressEnrollmentRealtimeRefreshUntil = Date.now() + 4000;
+    }
     var wave = ++postCheckoutSyncWave;
     if (postCheckoutSyncDebounceTimer) clearTimeout(postCheckoutSyncDebounceTimer);
     postCheckoutSyncDebounceTimer = setTimeout(function () {
@@ -3033,10 +3035,6 @@
       if (wave !== postCheckoutSyncWave) return;
       void runPostCheckoutEnrollmentSyncOnce();
     }, 450);
-    setTimeout(function () {
-      if (wave !== postCheckoutSyncWave) return;
-      void runPostCheckoutEnrollmentSyncOnce();
-    }, 2400);
   }
 
   /**
@@ -4164,14 +4162,14 @@
             hydrateSelectionFromConfirmedEnrollments();
           } catch (eH) {}
           try {
-            refreshScheduleUiAfterEnrollStorageChange();
+            refreshScheduleUiAfterEnrollStorageChange(true);
           } catch (eR) {}
           try {
             persistEnrollLocal();
           } catch (eP) {}
         })
         .then(function () {
-          void refreshPricingPreview();
+          voidRefreshPricingPreviewMaybeSummary({ skipScheduleDom: true });
         })
         .catch(function () {});
     }, 400);
@@ -5105,8 +5103,16 @@
         : '');
   }
 
-  async function refreshPricingPreview() {
-    if (stepUpSaveInProgress) return;
+  /**
+   * Refetch /api/preview-pricing and refresh dependent UI.
+   * @param {{ skipScheduleDom?: boolean }} [opts] If skipScheduleDom, caller already ran renderFullWeeks/renderDailyWeeks — avoids double DOM rebuild (checkbox flicker).
+   * @returns {Promise<boolean>} true if updateSummary() ran in this call's finally block (skipSum path returns false).
+   */
+  async function refreshPricingPreview(opts) {
+    if (stepUpSaveInProgress) return false;
+    opts = opts || {};
+    var skipScheduleDom = !!opts.skipScheduleDom;
+    var summaryUpdatedInFinally = false;
     const headers = {};
     if (session) {
       var tokPv = await freshAccessTokenForApi();
@@ -5145,8 +5151,10 @@
       }
       updatePriceBanner();
       renderRegFeeCamperBoxes();
-      renderFullWeeks();
-      renderDailyWeeks();
+      if (!skipScheduleDom) {
+        renderFullWeeks();
+        renderDailyWeeks();
+      }
       updateEnrollmentGate();
       updateRegFlowClasses();
     } catch (e) {
@@ -5167,8 +5175,19 @@
         stepUpHoldOrderUsesStableServerTotal() &&
         !collectBookings().length &&
         !shirtPickForSum;
-      if (!skipSum) updateSummary();
+      if (!skipSum) {
+        updateSummary();
+        summaryUpdatedInFinally = true;
+      }
     }
+    return summaryUpdatedInFinally;
+  }
+
+  /** Fire-and-forget preview refresh; ensures updateSummary runs if preview skipped it (Step Up stable-total path). */
+  function voidRefreshPricingPreviewMaybeSummary(opts) {
+    void refreshPricingPreview(opts).then(function (ran) {
+      if (!ran) updateSummary();
+    });
   }
 
   function scheduleServerPrepaidApply() {
@@ -6045,8 +6064,8 @@
             optimisticRemoveEnrollmentsMatching(weekId, cid);
             renderFullWeeks();
             renderDailyWeeks();
-            refreshPricingPreview();
-            updateSummary();
+            var ranCb0 = await refreshPricingPreview({ skipScheduleDom: true });
+            if (!ranCb0) updateSummary();
             try {
               persistEnrollLocal();
             } catch (ePl) {}
@@ -6055,11 +6074,9 @@
               if (!result.ok) {
                 await refreshAfterEnrollmentMutation();
                 hydrateSelectionFromConfirmedEnrollments();
-                refreshScheduleUiAfterEnrollStorageChange();
-                renderFullWeeks();
-                renderDailyWeeks();
-                refreshPricingPreview();
-                updateSummary();
+                refreshScheduleUiAfterEnrollStorageChange(true);
+                var ranCbE = await refreshPricingPreview({ skipScheduleDom: true });
+                if (!ranCbE) updateSummary();
                 try {
                   persistEnrollLocal();
                 } catch (eP2) {}
@@ -6074,12 +6091,12 @@
               }
               await refreshAfterEnrollmentMutation();
               hydrateSelectionFromConfirmedEnrollments();
-              refreshScheduleUiAfterEnrollStorageChange();
+              refreshScheduleUiAfterEnrollStorageChange(true);
               try {
                 persistEnrollLocal();
               } catch (ePl3) {}
-              refreshPricingPreview();
-              updateSummary();
+              var ranOk = await refreshPricingPreview({ skipScheduleDom: true });
+              if (!ranOk) updateSummary();
               var msgOk = document.getElementById('msg');
               if (msgOk) {
                 msgOk.className = 'msg';
@@ -6088,11 +6105,9 @@
             } catch (eRem) {
               await refreshAfterEnrollmentMutation();
               hydrateSelectionFromConfirmedEnrollments();
-              refreshScheduleUiAfterEnrollStorageChange();
-              renderFullWeeks();
-              renderDailyWeeks();
-              refreshPricingPreview();
-              updateSummary();
+              refreshScheduleUiAfterEnrollStorageChange(true);
+              var ranEx = await refreshPricingPreview({ skipScheduleDom: true });
+              if (!ranEx) updateSummary();
               cb.checked = true;
               var msgEx = document.getElementById('msg');
               if (msgEx) {
@@ -6127,8 +6142,7 @@
         persistEnrollLocal();
         renderFullWeeks();
         renderDailyWeeks();
-        refreshPricingPreview();
-        updateSummary();
+        voidRefreshPricingPreviewMaybeSummary({ skipScheduleDom: true });
       });
       const nameStack = document.createElement('div');
       nameStack.className = 'week-kid-cb-namestack';
@@ -6167,8 +6181,8 @@
             optimisticRemoveEnrollmentsMatching(weekId, cid);
             renderFullWeeks();
             renderDailyWeeks();
-            refreshPricingPreview();
-            updateSummary();
+            var ranRm0 = await refreshPricingPreview({ skipScheduleDom: true });
+            if (!ranRm0) updateSummary();
             try {
               persistEnrollLocal();
             } catch (ePl) {}
@@ -6177,11 +6191,9 @@
               if (!result.ok) {
                 await refreshAfterEnrollmentMutation();
                 hydrateSelectionFromConfirmedEnrollments();
-                refreshScheduleUiAfterEnrollStorageChange();
-                renderFullWeeks();
-                renderDailyWeeks();
-                refreshPricingPreview();
-                updateSummary();
+                refreshScheduleUiAfterEnrollStorageChange(true);
+                var ranRmE = await refreshPricingPreview({ skipScheduleDom: true });
+                if (!ranRmE) updateSummary();
                 try {
                   persistEnrollLocal();
                 } catch (eP2) {}
@@ -6196,12 +6208,12 @@
               }
               await refreshAfterEnrollmentMutation();
               hydrateSelectionFromConfirmedEnrollments();
-              refreshScheduleUiAfterEnrollStorageChange();
+              refreshScheduleUiAfterEnrollStorageChange(true);
               try {
                 persistEnrollLocal();
               } catch (ePl3) {}
-              refreshPricingPreview();
-              updateSummary();
+              var ranRmOk = await refreshPricingPreview({ skipScheduleDom: true });
+              if (!ranRmOk) updateSummary();
               var msgOk = document.getElementById('msg');
               if (msgOk) {
                 msgOk.className = 'msg';
@@ -6210,11 +6222,9 @@
             } catch (eRem) {
               await refreshAfterEnrollmentMutation();
               hydrateSelectionFromConfirmedEnrollments();
-              refreshScheduleUiAfterEnrollStorageChange();
-              renderFullWeeks();
-              renderDailyWeeks();
-              refreshPricingPreview();
-              updateSummary();
+              refreshScheduleUiAfterEnrollStorageChange(true);
+              var ranRmX = await refreshPricingPreview({ skipScheduleDom: true });
+              if (!ranRmX) updateSummary();
               var msgEx = document.getElementById('msg');
               if (msgEx) {
                 msgEx.className = 'msg error';
@@ -6780,8 +6790,7 @@
               persistEnrollLocal();
               renderFullWeeks();
               renderDailyWeeks();
-              updateSummary();
-              refreshPricingPreview();
+              voidRefreshPricingPreviewMaybeSummary({ skipScheduleDom: true });
             });
             const sp = document.createElement('span');
             sp.textContent = c.first_name + ' ' + c.last_name;
@@ -6824,12 +6833,12 @@
                     clearDailyHydrateDismiss(wk, String(d.id), cid);
                     await refreshAfterEnrollmentMutation();
                     hydrateSelectionFromConfirmedEnrollments();
-                    refreshScheduleUiAfterEnrollStorageChange();
+                    refreshScheduleUiAfterEnrollStorageChange(true);
                     try {
                       persistEnrollLocal();
                     } catch (ePl) {}
-                    refreshPricingPreview();
-                    updateSummary();
+                    var ranPdRm = await refreshPricingPreview({ skipScheduleDom: true });
+                    if (!ranPdRm) updateSummary();
                     var msgOk = document.getElementById('msg');
                     if (msgOk) {
                       msgOk.className = 'msg';
@@ -7052,7 +7061,7 @@
         errBanner.style.display = 'block';
       }
       showAuthPanels();
-      refreshPricingPreview();
+      voidRefreshPricingPreviewMaybeSummary();
       applyScheduleTabFromUrl();
       return;
     }
@@ -7157,8 +7166,8 @@
         await loadParentCampers();
         renderFullWeeks();
         renderDailyWeeks();
-        refreshPricingPreview();
-        updateSummary();
+        var ranAddCamper = await refreshPricingPreview({ skipScheduleDom: true });
+        if (!ranAddCamper) updateSummary();
         updateRegFlowClasses();
         msg.textContent = '';
         var rg = document.getElementById('register-now-gate-msg');
@@ -7206,6 +7215,11 @@
   }
 
   async function applyStepUpRegistrationSavedUi(data) {
+    suppressEnrollmentRealtimeRefreshUntil = Date.now() + 30000;
+    if (parentEnrollmentsRefreshTimer) {
+      clearTimeout(parentEnrollmentsRefreshTimer);
+      parentEnrollmentsRefreshTimer = null;
+    }
     cancelStepUpSummaryCoalesce();
     if (summaryImmediateRaf != null) {
       try {
@@ -7213,17 +7227,9 @@
       } catch (eRafSu) {}
       summaryImmediateRaf = null;
     }
-    if (stepUpSummaryCoalesceTimer) {
-      clearTimeout(stepUpSummaryCoalesceTimer);
-      stepUpSummaryCoalesceTimer = null;
-    }
     if (serverPrepaidTimer) {
       clearTimeout(serverPrepaidTimer);
       serverPrepaidTimer = null;
-    }
-    if (parentEnrollmentsRefreshTimer) {
-      clearTimeout(parentEnrollmentsRefreshTimer);
-      parentEnrollmentsRefreshTimer = null;
     }
     stepUpSaveInProgress = true;
     try {
@@ -7266,9 +7272,8 @@
       clearEnrollmentSelections();
       await loadParentCampers();
       resetCampAgreementAfterSuccessfulCheckout();
-      cancelStepUpSummaryCoalesce();
-      refreshScheduleUiAfterEnrollStorageChange();
-      schedulePostCheckoutEnrollmentRefetchRetries();
+      refreshScheduleUiAfterEnrollStorageChange(true);
+      schedulePostCheckoutEnrollmentRefetchRetries({ skipRealtimeSuppress: true });
       var msgOk = document.getElementById('msg');
       if (msgOk) {
         msgOk.className = 'msg ok';
@@ -7282,6 +7287,7 @@
     } finally {
       stepUpSaveInProgress = false;
       updateSummaryImmediate();
+      suppressEnrollmentRealtimeRefreshUntil = Date.now() + 4000;
     }
   }
 
@@ -7380,7 +7386,6 @@
   function clearCheckoutButtonLoading() {
     var b = document.getElementById('checkout-btn');
     if (b) b.classList.remove('loading');
-    updateSummary();
   }
 
   function scheduleZeroBalanceAutoSave() {
@@ -7488,8 +7493,12 @@
     const fetchTid = setTimeout(function () {
       ac.abort();
     }, checkoutFetchMs);
+    var suppressCheckoutFinallySummary = false;
     try {
-      if (session) {
+      var pmForPreview = document.getElementById('payment-method-select');
+      var isStepUpCheckout =
+        pmForPreview && pmForPreview.value === 'step_up' && session;
+      if (session && !isStepUpCheckout) {
         await refreshPricingPreview();
       }
       const r = await runCreateCheckoutSessionRequest(ac.signal);
@@ -7515,10 +7524,12 @@
         return;
       }
       if (r.data && r.data.zeroDollarComplete) {
+        suppressCheckoutFinallySummary = true;
         applyZeroDollarRegistrationSavedUi();
         return;
       }
       if (r.data && r.data.stepUpComplete) {
+        suppressCheckoutFinallySummary = true;
         await applyStepUpRegistrationSavedUi(r.data);
         return;
       }
@@ -7576,11 +7587,13 @@
       }
       const hosted = data.checkoutUrl && /^https:\/\//i.test(String(data.checkoutUrl));
       if (hosted) {
+        suppressCheckoutFinallySummary = true;
         window.location.assign(String(data.checkoutUrl));
         return;
       }
       const out = await stripe.redirectToCheckout({ sessionId: data.sessionId });
       if (out.error) throw new Error(out.error.message);
+      suppressCheckoutFinallySummary = true;
     } catch (err) {
       var errText =
         err && err.name === 'AbortError'
@@ -7591,6 +7604,7 @@
       clearTimeout(fetchTid);
       checkoutSessionInFlight = false;
       clearCheckoutButtonLoading();
+      if (!suppressCheckoutFinallySummary) updateSummary();
     }
   }
 
@@ -7616,7 +7630,7 @@
       testPriceMode = !testPriceMode;
       btn.setAttribute('aria-pressed', String(testPriceMode));
       btn.textContent = testPriceMode ? 'Test $1: on' : 'Test $1: off';
-      refreshPricingPreview();
+      voidRefreshPricingPreviewMaybeSummary();
     });
     if (dismiss) {
       dismiss.addEventListener('click', function () {
@@ -7683,7 +7697,7 @@
           .then(function () {
             hydrateSelectionFromConfirmedEnrollments();
             try {
-              refreshScheduleUiAfterEnrollStorageChange();
+              refreshScheduleUiAfterEnrollStorageChange(true);
             } catch (eSch) {}
             try {
               persistEnrollLocal();
@@ -7692,12 +7706,11 @@
           .catch(function () {})
           .finally(function () {
             updateEnrollmentGate();
-            refreshPricingPreview();
+            voidRefreshPricingPreviewMaybeSummary({ skipScheduleDom: true });
           });
       } else {
         updateEnrollmentGate();
-        updateSummary();
-        refreshPricingPreview();
+        voidRefreshPricingPreviewMaybeSummary();
       }
       window.requestAnimationFrame(function () {
         schedule.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -7791,7 +7804,7 @@
   function schedulePricingRefreshFromNav() {
     clearTimeout(pricingRefreshDebounce);
     pricingRefreshDebounce = setTimeout(function () {
-      if (session) refreshPricingPreview();
+      if (session) voidRefreshPricingPreviewMaybeSummary();
     }, 400);
   }
   window.addEventListener('pageshow', function (ev) {
