@@ -75,7 +75,9 @@ async function confirmStripeSession(stripe, session) {
     return { ok: false, reason: 'no_rows' };
   }
 
-  if (enrollmentRows.every((r) => r.status === 'confirmed' && r.stripe_session_id === session.id)) {
+  if (
+    enrollmentRows.every((r) => r.status === ENROLLMENT_STATUS.CONFIRMED && r.stripe_session_id === session.id)
+  ) {
     return { ok: true, already: true, count: enrollmentRows.length, email: customerEmail };
   }
 
@@ -95,7 +97,7 @@ async function confirmStripeSession(stripe, session) {
   let didConfirmAny = false;
   for (let i = 0; i < enrollmentRows.length; i++) {
     const row = enrollmentRows[i];
-    if (row.status === 'confirmed' && row.stripe_session_id === session.id) {
+    if (row.status === ENROLLMENT_STATUS.CONFIRMED && row.stripe_session_id === session.id) {
       continue;
     }
 

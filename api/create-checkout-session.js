@@ -682,6 +682,32 @@ module.exports = async (req, res) => {
 
   const emailForStripe = (profile && profile.email) || null;
   try {
+    const stripeMetadata = {
+      checkout_batch_id: String(batchId),
+      checkout_parent_id: String(parentId),
+      test_pricing: tp ? 'true' : 'false',
+      registration_fee_cents: String(regCentsTotal),
+      booking_modes: bookingModes.join(','),
+      ima_member: imaMember ? 'true' : 'false',
+      extra_shirt_cents: String(shirtCentsTotal),
+      ledger_consume_cents: String(ledgerConsumedCents || 0),
+    };
+    if (registrationCamperIds.length) {
+      stripeMetadata.registration_camper_ids = registrationCamperIds.join(',');
+    }
+    if (campLineCents.length) {
+      stripeMetadata.camp_line_cents = campLineCents.join(',');
+    }
+    if (shirtCamperIds.length) {
+      stripeMetadata.extra_shirt_camper_ids = shirtCamperIds.join(',');
+    }
+    if (agreementRecordId) {
+      stripeMetadata.agreement_record_id = String(agreementRecordId);
+    }
+    Object.keys(stripeMetadata).forEach((k) => {
+      if (stripeMetadata[k] === '') delete stripeMetadata[k];
+    });
+
     const sessionParams = {
       ui_mode: 'hosted',
       payment_method_types: ['card'],
@@ -689,44 +715,11 @@ module.exports = async (req, res) => {
       line_items,
       success_url: `${baseUrl}/success.html?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/index.html`,
-      metadata: {
-        checkout_batch_id: batchId,
-        /** Lets confirm-stripe-session verify extra-shirt campers when there are zero enrollment rows (shirt-only checkout). */
-        checkout_parent_id: String(parentId),
-        test_pricing: tp ? 'true' : 'false',
-        registration_fee_cents: String(regCentsTotal),
-        /** Comma-separated camper UUIDs charged registration this checkout (confirm marks all their rows in batch). */
-        registration_camper_ids: registrationCamperIds.join(','),
-        booking_modes: bookingModes.join(','),
-        /** Actual camp line amounts (cents) per enrollment row after family prepaid credits. */
-        camp_line_cents: campLineCents.length ? campLineCents.join(',') : '',
-        ima_member: imaMember ? 'true' : 'false',
-        extra_shirt_cents: String(shirtCentsTotal),
-        extra_shirt_camper_ids: shirtCamperIds.join(','),
-        ledger_consume_cents: String(ledgerConsumedCents || 0),
-        agreement_record_id: agreementRecordId ? String(agreementRecordId) : '',
-      },
+      metadata: stripeMetadata,
     };
     if (emailForStripe) sessionParams.customer_email = emailForStripe;
 
-    /** Hosted Checkout: hide Stripe Link to reduce flaky UI (extension/CSP noise, amount flicker). */
-    let session;
-    try {
-      session = await stripe.checkout.sessions.create({
-        ...sessionParams,
-        wallet_options: { link: { display: 'never' } },
-      });
-    } catch (err) {
-      const param = err && err.param;
-      const msg = err && err.message ? String(err.message) : '';
-      const walletRejected = param === 'wallet_options' || /wallet_options/i.test(msg);
-      if (walletRejected) {
-        console.warn('create-checkout-session: wallet_options rejected; retrying without Link hide:', msg);
-        session = await stripe.checkout.sessions.create(sessionParams);
-      } else {
-        throw err;
-      }
-    }
+    const session = await stripe.checkout.sessions.create(sessionParams);
 
     const totalCents = campCentsTotal + regCentsTotal + shirtCentsTotal;
 
