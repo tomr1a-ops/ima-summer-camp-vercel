@@ -5626,7 +5626,14 @@
         }
         if (lines.innerHTML !== htmlSU) lines.innerHTML = htmlSU;
         var displayGrandSU = grandSU;
-        if (!useStableServerStepUpLine && snapTot != null && Number.isFinite(snapTot) && snapTot >= 0 && displayGrandSU < snapTot - 0.02) {
+        if (
+          !useStableServerStepUpLine &&
+          !useSnapExclusiveSu &&
+          snapTot != null &&
+          Number.isFinite(snapTot) &&
+          snapTot >= 0 &&
+          displayGrandSU < snapTot - 0.02
+        ) {
           displayGrandSU = snapTot;
         }
         lastSummaryGrandDollars = displayGrandSU;
