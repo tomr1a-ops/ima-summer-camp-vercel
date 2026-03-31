@@ -75,35 +75,6 @@
     });
   }
 
-  var STAFF_LOGIN_EMAILS = ['tom@imaimpact.com', 'coachshick@imaimpact.com'];
-  /** Signed-in auth email always uses parent portal (even if profiles.role is admin). */
-  var ALWAYS_PARENT_PORTAL_EMAILS = ['tomr1a@gmail.com'];
-
-  function normEmail(email) {
-    return String(email || '').trim().toLowerCase();
-  }
-
-  function isStaffLoginEmail(email) {
-    var e = normEmail(email);
-    for (var i = 0; i < STAFF_LOGIN_EMAILS.length; i++) {
-      if (STAFF_LOGIN_EMAILS[i] === e) return true;
-    }
-    return false;
-  }
-
-  function alwaysParentPortal(email) {
-    return ALWAYS_PARENT_PORTAL_EMAILS.indexOf(normEmail(email)) !== -1;
-  }
-
-  /** true → /admin.html; uses profiles.role from Supabase + staff login emails only. */
-  function shouldGoToAdmin(profile, email) {
-    if (alwaysParentPortal(email)) return false;
-    var role = String((profile && profile.role) || '').trim().toLowerCase();
-    if (role === 'admin') return true;
-    if (isStaffLoginEmail(email)) return true;
-    return false;
-  }
-
   function show(text, ok) {
     if (!msg) return;
     msg.textContent = text;
@@ -162,8 +133,8 @@
     return sb.from('profiles').select('role').eq('id', userId).maybeSingle();
   }
 
+  /** Parent camp login never sends users to admin — staff use /admin-login.html only. */
   function goAfterSignIn(sb, session) {
-    var email = session.user && session.user.email;
     var token = session.access_token;
     var userId = session.user && session.user.id;
     return loadProfileRole(sb, userId).then(function (pr) {
@@ -197,8 +168,7 @@
       return profile;
     }).then(function (profile) {
       if (!profile) throw new Error('Profile not found. Complete registration or contact IMA.');
-      if (shouldGoToAdmin(profile, email)) window.location.replace('/admin.html');
-      else window.location.replace('/index.html?portal=1#schedule');
+      window.location.replace('/index.html?portal=1#schedule');
     });
   }
 
