@@ -6062,10 +6062,6 @@
             }
             cb.disabled = true;
             optimisticRemoveEnrollmentsMatching(weekId, cid);
-            renderFullWeeks();
-            renderDailyWeeks();
-            var ranCb0 = await refreshPricingPreview({ skipScheduleDom: true });
-            if (!ranCb0) updateSummary();
             try {
               persistEnrollLocal();
             } catch (ePl) {}
@@ -6074,13 +6070,12 @@
               if (!result.ok) {
                 await refreshAfterEnrollmentMutation();
                 hydrateSelectionFromConfirmedEnrollments();
-                refreshScheduleUiAfterEnrollStorageChange(true);
-                var ranCbE = await refreshPricingPreview({ skipScheduleDom: true });
-                if (!ranCbE) updateSummary();
                 try {
                   persistEnrollLocal();
                 } catch (eP2) {}
                 cb.checked = true;
+                var ranCbE = await refreshPricingPreview();
+                if (!ranCbE) updateSummary();
                 var msgEl = document.getElementById('msg');
                 if (msgEl) {
                   msgEl.className = 'msg error';
@@ -6091,11 +6086,10 @@
               }
               await refreshAfterEnrollmentMutation();
               hydrateSelectionFromConfirmedEnrollments();
-              refreshScheduleUiAfterEnrollStorageChange(true);
               try {
                 persistEnrollLocal();
               } catch (ePl3) {}
-              var ranOk = await refreshPricingPreview({ skipScheduleDom: true });
+              var ranOk = await refreshPricingPreview();
               if (!ranOk) updateSummary();
               var msgOk = document.getElementById('msg');
               if (msgOk) {
@@ -6105,10 +6099,12 @@
             } catch (eRem) {
               await refreshAfterEnrollmentMutation();
               hydrateSelectionFromConfirmedEnrollments();
-              refreshScheduleUiAfterEnrollStorageChange(true);
-              var ranEx = await refreshPricingPreview({ skipScheduleDom: true });
-              if (!ranEx) updateSummary();
+              try {
+                persistEnrollLocal();
+              } catch (ePlEx) {}
               cb.checked = true;
+              var ranEx = await refreshPricingPreview();
+              if (!ranEx) updateSummary();
               var msgEx = document.getElementById('msg');
               if (msgEx) {
                 msgEx.className = 'msg error';
@@ -6179,10 +6175,6 @@
             }
             rm.disabled = true;
             optimisticRemoveEnrollmentsMatching(weekId, cid);
-            renderFullWeeks();
-            renderDailyWeeks();
-            var ranRm0 = await refreshPricingPreview({ skipScheduleDom: true });
-            if (!ranRm0) updateSummary();
             try {
               persistEnrollLocal();
             } catch (ePl) {}
@@ -6191,12 +6183,11 @@
               if (!result.ok) {
                 await refreshAfterEnrollmentMutation();
                 hydrateSelectionFromConfirmedEnrollments();
-                refreshScheduleUiAfterEnrollStorageChange(true);
-                var ranRmE = await refreshPricingPreview({ skipScheduleDom: true });
-                if (!ranRmE) updateSummary();
                 try {
                   persistEnrollLocal();
                 } catch (eP2) {}
+                var ranRmE = await refreshPricingPreview();
+                if (!ranRmE) updateSummary();
                 var msgEl = document.getElementById('msg');
                 if (msgEl) {
                   msgEl.className = 'msg error';
@@ -6208,11 +6199,10 @@
               }
               await refreshAfterEnrollmentMutation();
               hydrateSelectionFromConfirmedEnrollments();
-              refreshScheduleUiAfterEnrollStorageChange(true);
               try {
                 persistEnrollLocal();
               } catch (ePl3) {}
-              var ranRmOk = await refreshPricingPreview({ skipScheduleDom: true });
+              var ranRmOk = await refreshPricingPreview();
               if (!ranRmOk) updateSummary();
               var msgOk = document.getElementById('msg');
               if (msgOk) {
@@ -6222,8 +6212,10 @@
             } catch (eRem) {
               await refreshAfterEnrollmentMutation();
               hydrateSelectionFromConfirmedEnrollments();
-              refreshScheduleUiAfterEnrollStorageChange(true);
-              var ranRmX = await refreshPricingPreview({ skipScheduleDom: true });
+              try {
+                persistEnrollLocal();
+              } catch (ePlRmX) {}
+              var ranRmX = await refreshPricingPreview();
               if (!ranRmX) updateSummary();
               var msgEx = document.getElementById('msg');
               if (msgEx) {
