@@ -2,7 +2,7 @@ const { serviceClient } = require('./lib/supabase');
 const { getUserFromRequest, getProfileForUser } = require('./lib/auth');
 const { setNoStoreJsonHeaders } = require('./lib/http-no-store');
 const { dayRate, weekRate, registrationFee, extraCampShirt } = require('./lib/pricing');
-const { getFamilyCampLedgerCents } = require('./lib/family-camp-ledger');
+const { getReconciledFamilyCampLedgerCents } = require('./lib/family-camp-ledger');
 
 function uniqueCamperIdsFromQuery(url) {
   const raw = url.searchParams.get('camperIds') || url.searchParams.get('camperId') || '';
@@ -50,7 +50,7 @@ module.exports = async (req, res) => {
 
       if (profile && sb) {
         try {
-          prepaidCampBalanceCents = await getFamilyCampLedgerCents(sb, user.id);
+          prepaidCampBalanceCents = await getReconciledFamilyCampLedgerCents(sb, user.id);
         } catch (le) {
           console.warn('[preview-pricing] ledger balance:', le.message);
           prepaidCampBalanceCents = 0;

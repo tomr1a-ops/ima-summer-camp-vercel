@@ -6,7 +6,7 @@
  * Plus optional `family_camp_credit_ledger` balance (cents) from cancelled paid enrollments.
  */
 
-const { getFamilyCampLedgerCents } = require('./family-camp-ledger');
+const { getReconciledFamilyCampLedgerCents } = require('./family-camp-ledger');
 const { enrollmentQualifiesForCampCredit } = require('./enrollment-credit-eligibility');
 
 function normUuid(v) {
@@ -154,7 +154,7 @@ async function loadFloatingPrepaidPool(sb, parentId, bookingsArray, normCamperKe
   const { data: campers, error: ce } = await sb.from('campers').select('id').eq('parent_id', parentId);
   if (ce) throw ce;
   const camperIds = (campers || []).map((c) => String(c.id));
-  const ledgerCents = await getFamilyCampLedgerCents(sb, parentId);
+  const ledgerCents = await getReconciledFamilyCampLedgerCents(sb, parentId);
   if (!camperIds.length) {
     return { poolW: 0, poolD: 0, weekMetaMap: new Map(), ledgerCents };
   }

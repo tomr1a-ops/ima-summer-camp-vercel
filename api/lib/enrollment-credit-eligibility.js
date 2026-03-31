@@ -4,9 +4,8 @@
  * Raw status=confirmed without settlement must not create floating credits or ledger on cancel.
  */
 
-function enrollmentQualifiesForCampCredit(row) {
+function enrollmentHasVerifiedSettlement(row) {
   if (!row) return false;
-  if (String(row.status) !== 'confirmed') return false;
   if (row.stripe_session_id != null && String(row.stripe_session_id).trim() !== '') return true;
   const pp = Number(row.price_paid);
   if (Number.isFinite(pp) && pp > 0) return true;
@@ -14,4 +13,19 @@ function enrollmentQualifiesForCampCredit(row) {
   return false;
 }
 
-module.exports = { enrollmentQualifiesForCampCredit };
+function enrollmentQualifiesForCampCredit(row) {
+  if (!row || String(row.status) !== 'confirmed') return false;
+  return enrollmentHasVerifiedSettlement(row);
+}
+
+/** Cancelled row still carries settlement fields from when it was paid — justifies a non-zero ledger. */
+function enrollmentCancelledJustifiesLedger(row) {
+  if (!row || String(row.status) !== 'cancelled') return false;
+  return enrollmentHasVerifiedSettlement(row);
+}
+
+module.exports = {
+  enrollmentQualifiesForCampCredit,
+  enrollmentHasVerifiedSettlement,
+  enrollmentCancelledJustifiesLedger,
+};
