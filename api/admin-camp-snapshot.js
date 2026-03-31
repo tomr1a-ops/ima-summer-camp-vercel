@@ -8,9 +8,9 @@ const { requireAdmin } = require('./lib/auth');
 const { isMissingStepUpHoldExpiresColumn } = require('./lib/step-up-hold-column');
 
 const ENR_SELECT_WITH_HOLD =
-  'id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at,step_up_hold_expires_at, campers(first_name,last_name), weeks(label,week_number)';
+  'id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at,step_up_hold_expires_at, campers(first_name,last_name,registration_fee_paid), weeks(label,week_number)';
 const ENR_SELECT_BASE =
-  'id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at, campers(first_name,last_name), weeks(label,week_number)';
+  'id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at, campers(first_name,last_name,registration_fee_paid), weeks(label,week_number)';
 
 function json(res, code, body) {
   res.statusCode = code;

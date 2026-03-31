@@ -3873,10 +3873,12 @@
   }
 
   async function refreshConfirmedEnrollmentsFromServer() {
+    if (!session) {
+      confirmedEnrollmentsCache = [];
+      confirmedEnrollmentsRaw = [];
+      return;
+    }
     const prevActive = (confirmedEnrollmentsRaw || []).slice();
-    confirmedEnrollmentsCache = [];
-    confirmedEnrollmentsRaw = [];
-    if (!session) return;
     try {
       var tok = await freshAccessTokenForApi();
       if (!tok) return;

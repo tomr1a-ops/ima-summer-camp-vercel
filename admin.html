@@ -217,7 +217,7 @@
               <th>Week</th>
               <th>Schedule</th>
               <th>Status</th>
-              <th>Paid</th>
+              <th>Amount</th>
               <th>Created</th>
             </tr>
           </thead>
@@ -348,7 +348,7 @@
       async function loadEnrollments(sb) {
         const { data, error } = await sb
           .from('enrollments')
-          .select('id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at, campers(first_name,last_name), weeks(label,week_number)')
+          .select('id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at, campers(first_name,last_name,registration_fee_paid), weeks(label,week_number)')
           .order('created_at', { ascending: false });
         if (error) {
           const { data: d2, error: e2 } = await sb.from('enrollments').select('*').order('created_at', { ascending: false });
@@ -511,7 +511,7 @@
               escapeHtml(title) +
               '</h4>' +
               '<table class="week-roster-table"><thead><tr>' +
-              '<th>Camper</th><th>Parent / guest</th><th>Schedule</th><th>Status</th><th>Paid</th>' +
+              '<th>Camper</th><th>Parent / guest</th><th>Schedule</th><th>Status</th><th>Amount</th>' +
               '</tr></thead><tbody>' +
               list
                 .map(function (e) {
@@ -527,7 +527,7 @@
                     '</td><td>' +
                     escapeHtml(e.status) +
                     '</td><td>' +
-                    escapeHtml(IMA.formatMoney(e.price_paid)) +
+                    escapeHtml(IMA.formatMoney(adminEnrollmentPriceDisplayed(e))) +
                     '</td></tr>'
                   );
                 })
@@ -763,25 +763,7 @@
                 return {};
               });
               if (!res.ok) throw new Error(j.error || res.statusText || 'Request failed');
-              var wantStatus = action === 'mark_paid' ? 'confirmed' : 'cancelled';
-              state.stepUpHolds = (state.stepUpHolds || []).filter(function (e) {
-                return String(e.id) !== String(id);
-              });
-              state.enr = (state.enr || []).map(function (e) {
-                if (String(e.id) !== String(id)) return e;
-                var patch = { status: wantStatus, step_up_hold_expires_at: null };
-                if (action === 'mark_paid') {
-                  if (j.pricePaid != null && Number.isFinite(Number(j.pricePaid))) {
-                    patch.price_paid = Number(j.pricePaid);
-                  }
-                  if (Number(j.registrationFeeApplied) > 0) {
-                    patch.registration_fee_paid = true;
-                  }
-                }
-                return Object.assign({}, e, patch);
-              });
-              renderTable(state.enr, state.parents);
-              renderStepUpHolds(state.stepUpHolds, state.parents);
+              await refreshAdminData(sb, {});
               closeWeekPeopleModal();
               var msg =
                 action === 'mark_paid'
@@ -792,7 +774,6 @@
                     ? 'Hold was already released.'
                     : 'Hold released.';
               showBanner(msg, true);
-              await refreshAdminData(sb, {});
             } catch (err) {
               showBanner(err.message || String(err), false);
             } finally {
@@ -806,6 +787,20 @@
 
       function enrollmentStatusKey(e) {
         return String((e && e.status) || '').trim();
+      }
+
+      /** Match Step Up holds table: camp stored in price_paid + registration fee until row is paid (confirmed). */
+      var ADMIN_STEP_UP_REG_FEE = 65;
+
+      function adminEnrollmentPriceDisplayed(e) {
+        if (!e) return 0;
+        var camp = Number(e.price_paid);
+        if (!Number.isFinite(camp) || camp < 0) camp = 0;
+        if (enrollmentStatusKey(e) !== 'pending_step_up') return camp;
+        if (e.registration_fee_paid) return camp;
+        var c = e.campers || {};
+        if (c.registration_fee_paid) return camp;
+        return camp + ADMIN_STEP_UP_REG_FEE;
       }
 
       function filterEnrollmentsForTable(enr) {
@@ -840,7 +835,7 @@
             '</td><td>' +
             escapeHtml(e.status) +
             '</td><td>' +
-            escapeHtml(IMA.formatMoney(e.price_paid)) +
+            escapeHtml(IMA.formatMoney(adminEnrollmentPriceDisplayed(e))) +
             '</td><td>' +
             escapeHtml(IMA.formatDate(e.created_at)) +
             '</td></tr>'
@@ -863,7 +858,7 @@
             csv(w.label || ''),
             csv(scheduleLabel(e)),
             csv(e.status),
-            csv(String(e.price_paid)),
+            csv(String(adminEnrollmentPriceDisplayed(e))),
             csv(e.created_at),
           ].join(','));
         });
