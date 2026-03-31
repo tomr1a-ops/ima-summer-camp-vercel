@@ -733,6 +733,42 @@
     cursor: not-allowed;
   }
 
+  .payment-method-section {
+    margin: 14px 0 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .payment-method-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--cyan);
+    margin-bottom: 8px;
+  }
+  .payment-method-section select {
+    width: 100%;
+    max-width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: rgba(0, 0, 0, 0.35);
+    color: #eee;
+    font-family: Barlow, system-ui, sans-serif;
+    font-size: 14px;
+  }
+  .step-up-notice {
+    margin-top: 12px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    border: 1px solid rgba(0, 229, 255, 0.35);
+    background: rgba(0, 229, 255, 0.08);
+    font-size: 13px;
+    line-height: 1.5;
+    color: #ddd;
+  }
+
   .btn-loading { display: none; }
   #checkout-btn.loading .btn-text    { display: none; }
   #checkout-btn.loading .btn-loading { display: inline; }
@@ -1915,6 +1951,17 @@
           <input type="checkbox" id="camp-agreement-accept" autocomplete="off" disabled />
           <span>I confirm that I have fully read and understood all sections of this IMA Summer Camp 2026 Policies, Terms &amp; Liability Agreement. I am the parent or legal guardian of the enrolled camper. I agree to all terms and conditions set forth in this document on behalf of myself and the camper(s).</span>
         </label>
+      </div>
+      <div id="payment-method-section" class="payment-method-section" hidden>
+        <label class="payment-method-label" for="payment-method-select">Payment Method</label>
+        <select id="payment-method-select" autocomplete="off">
+          <option value="" selected disabled>— Select —</option>
+          <option value="credit_card">Credit Card</option>
+          <option value="step_up">Step Up for Students Scholarship</option>
+        </select>
+        <div id="step-up-notice" class="step-up-notice" hidden>
+          We will reserve your child’s spot. You must visit the Step Up for Students website and allocate funds to IMA Impact Martial Athletics to complete payment. Once Step Up processes your allocation, your registration will be finalized.
+        </div>
       </div>
       <div id="msg" class="msg"></div>
       <button type="button" id="checkout-btn" disabled>
@@ -3132,6 +3179,7 @@
     (confirmedEnrollmentsCache || []).forEach(function (row) {
       if (String(row.camper_id) !== String(camperId)) return;
       if (String(row.week_id) !== String(weekId)) return;
+      if (row.status !== 'confirmed' && row.status !== 'pending_step_up') return;
       if (enrollmentCoversFullWeek(row, w)) {
         (w.days || []).forEach(function (d) {
           covered.add(String(d.id));
@@ -3611,7 +3659,7 @@
       const j = await res.json();
       const rows = j.enrollments || [];
       const confirmed = rows.filter(function (r) {
-        return r && r.status === 'confirmed';
+        return r && (r.status === 'confirmed' || r.status === 'pending_step_up');
       });
       confirmedEnrollmentsRaw = confirmed;
       confirmedEnrollmentsCache = dedupeConfirmedEnrollmentsForDisplay(confirmed);
@@ -3626,7 +3674,7 @@
     const idSet = new Set();
     function considerRow(r) {
       if (!r || r.id == null) return;
-      if (r.status !== 'confirmed') return;
+      if (r.status !== 'confirmed' && r.status !== 'pending_step_up') return;
       if (String(r.camper_id) !== String(camperId)) return;
       if (String(r.week_id) !== String(weekId)) return;
       idSet.add(String(r.id));
@@ -3644,7 +3692,7 @@
     const rows = (confirmedEnrollmentsRaw || []).filter(function (r) {
       return (
         r &&
-        r.status === 'confirmed' &&
+        (r.status === 'confirmed' || r.status === 'pending_step_up') &&
         String(r.camper_id) === String(camperId) &&
         String(r.week_id) === String(weekId) &&
         (r.day_ids || []).some(function (id) {
@@ -3731,12 +3779,17 @@
     const range = formatWeekRangeForSummary(w);
     const rangeHtml = range ? ' · ' + escapeHtml(range) : '';
     const ids = (row.day_ids || []).map(String);
+    var stepUp = row && row.status === 'pending_step_up';
+    var fullLabel = stepUp ? 'Full week Mon–Fri (Step Up — pending funding)' : 'Full week Mon–Fri (paid)';
+    var dailyPrefix = stepUp ? 'Daily (Step Up — pending funding): ' : 'Daily (paid): ';
     if (enrollmentCoversFullWeek(row, w)) {
       return (
         '<li><span class="sov-week">' +
         wl +
         rangeHtml +
-        '</span><span class="sov-type sov-paid">Full week Mon–Fri (paid)</span></li>'
+        '</span><span class="sov-type sov-paid">' +
+        fullLabel +
+        '</span></li>'
       );
     }
     const dayObjs = (w.days || []).filter(function (d) {
@@ -3754,7 +3807,8 @@
       '<li><span class="sov-week">' +
       wl +
       rangeHtml +
-      '</span><span class="sov-type sov-paid">Daily (paid): ' +
+      '</span><span class="sov-type sov-paid">' +
+        dailyPrefix +
       escapeHtml(dTxt) +
       '</span></li>'
     );
@@ -4041,8 +4095,16 @@
       const cid = String(camper.id);
       const name = escapeHtml(String((camper.first_name + ' ' + camper.last_name).trim()));
       const paidRows = paidByCamperRows[cid] || [];
-      const coalescedPaid = coalesceEnrollmentRowsForSidebar(paidRows);
+      const paidOnlyRows = paidRows.filter(function (r) {
+        return r && r.status === 'confirmed';
+      });
+      const stepUpRows = paidRows.filter(function (r) {
+        return r && r.status === 'pending_step_up';
+      });
+      const coalescedPaid = coalesceEnrollmentRowsForSidebar(paidOnlyRows);
+      const coalescedStepUp = coalesceEnrollmentRowsForSidebar(stepUpRows);
       const paidDisplayLis = coalescedPaid.map(enrollmentRowToScheduleLi).filter(Boolean);
+      const stepUpDisplayLis = coalescedStepUp.map(enrollmentRowToScheduleLi).filter(Boolean);
       const splitDraft = splitDraftScheduleLinesByPriorPaidWeek(cid, sortedWeeks);
       const draftNewWeekRows = splitDraft.newWeekLines;
       const draftAddonWeekRows = splitDraft.addonWeekLines;
@@ -4056,6 +4118,11 @@
       if (paidDisplayLis.length) {
         html += '<div class="schedule-overview-sub">Registered &amp; paid</div>';
         html += '<ul class="schedule-overview-list">' + paidDisplayLis.join('') + '</ul>';
+      }
+
+      if (stepUpDisplayLis.length) {
+        html += '<div class="schedule-overview-sub">Reserved — Step Up (pending funding)</div>';
+        html += '<ul class="schedule-overview-list">' + stepUpDisplayLis.join('') + '</ul>';
       }
 
       if (draftAddonWeekRows.length) {
@@ -4076,6 +4143,7 @@
 
       if (
         !paidDisplayLis.length &&
+        !stepUpDisplayLis.length &&
         !draftNewWeekRows.length &&
         !draftAddonWeekRows.length &&
         !shirtInCheckout
@@ -4087,7 +4155,9 @@
       html += '</div>';
     });
 
-    const anyPaid = (confirmedEnrollmentsCache || []).length > 0;
+    const anyPaid = (confirmedEnrollmentsCache || []).some(function (r) {
+      return r && (r.status === 'confirmed' || r.status === 'pending_step_up');
+    });
     if (!anyPaid && !anyDraft) {
       html +=
         '<p class="schedule-overview-hint">Use <strong>Weekly registration</strong> or <strong>Daily registration</strong> on the left, then check each child for the weeks they will attend.</p>';
@@ -4270,6 +4340,16 @@
     var agreeChk = document.getElementById('camp-agreement-accept');
     var sc = document.getElementById('camp-agreement-scroll');
     if (agreeSection) agreeSection.hidden = true;
+    var pmSec = document.getElementById('payment-method-section');
+    if (pmSec) pmSec.hidden = true;
+    var pmSel = document.getElementById('payment-method-select');
+    if (pmSel) pmSel.selectedIndex = 0;
+    var stepN = document.getElementById('step-up-notice');
+    if (stepN) stepN.hidden = true;
+    var bmH = document.querySelector('#checkout-btn .btn-text');
+    if (bmH) bmH.textContent = 'Secure Checkout →';
+    var snH = document.querySelector('.order-summary .secure-note');
+    if (snH) snH.textContent = '🔒 Powered by Stripe · Card data stays safe';
     if (agreeChk) {
       agreeChk.checked = false;
       agreeChk.disabled = true;
@@ -4339,10 +4419,6 @@
     const totalRow = document.getElementById('total-row');
     const btn = document.getElementById('checkout-btn');
     const msg = document.getElementById('msg');
-    var btnMainDefault = document.querySelector('#checkout-btn .btn-text');
-    var secureNoteDefault = document.querySelector('.order-summary .secure-note');
-    if (btnMainDefault) btnMainDefault.textContent = 'Secure Checkout →';
-    if (secureNoteDefault) secureNoteDefault.textContent = '🔒 Powered by Stripe · Card data stays safe';
     msg.className = 'msg';
 
     const dr = Number(testPriceMode ? 1 : pricingPreview.dayRate != null ? pricingPreview.dayRate : dayRateClient());
@@ -4446,6 +4522,8 @@
         updateCampAgreementScrollGate();
       }
     }
+    var paySection = document.getElementById('payment-method-section');
+    if (paySection) paySection.hidden = false;
 
     let html = '';
     creditApplied.lines.forEach(function (row) {
@@ -4559,28 +4637,42 @@
     var btnMain = document.querySelector('#checkout-btn .btn-text');
     var secureNote = document.querySelector('.order-summary .secure-note');
     var zeroDue = grand < 0.01 && (bookings.length > 0 || shirtTotal > 0);
+    var pmPick = document.getElementById('payment-method-select');
+    var pmVal =
+      pmPick && pmPick.value === 'step_up' ? 'step_up' : pmPick && pmPick.value === 'credit_card' ? 'credit_card' : '';
+    var stepUpNoticeEl = document.getElementById('step-up-notice');
+    if (stepUpNoticeEl) stepUpNoticeEl.hidden = pmVal !== 'step_up';
     if (btnMain) {
-      if (checkoutSessionInFlight && zeroDue) {
+      if (checkoutSessionInFlight && zeroDue && pmVal === 'credit_card') {
         btnMain.textContent = 'Saving…';
+      } else if (pmVal === 'step_up') {
+        btnMain.textContent = 'Reserve Spot';
+      } else if (zeroDue) {
+        btnMain.textContent = 'Confirm registration ($0)';
       } else {
-        btnMain.textContent = zeroDue ? 'Confirm registration ($0)' : 'Secure Checkout →';
+        btnMain.textContent = 'Secure Checkout →';
       }
     }
     if (secureNote) {
-      secureNote.textContent = zeroDue
-        ? 'No payment due — we save automatically. Tap Confirm if it does not save.'
-        : '🔒 Powered by Stripe · Card data stays safe';
+      if (pmVal === 'step_up') {
+        secureNote.textContent = 'No card charge — spot reserved pending Step Up funding.';
+      } else if (zeroDue) {
+        secureNote.textContent = 'No payment due — we save automatically. Tap Confirm if it does not save.';
+      } else {
+        secureNote.textContent = '🔒 Powered by Stripe · Card data stays safe';
+      }
     }
     var agreeChk = document.getElementById('camp-agreement-accept');
     var agreementOk = !!(agreeChk && agreeChk.checked);
+    var paymentOk = pmVal === 'credit_card' || pmVal === 'step_up';
     if (fwConflictMsgs.length) {
       msg.className = 'msg error';
       msg.textContent = fwConflictMsgs[0];
       btn.disabled = true;
     } else if (zeroDue) {
-      btn.disabled = !!checkoutSessionInFlight || !agreementOk;
+      btn.disabled = !!checkoutSessionInFlight || !agreementOk || !paymentOk;
     } else {
-      btn.disabled = !agreementOk;
+      btn.disabled = !agreementOk || !paymentOk;
     }
     persistEnrollLocal();
     if (session && zeroDue && !fwConflictMsgs.length && !checkoutSessionInFlight) {
@@ -5537,6 +5629,23 @@
     } catch (e) {}
   }
 
+  function applyStepUpRegistrationSavedUi() {
+    try {
+      clearEnrollmentSelections();
+      refreshScheduleUiAfterEnrollStorageChange();
+      schedulePostCheckoutEnrollmentRefetchRetries();
+      var msgOk = document.getElementById('msg');
+      if (msgOk) {
+        msgOk.className = 'msg ok';
+        msgOk.textContent =
+          'Spot reserved. Check your email — complete Step Up for Students funding to IMA Impact Martial Athletics to finalize registration.';
+      }
+      try {
+        persistEnrollLocal();
+      } catch (eP) {}
+    } catch (e) {}
+  }
+
   async function runCreateCheckoutSessionRequest(signal) {
     if (session) {
       pruneConflictingFullWeekSelections();
@@ -5574,6 +5683,9 @@
     }
     var agreeElReq = document.getElementById('camp-agreement-accept');
     var agreementAcceptedReq = !!(agreeElReq && agreeElReq.checked);
+    var pmReq = document.getElementById('payment-method-select');
+    var pmOut =
+      pmReq && pmReq.value === 'step_up' ? 'step_up' : pmReq && pmReq.value === 'credit_card' ? 'credit_card' : '';
     const body = {
       bookings: bookings,
       testPricing: testPriceMode,
@@ -5585,6 +5697,7 @@
       }),
       agreementAccepted: agreementAcceptedReq,
       agreementVersion: CAMP_AGREEMENT_VERSION,
+      paymentMethod: pmOut,
     };
 
     const res = await fetch(API_CHECKOUT, {
@@ -5620,6 +5733,8 @@
     if (lastSummaryGrandDollars >= 0.01) return;
     var agreeAuto = document.getElementById('camp-agreement-accept');
     if (!agreeAuto || !agreeAuto.checked) return;
+    var pmAuto = document.getElementById('payment-method-select');
+    if (!pmAuto || pmAuto.value !== 'credit_card') return;
     var bookingsProbe = collectBookings();
     if (!bookingsProbe.length && !hasShirtCheckoutSelection()) return;
     if (getFullWeekPaidDayConflictMessages().length) return;
@@ -5683,6 +5798,11 @@
       showCheckoutErr('Please read and confirm the agreement before continuing.');
       return;
     }
+    var pmStart = document.getElementById('payment-method-select');
+    if (!pmStart || (pmStart.value !== 'credit_card' && pmStart.value !== 'step_up')) {
+      showCheckoutErr('Choose a payment method to continue.');
+      return;
+    }
 
     if (btn) {
       btn.classList.add('loading');
@@ -5710,6 +5830,10 @@
       }
       if (r.data && r.data.zeroDollarComplete) {
         applyZeroDollarRegistrationSavedUi();
+        return;
+      }
+      if (r.data && r.data.stepUpComplete) {
+        applyStepUpRegistrationSavedUi();
         return;
       }
 
@@ -5830,6 +5954,15 @@
   });
   document.getElementById('checkout-btn').addEventListener('click', startCheckout);
   initCampAgreementScrollUnlock();
+  (function initPaymentMethodSelect() {
+    var p = document.getElementById('payment-method-select');
+    if (p && !p.dataset.pmInit) {
+      p.dataset.pmInit = '1';
+      p.addEventListener('change', function () {
+        updateSummary();
+      });
+    }
+  })();
 
   /** Camp registration tab / #schedule only after sign-in + ≥1 child. */
   function canUseCampScheduleTab() {

@@ -126,4 +126,76 @@ async function finalizePendingEnrollmentBatch(sb, batchId, options) {
   return { ok: true, count: rows.length };
 }
 
-module.exports = { finalizePendingEnrollmentBatch };
+/**
+ * Step Up for Students: no Stripe; status pending_step_up; day counts incremented; no reg/shirt flags or ledger.
+ */
+async function finalizeStepUpReservationBatch(sb, batchId, options) {
+  const {
+    customerEmail,
+    testPricing,
+    campLineCents,
+    bookingModes,
+  } = options;
+
+  const { data: rows, error: qe } = await sb
+    .from('enrollments')
+    .select('id, day_ids, week_id, camper_id, parent_id, status, stripe_session_id')
+    .eq('checkout_batch_id', batchId)
+    .order('created_at', { ascending: true });
+  if (qe) throw qe;
+  if (!rows || !rows.length) {
+    return { ok: false, reason: 'no_rows' };
+  }
+
+  const dr = dayRate(testPricing);
+  const wr = weekRate(testPricing);
+  const modes = bookingModes || [];
+  const centsArr = Array.isArray(campLineCents) ? campLineCents : [];
+
+  let didAny = false;
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (row.status === 'confirmed' || row.status === 'pending_step_up') {
+      continue;
+    }
+
+    const nDays = (row.day_ids || []).length;
+    const mode = modes[i] || 'daily';
+    const fallbackCamp = mode === 'full_week' ? wr : nDays * dr;
+    let campDollars = fallbackCamp;
+    if (centsArr.length > i && centsArr[i] != null && Number.isFinite(Number(centsArr[i]))) {
+      campDollars = Number(centsArr[i]) / 100;
+    }
+    const pricePaid = campDollars;
+
+    const { data: updated, error: ue } = await sb
+      .from('enrollments')
+      .update({
+        status: 'pending_step_up',
+        stripe_session_id: null,
+        price_paid: pricePaid,
+        registration_fee_paid: false,
+        guest_email: row.parent_id ? null : customerEmail || null,
+      })
+      .eq('id', row.id)
+      .eq('status', 'pending')
+      .select('id')
+      .maybeSingle();
+
+    if (ue) throw ue;
+    if (!updated) continue;
+    didAny = true;
+
+    for (const dayId of row.day_ids || []) {
+      const { data: d0, error: de } = await sb.from('days').select('id, current_enrollment').eq('id', dayId).single();
+      if (de) throw de;
+      const next = (d0.current_enrollment || 0) + 1;
+      const { error: incErr } = await sb.from('days').update({ current_enrollment: next }).eq('id', dayId);
+      if (incErr) throw incErr;
+    }
+  }
+
+  return { ok: true, count: rows.length, didAny };
+}
+
+module.exports = { finalizePendingEnrollmentBatch, finalizeStepUpReservationBatch };

@@ -321,7 +321,7 @@
       async function loadWeekPeakForAdminCapacity(sb) {
         const [fromDays, fromEnr] = await Promise.all([
           loadWeekPeakFromDaysTable(sb),
-          loadWeekPeakFromEnrollments(sb, ['pending', 'confirmed']),
+          loadWeekPeakFromEnrollments(sb, ['pending', 'confirmed', 'pending_step_up']),
         ]);
         var ids = new Set([].concat(Object.keys(fromDays), Object.keys(fromEnr)));
         var out = {};
@@ -401,7 +401,7 @@
       function overviewStats(enr) {
         const confirmed = enr.filter(function (e) { return e.status === 'confirmed'; });
         const activeRows = enr.filter(function (e) {
-          return e.status === 'confirmed' || e.status === 'pending';
+          return e.status === 'confirmed' || e.status === 'pending' || e.status === 'pending_step_up';
         });
         const cancelledRows = enr.filter(function (e) { return e.status === 'cancelled'; });
         const campers = {};
@@ -648,7 +648,7 @@
         const st = document.getElementById('flt-status') && document.getElementById('flt-status').value;
         return enr.filter(function (e) {
           if (flt && e.week_id !== flt) return false;
-          if (st === 'active') return e.status === 'confirmed' || e.status === 'pending';
+          if (st === 'active') return e.status === 'confirmed' || e.status === 'pending' || e.status === 'pending_step_up';
           if (st === 'cancelled') return e.status === 'cancelled';
           return true;
         });

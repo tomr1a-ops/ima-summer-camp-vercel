@@ -7,13 +7,13 @@ const { getUserFromRequest, upsertParentProfile } = require('./lib/auth');
 const { dayRate, weekRate, registrationFee, extraCampShirt } = require('./lib/pricing');
 /** Full-week bookings that overlap a camper's already-confirmed days fail here with a specific message (see validateBooking in ./lib/capacity). */
 const { validateBooking } = require('./lib/capacity');
-const { sendCampPaymentEmails } = require('./lib/email');
+const { sendCampPaymentEmails, sendStepUpReservationEmails } = require('./lib/email');
 const {
   loadFloatingPrepaidPool,
   sortBookingsForCreditApply,
   applyPoolToBookings,
 } = require('./lib/family-prepaid-credits');
-const { finalizePendingEnrollmentBatch } = require('./lib/finalize-batch-enrollments');
+const { finalizePendingEnrollmentBatch, finalizeStepUpReservationBatch } = require('./lib/finalize-batch-enrollments');
 const { normCamperKey, normalizeIncomingBookings } = require('./lib/normalize-checkout-bookings');
 const { isCampRegistrationFeePaid } = require('./lib/camper-registration-fee');
 const {
@@ -194,6 +194,11 @@ module.exports = async (req, res) => {
       'AGREEMENT_VERSION',
       'Please refresh the page and accept the current camp agreement.'
     );
+  }
+
+  const paymentMethod = body.paymentMethod === 'step_up' ? 'step_up' : body.paymentMethod === 'credit_card' ? 'credit_card' : null;
+  if (!paymentMethod) {
+    return failCheckout(res, 400, 'PAYMENT_METHOD_REQUIRED', 'Choose a payment method to continue.');
   }
 
   const { user, token } = await getUserFromRequest(req);
@@ -523,6 +528,65 @@ module.exports = async (req, res) => {
       'Could not save agreement acceptance. Try again.',
       arErr && arErr.message
     );
+  }
+
+  if (paymentMethod === 'step_up') {
+    if (!bookingsArray.length) {
+      try {
+        await sb.from('enrollments').delete().eq('checkout_batch_id', batchId);
+      } catch (delE) {}
+      return failCheckout(
+        res,
+        400,
+        'STEP_UP_NEEDS_CAMP',
+        'Step Up for Students requires at least one camp week or day selection. Add camp dates first, or choose Credit Card if you only need an extra item.'
+      );
+    }
+    try {
+      await finalizeStepUpReservationBatch(sb, batchId, {
+        customerEmail: (profile && profile.email) || user.email || null,
+        testPricing: tp,
+        campLineCents,
+        bookingModes,
+      });
+    } catch (fz) {
+      console.error('[create-checkout-session] step-up finalize failed', fz);
+      try {
+        await sb.from('enrollments').delete().eq('checkout_batch_id', batchId);
+      } catch (delE) {}
+      return failCheckout(res, 500, 'STEP_UP_FINALIZE', fz.message || 'Could not reserve spot', '');
+    }
+    const parentMail = (profile && profile.email) || user.email || '';
+    try {
+      await sendStepUpReservationEmails(sb, {
+        batchId,
+        parentEmail: parentMail,
+        parentName: (profile && profile.full_name) || '',
+        testPricing: tp,
+      });
+    } catch (emErr) {
+      console.error('[create-checkout-session] step-up email', emErr && emErr.message);
+    }
+    if (agreementRecordId) {
+      try {
+        await sendAgreementAcknowledgmentEmailOnce(sb, agreementRecordId, parentMail);
+      } catch (ackE) {
+        console.error('[create-checkout-session] agreement ack email (step-up)', ackE && ackE.message);
+      }
+    }
+    const totalDueCents = campCentsTotal + regCentsTotal + shirtCentsTotal;
+    return json(res, 200, {
+      sessionId: null,
+      checkoutUrl: null,
+      batchId,
+      stepUpComplete: true,
+      totals: {
+        camp: campCentsTotal / 100,
+        registration: regCentsTotal / 100,
+        extraShirts: shirtCentsTotal / 100,
+        total: totalDueCents / 100,
+      },
+    });
   }
 
   const totalDueCents = campCentsTotal + regCentsTotal + shirtCentsTotal;

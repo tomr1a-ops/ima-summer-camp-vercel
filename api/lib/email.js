@@ -261,9 +261,126 @@ async function sendCampPaymentEmails(stripe, session, result) {
   }
 }
 
+const STEP_UP_PARENT_BODY =
+  'We have reserved your child\'s spot. You must visit the Step Up for Students website and allocate funds to IMA Impact Martial Athletics to complete payment. Once Step Up processes your allocation, your registration will be finalized.';
+
+/**
+ * Parent + staff email after Step Up path (no Stripe).
+ * @param {import('@supabase/supabase-js').SupabaseClient} sb
+ */
+async function sendStepUpReservationEmails(sb, { batchId, parentEmail, parentName, testPricing }) {
+  const bid = batchId && String(batchId).trim();
+  if (!bid) return { ok: false, reason: 'no_batch' };
+
+  const { data: rows, error } = await sb
+    .from('enrollments')
+    .select(
+      'id, day_ids, week_id, price_paid, status, campers(first_name, last_name), weeks(label, week_number)'
+    )
+    .eq('checkout_batch_id', bid)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  const list = rows || [];
+  if (!list.length) return { ok: false, reason: 'no_rows' };
+
+  const lines = list.map((r) => {
+    const c = r.campers || {};
+    const w = r.weeks || {};
+    const nm = `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Camper';
+    const wl = w.label || 'Week';
+    return `• ${nm} — ${wl} (status: ${r.status || 'n/a'})`;
+  });
+
+  const greet = (parentName && String(parentName).trim()) || 'there';
+  const testNote = testPricing ? '\n\n[Test pricing was on for this request — staff only.]' : '';
+  const textBody = [
+    `Hi ${greet},`,
+    '',
+    STEP_UP_PARENT_BODY,
+    '',
+    'Reserved sessions:',
+    ...lines,
+    '',
+    'Manage or review: ' + MANAGE_BOOKINGS_URL,
+    '',
+    'Questions? tom@imaimpact.com',
+    '',
+    '— Impact Martial Athletics',
+    testNote,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const esc = escapeHtml;
+  const htmlBody = `<div style="font-family:system-ui,sans-serif;font-size:15px;line-height:1.5;color:#111">
+  <p>Hi ${esc(greet)},</p>
+  <p>${esc(STEP_UP_PARENT_BODY)}</p>
+  <p><strong>Reserved sessions</strong></p>
+  <ul style="margin:0;padding-left:1.2em">${list
+    .map((r) => {
+      const c = r.campers || {};
+      const w = r.weeks || {};
+      const nm = esc(`${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Camper');
+      const wl = esc(w.label || 'Week');
+      return `<li>${nm} — ${wl}</li>`;
+    })
+    .join('')}</ul>
+  <p><a href="${esc(MANAGE_BOOKINGS_URL)}">Open camp registration</a></p>
+  <p>Questions? <a href="mailto:tom@imaimpact.com">tom@imaimpact.com</a></p>
+  <p>— <strong>Impact Martial Athletics</strong></p>
+  ${testPricing ? '<p><em>Test pricing was on — staff only.</em></p>' : ''}
+</div>`;
+
+  const subject = '🥊 IMA Summer Camp — Spot reserved (Step Up for Students)';
+
+  if (parentEmail && String(parentEmail).trim()) {
+    const r = await sendResend({
+      to: String(parentEmail).trim(),
+      subject,
+      text: textBody,
+      html: htmlBody,
+    });
+    console.log('[email] step-up parent', r.ok ? 'ok' : 'fail', parentEmail, r.error || r.id || '');
+  } else {
+    console.warn('[email] step-up parent skipped (no email)');
+  }
+
+  const adminSubject = `🥊 Step Up reservation — ${list.length} row(s) — ${parentEmail || 'no email'}`;
+  const adminText = [
+    'Step Up for Students — spot reserved (pending funding).',
+    '',
+    `Parent: ${parentName || 'n/a'} <${parentEmail || 'n/a'}>`,
+    `Batch: ${bid}`,
+    testPricing ? 'TEST PRICING: yes' : '',
+    '',
+    ...lines,
+    '',
+    'Admin: ' + ADMIN_DASHBOARD_URL,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const adminHtml = `<p><strong>Step Up reservation</strong> (pending Step Up funding)</p>
+  <p>Parent: ${esc(parentName || 'n/a')} &lt;${esc(parentEmail || 'n/a')}&gt;</p>
+  <p>Batch: ${esc(bid)}</p>
+  <ul>${list
+    .map((r) => {
+      const c = r.campers || {};
+      const w = r.weeks || {};
+      const nm = esc(`${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Camper');
+      return `<li>${nm} — ${esc(w.label || 'Week')}</li>`;
+    })
+    .join('')}</ul>
+  <p><a href="${esc(ADMIN_DASHBOARD_URL)}">Admin</a></p>`;
+
+  await sendResendToStaff(adminSubject, adminText, adminHtml);
+  return { ok: true };
+}
+
 module.exports = {
   sendResend,
   sendCampPaymentEmails,
+  sendStepUpReservationEmails,
   sendResendToStaff,
   resolveResendApiKey,
   CAMP_STAFF_NOTIFY,

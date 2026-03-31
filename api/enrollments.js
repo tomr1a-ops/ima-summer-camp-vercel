@@ -184,7 +184,7 @@ module.exports = async (req, res) => {
             excludeEnrollmentId: row.id,
             pricingMode,
           });
-        } else if (row.status === 'confirmed') {
+        } else if (row.status === 'confirmed' || row.status === 'pending_step_up') {
           if (weekChanged) {
             await validateBooking(sb, {
               weekId: newWeekId,
@@ -206,7 +206,7 @@ module.exports = async (req, res) => {
       const { error: ue } = await sb.from('enrollments').update(patch).eq('id', id);
       if (ue) throw ue;
 
-      if (row.status === 'confirmed') {
+      if (row.status === 'confirmed' || row.status === 'pending_step_up') {
         await syncConfirmedDayCounts(sb, oldDayIds, newDayIds);
       }
 
@@ -241,7 +241,7 @@ module.exports = async (req, res) => {
         res.statusCode = 200;
         return res.end(JSON.stringify({ ok: true, already: true }));
       }
-      if (row.status === 'confirmed') {
+      if (row.status === 'confirmed' || row.status === 'pending_step_up') {
         await syncConfirmedDayCounts(sb, row.day_ids || [], []);
         if (enrollmentQualifiesForCampCredit(row)) {
           try {
