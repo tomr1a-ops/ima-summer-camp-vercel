@@ -35,6 +35,66 @@
     .admin-nav-inv-badge[hidden] {
       display: none !important;
     }
+    .admin-layout {
+      display: flex;
+      min-height: calc(100vh - 64px);
+      position: relative;
+      z-index: 1;
+    }
+    .admin-sidebar {
+      width: 220px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      background: var(--card2);
+      padding: 20px 0;
+    }
+    .admin-sidebar a {
+      display: block;
+      padding: 10px 20px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      font-family: var(--font-cond);
+    }
+    .admin-sidebar a:hover { color: var(--cyan); }
+    .admin-sidebar a.active {
+      color: var(--cyan);
+      box-shadow: inset 3px 0 0 var(--cyan);
+      background: var(--cyan-gl);
+    }
+    .admin-sidebar-label {
+      padding: 18px 20px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-family: var(--font-cond);
+      opacity: 0.85;
+    }
+    .admin-sidebar a.admin-nav-inv-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    @media (max-width: 720px) {
+      .admin-layout { flex-direction: column; }
+      .admin-sidebar {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0;
+        padding: 12px;
+      }
+      .admin-sidebar a { padding: 8px 14px; }
+      .admin-sidebar-label { width: 100%; padding: 10px 14px 6px; }
+    }
   </style>
 </head>
 <body>
@@ -44,19 +104,24 @@
       <span>Admin</span>
     </a>
     <div class="app-actions">
-      <a class="btn-ghost admin-nav-inv" href="/admin/inventory.html" id="link-inventory">
-        <span>Inventory</span>
-        <span class="admin-nav-inv-badge" id="inv-low-badge" hidden aria-hidden="true" title="Items at or below reorder point"></span>
-      </a>
-      <a class="btn-ghost" href="/admin/gear-distribution.html">Gear</a>
-      <a class="btn-ghost" href="/admin/backup">Backup</a>
-      <a class="btn-ghost" href="/admin/system-health">System Health</a>
       <button type="button" class="btn-ghost" id="btn-portal">Camp site</button>
       <button type="button" class="btn-ghost" id="btn-out">Log out</button>
     </div>
   </header>
 
-  <main class="app-main">
+  <div class="admin-layout">
+    <aside class="admin-sidebar" aria-label="Admin navigation">
+      <a class="active" href="/admin.html">Dashboard</a>
+      <a class="admin-nav-inv-row" href="/admin/inventory.html" id="link-inventory">
+        <span>Inventory</span>
+        <span class="admin-nav-inv-badge" id="inv-low-badge" hidden aria-hidden="true" title="Items at or below reorder point"></span>
+      </a>
+      <a href="/admin/gear-distribution.html">Gear</a>
+      <div class="admin-sidebar-label">Admin</div>
+      <a href="/admin/backup">Backup</a>
+      <a href="/admin/system-health">System Health</a>
+    </aside>
+    <main class="app-main" style="flex:1;min-width:0;max-width:none">
     <div id="banner" class="msg" style="margin-bottom:18px"></div>
 
     <div class="grid-cards" id="admin-overview">
@@ -147,6 +212,7 @@
       </div>
     </div>
   </main>
+  </div>
 
   <script src="/js/ima-core.js?v=20260408"></script>
   <script>
