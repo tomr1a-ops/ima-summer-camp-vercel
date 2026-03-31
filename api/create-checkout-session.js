@@ -138,8 +138,29 @@ module.exports = async (req, res) => {
     return failCheckout(res, 400, 'INVALID_JSON', 'Invalid JSON', parseErr && parseErr.message ? parseErr.message : '');
   }
 
-  const { testPricing, imaMember, registrationFeeForCamper, extraShirtByCamper, agreementAccepted, agreementVersion } =
-    body;
+  try {
+    console.log('[create-checkout-session] request body', JSON.stringify(body));
+  } catch (stringifyErr) {
+    console.log('[create-checkout-session] request body (could not stringify)', typeof body, stringifyErr && stringifyErr.message);
+  }
+
+  if (!process.env.STRIPE_SECRET_KEY || !String(process.env.STRIPE_SECRET_KEY).trim()) {
+    return failCheckout(
+      res,
+      503,
+      'STRIPE_UNCONFIGURED',
+      'Payment system is not configured on the server. Contact IMA if this continues.',
+      ''
+    );
+  }
+
+  const { testPricing, imaMember, registrationFeeForCamper, extraShirtByCamper } = body;
+  const agreementAccepted =
+    body.agreementAccepted === true ||
+    body.agreementAccepted === 'true' ||
+    body.agreementAccepted === 1 ||
+    body.agreementAccepted === '1';
+  const agreementVersion = body.agreementVersion != null ? String(body.agreementVersion).trim() : '';
   const rawBookings = Array.isArray(body.bookings) ? body.bookings : [];
   let bookingsArray = normalizeIncomingBookings(rawBookings);
   if (rawBookings.length > 0 && bookingsArray.length === 0) {
@@ -187,7 +208,7 @@ module.exports = async (req, res) => {
       'Please read and confirm the agreement before continuing.'
     );
   }
-  if (String(agreementVersion || '') !== AGREEMENT_VERSION) {
+  if (agreementVersion !== AGREEMENT_VERSION) {
     return failCheckout(
       res,
       400,
@@ -196,9 +217,17 @@ module.exports = async (req, res) => {
     );
   }
 
-  const paymentMethod = body.paymentMethod === 'step_up' ? 'step_up' : body.paymentMethod === 'credit_card' ? 'credit_card' : null;
+  let paymentMethod =
+    body.paymentMethod === 'step_up' || body.paymentMethod === 'STEP_UP'
+      ? 'step_up'
+      : body.paymentMethod === 'credit_card' || body.paymentMethod === 'CREDIT_CARD'
+        ? 'credit_card'
+        : null;
   if (!paymentMethod) {
-    return failCheckout(res, 400, 'PAYMENT_METHOD_REQUIRED', 'Choose a payment method to continue.');
+    paymentMethod = 'credit_card';
+    console.log('[create-checkout-session] paymentMethod missing or unknown; defaulting to credit_card', {
+      raw: body.paymentMethod,
+    });
   }
 
   const { user, token } = await getUserFromRequest(req);

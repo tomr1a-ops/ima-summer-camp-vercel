@@ -35,6 +35,7 @@ module.exports = async (req, res) => {
       const result = await confirmStripeSession(stripe, session);
       if (result.ok) {
         try {
+          console.log('[webhook] checkout.session.completed — sending parent confirmation (Resend) for', session.id);
           await sendCampPaymentEmails(stripe, session, result);
           console.log('[webhook] payment emails finished for session', session.id);
         } catch (emailErr) {

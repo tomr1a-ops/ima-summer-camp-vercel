@@ -330,7 +330,11 @@ function buildPlainTextBody(summary, manageUrl) {
   const lines = [];
   lines.push(`Hi ${summary.parentFirst},`);
   lines.push('');
-  lines.push('Your booking is confirmed! Here\'s your summary:');
+  if (summary.parentFullName && summary.parentFullName !== summary.parentFirst) {
+    lines.push(`Parent / guardian: ${summary.parentFullName}`);
+    lines.push('');
+  }
+  lines.push('Your payment was received and your booking is confirmed. Summary below:');
   lines.push('');
   lines.push('BOOKING SUMMARY');
   lines.push('Child | Week / days | Schedule | Amount paid');
@@ -347,9 +351,17 @@ function buildPlainTextBody(summary, manageUrl) {
     lines.push(`Extra T-shirts: ${formatMoney(summary.shirtTotal)}`);
   }
   if (summary.regTotal > 0) {
-    lines.push(`Registration fee: ${formatMoney(summary.regTotal)}`);
+    lines.push(`Registration fee (this checkout): ${formatMoney(summary.regTotal)}`);
+  } else {
+    lines.push('Registration fee: Not charged in this checkout (waived for IMA member or already paid).');
   }
-  lines.push(`TOTAL PAID: ${formatMoney(summary.grandTotal)}`);
+  lines.push(`TOTAL CHARGED: ${formatMoney(summary.grandTotal)}`);
+  lines.push('');
+  lines.push('NEXT STEPS');
+  lines.push('• Keep this email for your records.');
+  lines.push(`• Review or adjust selections anytime: ${manageUrl}`);
+  lines.push('• Closer to camp start, IMA may email check-in details and updates — watch your inbox.');
+  lines.push('• Need help? Reply to this thread or write tom@imaimpact.com.');
   lines.push('');
   lines.push('CAMP INFO');
   lines.push('4401 S Flamingo Rd, Davie FL 33330');
@@ -386,11 +398,17 @@ function buildHtmlBody(summary, manageUrl) {
   }
   if (summary.regTotal > 0) {
     totals.push(
-      `<p style="margin:8px 0"><strong>Registration fee:</strong> ${escapeHtml(formatMoney(summary.regTotal))}</p>`
+      `<p style="margin:8px 0"><strong>Registration fee (this checkout):</strong> ${escapeHtml(
+        formatMoney(summary.regTotal)
+      )}</p>`
+    );
+  } else {
+    totals.push(
+      '<p style="margin:8px 0"><strong>Registration fee:</strong> Not charged (waived for IMA member or already paid).</p>'
     );
   }
   totals.push(
-    `<p style="margin:16px 0 8px;font-size:18px"><strong>TOTAL PAID:</strong> ${escapeHtml(
+    `<p style="margin:16px 0 8px;font-size:18px"><strong>TOTAL CHARGED:</strong> ${escapeHtml(
       formatMoney(summary.grandTotal)
     )}</p>`
   );
@@ -408,14 +426,32 @@ function buildHtmlBody(summary, manageUrl) {
 </table>`
       : '<p style="color:#666">No camp weeks in this order — see your Stripe receipt for details.</p>';
 
+  const parentLine =
+    summary.parentFullName && summary.parentFullName !== summary.parentFirst
+      ? `<p style="margin:8px 0"><strong>Parent / guardian:</strong> ${escapeHtml(summary.parentFullName)}</p>`
+      : '';
+  const nextSteps = `<div style="margin-top:24px;padding-top:16px;border-top:1px solid #ddd">
+    <h2 style="font-size:16px;margin:0 0 12px">Next steps</h2>
+    <ul style="margin:8px 0;padding-left:20px;line-height:1.6">
+      <li>Keep this email for your records.</li>
+      <li>Review or adjust selections anytime at <a href="${escapeHtml(manageUrl)}" style="color:#0d9488">${escapeHtml(
+        manageUrl
+      )}</a>.</li>
+      <li>Closer to camp start, IMA may email check-in details and updates.</li>
+      <li>Questions? <a href="mailto:tom@imaimpact.com">tom@imaimpact.com</a></li>
+    </ul>
+  </div>`;
+
   return `<div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px;line-height:1.5;color:#111">
   <p>Hi ${escapeHtml(summary.parentFirst)},</p>
-  <p>Your booking is confirmed! Here&rsquo;s your summary:</p>
+  ${parentLine}
+  <p>Your payment was received and your booking is confirmed. Summary below:</p>
   ${tableBlock}
   <div style="margin-top:20px;padding-top:16px;border-top:1px solid #ddd">
     <h2 style="font-size:16px;margin:0 0 12px">Totals</h2>
     ${totals.join('')}
   </div>
+  ${nextSteps}
   <div style="margin-top:24px;padding-top:16px;border-top:1px solid #ddd">
     <h2 style="font-size:16px;margin:0 0 12px">Camp info</h2>
     <p style="margin:8px 0">4401 S Flamingo Rd, Davie FL 33330</p>

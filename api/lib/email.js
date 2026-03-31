@@ -153,24 +153,37 @@ async function sendCampPaymentEmails(stripe, session, result) {
     htmlBody = buildHtmlBody(summary, MANAGE_BOOKINGS_URL);
   } else {
     const gt = (sessionForEmail.amount_total != null ? Number(sessionForEmail.amount_total) : 0) / 100;
+    const custName =
+      (sessionForEmail.customer_details && sessionForEmail.customer_details.name) ||
+      sessionForEmail.customer_email ||
+      '';
     textBody = [
-      'Hi there,',
+      custName ? `Hi ${String(custName).split(/\s+/)[0]},` : 'Hi there,',
       '',
-      'Your IMA Summer Camp payment went through.',
+      custName ? `Parent / guardian: ${custName}` : '',
+      '',
+      'Your IMA Summer Camp payment was received. We could not build a detailed line-item summary from our records; amounts below are from Stripe.',
+      '',
       `Total charged: ${formatMoney(gt)}`,
       '',
-      'Manage bookings: ' + MANAGE_BOOKINGS_URL,
-      '',
-      'Questions? tom@imaimpact.com',
+      'NEXT STEPS',
+      '• Keep this email for your records.',
+      `• Manage bookings: ${MANAGE_BOOKINGS_URL}`,
+      '• Closer to camp start, watch for check-in details from IMA.',
+      '• Questions? tom@imaimpact.com',
       '',
       '— Impact Martial Athletics',
-    ].join('\n');
+    ]
+      .filter(function (ln) {
+        return String(ln).length > 0;
+      })
+      .join('\n');
     htmlBody = `<div style="font-family:system-ui,sans-serif;font-size:15px;line-height:1.5;color:#111">
-  <p>Hi there,</p>
-  <p>Your <strong>IMA Summer Camp</strong> payment went through.</p>
+  <p>Hi ${escapeHtml(custName ? String(custName).split(/\s+/)[0] : 'there')},</p>
+  ${custName ? `<p><strong>Parent / guardian:</strong> ${escapeHtml(custName)}</p>` : ''}
+  <p>Your <strong>IMA Summer Camp</strong> payment was received. Detailed camp rows were unavailable — totals below are from Stripe.</p>
   <p><strong>Total charged:</strong> ${escapeHtml(formatMoney(gt))}</p>
-  <p><a href="${escapeHtml(MANAGE_BOOKINGS_URL)}">Manage bookings</a></p>
-  <p>Questions? <a href="mailto:tom@imaimpact.com">tom@imaimpact.com</a></p>
+  <p><strong>Next steps:</strong> keep this email, <a href="${escapeHtml(MANAGE_BOOKINGS_URL)}">manage bookings</a>, watch for camp updates, or email <a href="mailto:tom@imaimpact.com">tom@imaimpact.com</a>.</p>
 </div>`;
     console.warn('[email] sent minimal parent receipt (no summary)', sessionForEmail.id);
   }
