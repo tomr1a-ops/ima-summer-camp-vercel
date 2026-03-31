@@ -5067,6 +5067,7 @@
     const wrap = document.createElement('div');
     wrap.className = 'week-camper-row week-kids-checkboxes';
     if (!session || !parentCampers.length) return wrap;
+    const signedInParent = !!(session && parentCampers.length > 0);
     const wObj = weeksPayload.find(function (x) {
       return String(x.id) === String(weekId);
     });
