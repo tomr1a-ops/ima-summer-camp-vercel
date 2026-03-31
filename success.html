@@ -83,6 +83,9 @@
           localStorage.setItem(FLAG, '1');
           sessionStorage.setItem(FLAG, '1');
         } catch (e2) {}
+        try {
+          sessionStorage.removeItem('ima_stripe_pending_batch');
+        } catch (eB) {}
       }
 
       emitClearForSessionOnce();

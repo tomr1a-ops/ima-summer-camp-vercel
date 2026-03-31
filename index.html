@@ -2822,24 +2822,42 @@
     } catch (eU) {}
   }
 
+  /** While true, enrollment realtime debounce skips (avoids double-sync with post-checkout). */
+  var suppressEnrollmentRealtimeRefreshUntil = 0;
+  var postCheckoutSyncDebounceTimer = null;
+  var postCheckoutSyncWave = 0;
+
+  async function runPostCheckoutEnrollmentSyncOnce() {
+    if (!session) return;
+    try {
+      await refreshConfirmedEnrollmentsFromServer();
+      await loadParentCampers();
+      await loadWeeks();
+      hydrateSelectionFromConfirmedEnrollments();
+      refreshScheduleUiAfterEnrollStorageChange();
+      try {
+        persistEnrollLocal();
+      } catch (eP) {}
+    } catch (e) {}
+  }
+
+  /**
+   * After Step Up / $0 / Stripe success, re-sync enrollments + weeks without stacking 5 rapid full re-renders
+   * (was causing visible flicker with Supabase realtime firing at the same time).
+   */
   function schedulePostCheckoutEnrollmentRefetchRetries() {
-    const delaysMs = [0, 450, 1200, 2800, 5500];
-    delaysMs.forEach(function (ms) {
-      setTimeout(function () {
-        void (async function () {
-          try {
-            if (!session) return;
-            await refreshConfirmedEnrollmentsFromServer();
-            await loadParentCampers();
-            hydrateSelectionFromConfirmedEnrollments();
-            refreshScheduleUiAfterEnrollStorageChange();
-            try {
-              persistEnrollLocal();
-            } catch (eP) {}
-          } catch (e) {}
-        })();
-      }, ms);
-    });
+    suppressEnrollmentRealtimeRefreshUntil = Date.now() + 4000;
+    var wave = ++postCheckoutSyncWave;
+    if (postCheckoutSyncDebounceTimer) clearTimeout(postCheckoutSyncDebounceTimer);
+    postCheckoutSyncDebounceTimer = setTimeout(function () {
+      postCheckoutSyncDebounceTimer = null;
+      if (wave !== postCheckoutSyncWave) return;
+      void runPostCheckoutEnrollmentSyncOnce();
+    }, 450);
+    setTimeout(function () {
+      if (wave !== postCheckoutSyncWave) return;
+      void runPostCheckoutEnrollmentSyncOnce();
+    }, 2400);
   }
 
   /**
@@ -2883,6 +2901,44 @@
       setTimeout(resolve, 450);
     });
     await refreshConfirmedEnrollmentsFromServer();
+    await loadWeeks();
+  }
+
+  /** User hit “Back” on Stripe Checkout (cancel_url) — release pending rows for that batch. */
+  async function handleStripeCheckoutCancelIfAny() {
+    if (!session) return;
+    try {
+      var u = new URL(window.location.href);
+      if (u.searchParams.get('stripe_cancel') !== '1') return;
+      u.searchParams.delete('stripe_cancel');
+      var qs = u.searchParams.toString();
+      history.replaceState(null, '', u.pathname + (qs ? '?' + qs : '') + u.hash);
+      var bid = null;
+      try {
+        bid = sessionStorage.getItem('ima_stripe_pending_batch');
+      } catch (e1) {}
+      if (!bid) return;
+      try {
+        sessionStorage.removeItem('ima_stripe_pending_batch');
+      } catch (e2) {}
+      var tok = await freshAccessTokenForApi();
+      if (!tok) return;
+      await fetch('/api/abandon-checkout-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+        body: JSON.stringify({ batchId: String(bid).trim() }),
+      });
+      suppressEnrollmentRealtimeRefreshUntil = Date.now() + 3000;
+      await refreshAfterEnrollmentMutation();
+      hydrateSelectionFromConfirmedEnrollments();
+      refreshScheduleUiAfterEnrollStorageChange();
+      var msgC = document.getElementById('msg');
+      if (msgC) {
+        msgC.className = 'msg';
+        msgC.textContent =
+          'Checkout was cancelled — no payment was taken. Your week selections are still here; tap checkout again when ready.';
+      }
+    } catch (eH) {}
   }
 
   /** After successful Stripe payment, success.html sets a flag so checkout drafts clear on index (legacy portal storage key is wiped too). */
@@ -3852,10 +3908,12 @@
   var parentEnrollmentsRealtimeBound = false;
   var parentEnrollmentsRefreshTimer = null;
   function scheduleParentEnrollmentRefreshFromRealtime() {
+    if (Date.now() < suppressEnrollmentRealtimeRefreshUntil) return;
     if (parentEnrollmentsRefreshTimer) clearTimeout(parentEnrollmentsRefreshTimer);
     parentEnrollmentsRefreshTimer = setTimeout(function () {
       parentEnrollmentsRefreshTimer = null;
       if (!session) return;
+      if (Date.now() < suppressEnrollmentRealtimeRefreshUntil) return;
       void refreshConfirmedEnrollmentsFromServer()
         .then(function () {
           try {
@@ -5836,11 +5894,20 @@
       }
     }
     if (session) {
+      await handleStripeCheckoutCancelIfAny();
       var stripeReturnSid = consumeStripeReturnSessionIdFromUrl();
       await loadParentCampers();
       if (stripeReturnSid) {
         await confirmCheckoutFromStripeReturn(stripeReturnSid);
         await refreshConfirmedEnrollmentsAfterStripeReturn();
+        try {
+          sessionStorage.removeItem('ima_stripe_pending_batch');
+        } catch (eSs) {}
+        var msgPay = document.getElementById('msg');
+        if (msgPay) {
+          msgPay.className = 'msg ok';
+          msgPay.textContent = 'Payment successful — your registration is saved.';
+        }
       } else {
         await refreshConfirmedEnrollmentsFromServer();
       }
@@ -5943,7 +6010,7 @@
       var msgOk = document.getElementById('msg');
       if (msgOk) {
         msgOk.className = 'msg ok';
-        msgOk.textContent = 'Registration saved.';
+        msgOk.textContent = 'Registration saved successfully.';
       }
       try {
         persistEnrollLocal();
@@ -5960,7 +6027,7 @@
       if (msgOk) {
         msgOk.className = 'msg ok';
         msgOk.textContent =
-          'Spot on hold for 24 hours. Check your email — complete Step Up for Students funding to IMA Impact Martial Athletics; staff will confirm when allocation is received.';
+          'Hold successful — your spot is reserved for 24 hours. Check your email — complete Step Up for Students funding to IMA Impact Martial Athletics; staff will confirm when allocation is received.';
       }
       try {
         persistEnrollLocal();
@@ -6202,6 +6269,9 @@
       }
 
       const data = r.data;
+      try {
+        if (data && data.batchId) sessionStorage.setItem('ima_stripe_pending_batch', String(data.batchId));
+      } catch (eSt) {}
       if (!data.sessionId || typeof data.sessionId !== 'string') {
         throw new Error(
           'Checkout started but no Stripe session was returned. Open DevTools → Network, find create-checkout-session, and check the response (or contact IMA).'

@@ -11,7 +11,7 @@ async function isCampRegistrationFeePaid(sb, camperId) {
     .from('enrollments')
     .select('id')
     .eq('camper_id', id)
-    .eq('status', 'confirmed')
+    .in('status', ['confirmed', 'pending_step_up'])
     .eq('registration_fee_paid', true)
     .limit(1);
   if (error) throw error;

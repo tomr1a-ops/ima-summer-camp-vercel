@@ -1,6 +1,8 @@
 const getRawBody = require('raw-body');
 const { confirmStripeSession } = require('./lib/confirm-stripe-session');
 const { sendCampPaymentEmails } = require('./lib/email');
+const { serviceClient } = require('./lib/supabase');
+const { ENROLLMENT_STATUS } = require('./lib/enrollment-status');
 
 function stripeClient() {
   const k = String(process.env.STRIPE_SECRET_KEY || '').trim();
@@ -33,6 +35,28 @@ module.exports = async (req, res) => {
     console.error('Webhook signature failed:', err.message);
     res.statusCode = 400;
     return res.end(`Webhook Error: ${err.message}`);
+  }
+
+  if (event.type === 'checkout.session.expired') {
+    const session = event.data.object;
+    const batchId = session.metadata && session.metadata.checkout_batch_id;
+    if (batchId) {
+      try {
+        const sb = serviceClient();
+        const { error: delErr } = await sb
+          .from('enrollments')
+          .delete()
+          .eq('checkout_batch_id', String(batchId))
+          .eq('status', ENROLLMENT_STATUS.PENDING);
+        if (delErr) {
+          console.error('[webhook] checkout.session.expired delete pending', delErr.message);
+        } else {
+          console.log('[webhook] checkout.session.expired — released pending batch', batchId);
+        }
+      } catch (e) {
+        console.error('[webhook] checkout.session.expired', e && e.message ? e.message : e);
+      }
+    }
   }
 
   if (event.type === 'checkout.session.completed') {

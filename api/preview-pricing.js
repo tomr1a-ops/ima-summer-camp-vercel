@@ -73,7 +73,7 @@ module.exports = async (req, res) => {
                 .from('enrollments')
                 .select('id')
                 .eq('camper_id', String(camperId))
-                .eq('status', 'confirmed')
+                .in('status', ['confirmed', 'pending_step_up'])
                 .eq('registration_fee_paid', true)
                 .limit(1);
               if (error) throw error;

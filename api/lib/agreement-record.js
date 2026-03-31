@@ -1,4 +1,4 @@
-const AGREEMENT_VERSION = '1.0';
+const AGREEMENT_VERSION = '2.0';
 
 function clientIpFromRequest(req) {
   const xff = req.headers && req.headers['x-forwarded-for'];

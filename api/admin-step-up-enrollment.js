@@ -71,15 +71,15 @@ module.exports = async (req, res) => {
       const regDollars = regAlreadyPaid ? 0 : registrationFee(false);
       const prevPrice = Number(row.price_paid) || 0;
       const nextPrice = prevPrice + regDollars;
+      /** Child has (or just received) one-time reg fee — flag row so admin + previews never look “unpaid”. */
+      const registrationSatisfiedOnRow = regAlreadyPaid || regDollars > 0;
 
       const updateFields = {
         status: ENROLLMENT_STATUS.CONFIRMED,
         step_up_hold_expires_at: null,
         price_paid: nextPrice,
+        registration_fee_paid: registrationSatisfiedOnRow,
       };
-      if (regDollars > 0) {
-        updateFields.registration_fee_paid = true;
-      }
 
       let { data: updated, error: ue } = await sb
         .from('enrollments')
@@ -92,8 +92,8 @@ module.exports = async (req, res) => {
         const retryFields = {
           status: ENROLLMENT_STATUS.CONFIRMED,
           price_paid: nextPrice,
+          registration_fee_paid: registrationSatisfiedOnRow,
         };
-        if (regDollars > 0) retryFields.registration_fee_paid = true;
         const r2 = await sb
           .from('enrollments')
           .update(retryFields)
@@ -107,15 +107,25 @@ module.exports = async (req, res) => {
       if (ue) throw ue;
       if (!updated) return json(res, 200, { ok: true, already: true });
 
-      if (regDollars > 0 && row.camper_id) {
-        if (row.checkout_batch_id) {
+      if (row.camper_id) {
+        if (regDollars > 0) {
+          await sb.from('campers').update({ registration_fee_paid: true }).eq('id', row.camper_id);
+          if (row.checkout_batch_id) {
+            await sb
+              .from('enrollments')
+              .update({ registration_fee_paid: true })
+              .eq('checkout_batch_id', row.checkout_batch_id)
+              .eq('camper_id', row.camper_id);
+          }
+        } else if (regAlreadyPaid && row.checkout_batch_id) {
+          /** Reg paid before Step Up (e.g. card); align sibling batch rows for admin/export. */
           await sb
             .from('enrollments')
             .update({ registration_fee_paid: true })
             .eq('checkout_batch_id', row.checkout_batch_id)
-            .eq('camper_id', row.camper_id);
+            .eq('camper_id', row.camper_id)
+            .in('status', [ENROLLMENT_STATUS.CONFIRMED, ENROLLMENT_STATUS.PENDING_STEP_UP]);
         }
-        await sb.from('campers').update({ registration_fee_paid: true }).eq('id', row.camper_id);
       }
 
       await sendStepUpMarkedPaidEmail(sb, row.id);
