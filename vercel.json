@@ -1,7 +1,6 @@
 {
   "version": 2,
   "rewrites": [
-    { "source": "/admin/system-health", "destination": "/admin/system-health.html" },
     { "source": "/admin/backup", "destination": "/admin/backup.html" }
   ],
   "crons": [
@@ -97,14 +96,6 @@
       ]
     },
     {
-      "source": "/admin/system-health",
-      "headers": [
-        { "key": "Cache-Control", "value": "private, no-store, no-cache, must-revalidate, max-age=0" },
-        { "key": "Pragma", "value": "no-cache" },
-        { "key": "Surrogate-Control", "value": "no-store" }
-      ]
-    },
-    {
       "source": "/register.html",
       "headers": [
         { "key": "Cache-Control", "value": "private, no-store, no-cache, must-revalidate, max-age=0" },
@@ -158,13 +149,6 @@
     },
     {
       "source": "/api/preview-pricing",
-      "headers": [
-        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, private" },
-        { "key": "Pragma", "value": "no-cache" }
-      ]
-    },
-    {
-      "source": "/api/system-health",
       "headers": [
         { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, private" },
         { "key": "Pragma", "value": "no-cache" }
