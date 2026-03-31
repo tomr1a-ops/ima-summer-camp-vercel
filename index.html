@@ -2295,9 +2295,11 @@
   let confirmedEnrollmentsRaw = [];
   /** After Step Up hold API success, totals until GET /api/enrollments includes pending_step_up rows (avoids empty-cart / Stripe UI clearing the owed line). */
   let stepUpHoldSummarySnapshot = null;
-  /** Briefly pin order-summary grand total to server `data.totals.total` so rapid refetches do not flash intermediate amounts. */
+  /** Briefly pin Step Up order summary to server `data.totals.total` (single stable line + total; itemized rows after lock). */
   let stepUpOrderSummaryTotalLockUntil = 0;
   let stepUpOrderSummaryTotalLockValue = null;
+  var stepUpOrderSummaryLockExpireTimer = null;
+  var stepUpOrderSummaryLockWave = 0;
   /** camperId|weekId keys with status pending (open checkout). */
   let pendingEnrollmentWeekKeys = new Set();
   /** camperId|weekId → waitlist row from GET /api/waitlist */
@@ -4050,6 +4052,11 @@
         stepUpHoldSummarySnapshot = null;
         stepUpOrderSummaryTotalLockUntil = 0;
         stepUpOrderSummaryTotalLockValue = null;
+        if (stepUpOrderSummaryLockExpireTimer) {
+          clearTimeout(stepUpOrderSummaryLockExpireTimer);
+          stepUpOrderSummaryLockExpireTimer = null;
+        }
+        stepUpOrderSummaryLockWave++;
       }
       try {
         persistEnrollLocal();
@@ -5280,6 +5287,11 @@
     if (bookings.length > 0) {
       stepUpOrderSummaryTotalLockUntil = 0;
       stepUpOrderSummaryTotalLockValue = null;
+      if (stepUpOrderSummaryLockExpireTimer) {
+        clearTimeout(stepUpOrderSummaryLockExpireTimer);
+        stepUpOrderSummaryLockExpireTimer = null;
+      }
+      stepUpOrderSummaryLockWave++;
     }
     if (!bookings.length) {
       serverPrepaidApply = null;
@@ -5371,7 +5383,21 @@
         var coalescedSU = coalesceEnrollmentRowsForSidebar(stepUpRowsForSummary);
         var htmlSU = '';
         var grandSU = 0;
-        if (coalescedSU.length) {
+        var pinTot =
+          stepUpOrderSummaryTotalLockValue != null && Number.isFinite(Number(stepUpOrderSummaryTotalLockValue))
+            ? Number(stepUpOrderSummaryTotalLockValue)
+            : null;
+        var lockPinStepUpOrderLines =
+          pinTot != null &&
+          pinTot >= 0 &&
+          Date.now() < stepUpOrderSummaryTotalLockUntil;
+        if (lockPinStepUpOrderLines) {
+          grandSU = pinTot;
+          htmlSU +=
+            '<div class="summary-line"><span class="label">Step Up hold <span class="summary-line-detail">· Amount due when staff confirms funding</span></span><span class="val">' +
+            fmt(pinTot) +
+            '</span></div>';
+        } else if (coalescedSU.length) {
           coalescedSU.forEach(function (row) {
             var w = weeksPayload.find(function (x) {
               return String(x.id) === String(row.week_id);
@@ -5408,15 +5434,8 @@
         }
         lines.innerHTML = htmlSU;
         var displayGrandSU = grandSU;
-        if (snapTot != null && Number.isFinite(snapTot) && snapTot >= 0 && displayGrandSU < snapTot - 0.02) {
+        if (!lockPinStepUpOrderLines && snapTot != null && Number.isFinite(snapTot) && snapTot >= 0 && displayGrandSU < snapTot - 0.02) {
           displayGrandSU = snapTot;
-        }
-        if (
-          stepUpOrderSummaryTotalLockUntil > Date.now() &&
-          stepUpOrderSummaryTotalLockValue != null &&
-          Number.isFinite(Number(stepUpOrderSummaryTotalLockValue))
-        ) {
-          displayGrandSU = Number(stepUpOrderSummaryTotalLockValue);
         }
         lastSummaryGrandDollars = displayGrandSU;
         document.getElementById('total-amount').textContent = fmt(displayGrandSU);
@@ -6920,6 +6939,10 @@
       stepUpHoldSummarySnapshot = null;
       stepUpOrderSummaryTotalLockUntil = 0;
       stepUpOrderSummaryTotalLockValue = null;
+      if (stepUpOrderSummaryLockExpireTimer) {
+        clearTimeout(stepUpOrderSummaryLockExpireTimer);
+        stepUpOrderSummaryLockExpireTimer = null;
+      }
       if (data && data.totals && Number.isFinite(Number(data.totals.total))) {
         var tSnap = Number(data.totals.total);
         if (tSnap >= 0) {
@@ -6929,7 +6952,15 @@
             extraShirts: Number.isFinite(xSh) && xSh > 0 ? xSh : 0,
           };
           stepUpOrderSummaryTotalLockValue = tSnap;
-          stepUpOrderSummaryTotalLockUntil = Date.now() + 2500;
+          /* Cover post-checkout refetch (~450ms + ~2.4s) + pricing refresh so summary stays one server-backed line. */
+          var lockMs = 4300;
+          stepUpOrderSummaryTotalLockUntil = Date.now() + lockMs;
+          var wSu = ++stepUpOrderSummaryLockWave;
+          stepUpOrderSummaryLockExpireTimer = setTimeout(function () {
+            stepUpOrderSummaryLockExpireTimer = null;
+            if (wSu !== stepUpOrderSummaryLockWave) return;
+            updateSummary();
+          }, lockMs);
         }
       }
       resetCampAgreementAfterSuccessfulCheckout();
