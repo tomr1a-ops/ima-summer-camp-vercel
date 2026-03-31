@@ -84,7 +84,7 @@ function buildOverview(enrRows) {
       activeRows++;
       if (row.camper_id) confirmedCampers.add(String(row.camper_id));
       revenue += Number(row.price_paid) || 0;
-    } else if (st === 'pending') {
+    } else if (st === 'pending' || st === 'pending_step_up') {
       activeRows++;
     } else if (st === 'cancelled') {
       cancelledRows++;
@@ -122,7 +122,7 @@ module.exports = async (req, res) => {
       sb
         .from('enrollments')
         .select(
-          'id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at, campers(first_name,last_name), weeks(label,week_number)'
+          'id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at,step_up_hold_expires_at, campers(first_name,last_name), weeks(label,week_number)'
         )
         .order('created_at', { ascending: false }),
     ]);

@@ -78,6 +78,7 @@ CREATE TABLE public.enrollments (
   status                 public.enrollment_status NOT NULL DEFAULT 'pending',
   guest_email            TEXT,
   checkout_batch_id      UUID,
+  step_up_hold_expires_at TIMESTAMPTZ,
   created_at             TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -89,6 +90,8 @@ CREATE INDEX enrollments_stripe_session_idx ON public.enrollments (stripe_sessio
 CREATE INDEX enrollments_checkout_batch_id_idx ON public.enrollments (checkout_batch_id);
 CREATE INDEX enrollments_guest_email_idx ON public.enrollments (lower(guest_email));
 CREATE INDEX enrollments_day_ids_gin_idx ON public.enrollments USING GIN (day_ids);
+CREATE INDEX enrollments_step_up_hold_expires_idx ON public.enrollments (status, step_up_hold_expires_at)
+  WHERE status = 'pending_step_up'::public.enrollment_status;
 
 CREATE TABLE public.attendance (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),

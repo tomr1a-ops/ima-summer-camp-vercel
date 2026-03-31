@@ -1960,7 +1960,7 @@
           <option value="step_up">Step Up for Students Scholarship</option>
         </select>
         <div id="step-up-notice" class="step-up-notice" hidden>
-          We will reserve your child’s spot. You must visit the Step Up for Students website and allocate funds to IMA Impact Martial Athletics to complete payment. Once Step Up processes your allocation, your registration will be finalized.
+          We will put your child’s spot on hold for 24 hours. You must visit the Step Up for Students website and allocate funds to IMA Impact Martial Athletics before the hold expires. Once staff confirms Step Up funding, your registration is finalized.
         </div>
       </div>
       <div id="msg" class="msg"></div>
@@ -4121,7 +4121,7 @@
       }
 
       if (stepUpDisplayLis.length) {
-        html += '<div class="schedule-overview-sub">Reserved — Step Up (pending funding)</div>';
+        html += '<div class="schedule-overview-sub">On hold 24h — Step Up (pending funding)</div>';
         html += '<ul class="schedule-overview-list">' + stepUpDisplayLis.join('') + '</ul>';
       }
 
@@ -4646,7 +4646,7 @@
       if (checkoutSessionInFlight && zeroDue && pmVal === 'credit_card') {
         btnMain.textContent = 'Saving…';
       } else if (pmVal === 'step_up') {
-        btnMain.textContent = 'Reserve Spot';
+        btnMain.textContent = 'Hold Spot';
       } else if (zeroDue) {
         btnMain.textContent = 'Confirm registration ($0)';
       } else {
@@ -4655,7 +4655,7 @@
     }
     if (secureNote) {
       if (pmVal === 'step_up') {
-        secureNote.textContent = 'No card charge — spot reserved pending Step Up funding.';
+        secureNote.textContent = 'No card charge — 24-hour hold pending Step Up funding.';
       } else if (zeroDue) {
         secureNote.textContent = 'No payment due — we save automatically. Tap Confirm if it does not save.';
       } else {
@@ -5638,7 +5638,7 @@
       if (msgOk) {
         msgOk.className = 'msg ok';
         msgOk.textContent =
-          'Spot reserved. Check your email — complete Step Up for Students funding to IMA Impact Martial Athletics to finalize registration.';
+          'Spot on hold for 24 hours. Check your email — complete Step Up for Students funding to IMA Impact Martial Athletics; staff will confirm when allocation is received.';
       }
       try {
         persistEnrollLocal();

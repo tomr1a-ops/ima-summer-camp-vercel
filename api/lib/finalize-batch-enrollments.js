@@ -152,6 +152,7 @@ async function finalizeStepUpReservationBatch(sb, batchId, options) {
   const wr = weekRate(testPricing);
   const modes = bookingModes || [];
   const centsArr = Array.isArray(campLineCents) ? campLineCents : [];
+  const holdExpiresIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
   let didAny = false;
   for (let i = 0; i < rows.length; i++) {
@@ -177,6 +178,7 @@ async function finalizeStepUpReservationBatch(sb, batchId, options) {
         price_paid: pricePaid,
         registration_fee_paid: false,
         guest_email: row.parent_id ? null : customerEmail || null,
+        step_up_hold_expires_at: holdExpiresIso,
       })
       .eq('id', row.id)
       .eq('status', ENROLLMENT_STATUS.PENDING)

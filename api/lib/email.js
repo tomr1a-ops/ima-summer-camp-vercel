@@ -275,7 +275,7 @@ async function sendCampPaymentEmails(stripe, session, result) {
 }
 
 const STEP_UP_PARENT_BODY =
-  'We have reserved your child\'s spot. You must visit the Step Up for Students website and allocate funds to IMA Impact Martial Athletics to complete payment. Once Step Up processes your allocation, your registration will be finalized.';
+  'We have put your child\'s spot on hold for 24 hours. You must visit the Step Up for Students website and allocate funds to IMA Impact Martial Athletics before the hold expires. If the hold expires without funding, the spot will be released. Once Step Up processes your allocation, staff will mark your registration as paid and you will receive a final confirmation email.';
 
 /**
  * Parent + staff email after Step Up path (no Stripe).
@@ -344,7 +344,7 @@ async function sendStepUpReservationEmails(sb, { batchId, parentEmail, parentNam
   ${testPricing ? '<p><em>Test pricing was on — staff only.</em></p>' : ''}
 </div>`;
 
-  const subject = '🥊 IMA Summer Camp — Spot reserved (Step Up for Students)';
+  const subject = '🥊 IMA Summer Camp — Spot on hold 24h (Step Up for Students)';
 
   if (parentEmail && String(parentEmail).trim()) {
     const r = await sendResend({
@@ -358,9 +358,9 @@ async function sendStepUpReservationEmails(sb, { batchId, parentEmail, parentNam
     console.warn('[email] step-up parent skipped (no email)');
   }
 
-  const adminSubject = `🥊 Step Up reservation — ${list.length} row(s) — ${parentEmail || 'no email'}`;
+  const adminSubject = `🥊 Step Up hold (24h) — ${list.length} row(s) — ${parentEmail || 'no email'}`;
   const adminText = [
-    'Step Up for Students — spot reserved (pending funding).',
+    'Step Up for Students — spot on hold for 24 hours (pending Step Up funding).',
     '',
     `Parent: ${parentName || 'n/a'} <${parentEmail || 'n/a'}>`,
     `Batch: ${bid}`,
@@ -373,7 +373,7 @@ async function sendStepUpReservationEmails(sb, { batchId, parentEmail, parentNam
     .filter(Boolean)
     .join('\n');
 
-  const adminHtml = `<p><strong>Step Up reservation</strong> (pending Step Up funding)</p>
+  const adminHtml = `<p><strong>Step Up hold</strong> (24 hours — pending Step Up funding)</p>
   <p>Parent: ${esc(parentName || 'n/a')} &lt;${esc(parentEmail || 'n/a')}&gt;</p>
   <p>Batch: ${esc(bid)}</p>
   <ul>${list
@@ -390,10 +390,80 @@ async function sendStepUpReservationEmails(sb, { batchId, parentEmail, parentNam
   return { ok: true };
 }
 
+/**
+ * Parent email after admin marks a pending_step_up enrollment as confirmed (paid via Step Up).
+ * @param {import('@supabase/supabase-js').SupabaseClient} sb
+ */
+async function sendStepUpMarkedPaidEmail(sb, enrollmentId) {
+  const eid = enrollmentId && String(enrollmentId).trim();
+  if (!eid) return { ok: false, reason: 'no_id' };
+
+  const { data: row, error } = await sb
+    .from('enrollments')
+    .select('id, parent_id, guest_email, campers(first_name,last_name), weeks(label)')
+    .eq('id', eid)
+    .maybeSingle();
+  if (error) throw error;
+  if (!row) return { ok: false, reason: 'not_found' };
+
+  const c = row.campers || {};
+  const w = row.weeks || {};
+  const camperName = `${c.first_name || ''} ${c.last_name || ''}`.trim() || 'Your camper';
+  const weekLabel = w.label || 'Camp week';
+
+  let parentEmail = row.guest_email && String(row.guest_email).trim();
+  let greet = 'there';
+  if (row.parent_id) {
+    const { data: prof } = await sb.from('profiles').select('email, full_name').eq('id', row.parent_id).maybeSingle();
+    if (prof && prof.email) parentEmail = String(prof.email).trim();
+    if (prof && prof.full_name) greet = String(prof.full_name).trim();
+  }
+
+  const esc = escapeHtml;
+  const textBody = [
+    `Hi ${greet},`,
+    '',
+    'Your Step Up for Students allocation has been confirmed on our side. Registration is now finalized.',
+    '',
+    `${camperName} — ${weekLabel}`,
+    '',
+    'Manage or review: ' + MANAGE_BOOKINGS_URL,
+    '',
+    'Questions? tom@imaimpact.com',
+    '',
+    '— Impact Martial Athletics',
+  ].join('\n');
+
+  const htmlBody = `<div style="font-family:system-ui,sans-serif;font-size:15px;line-height:1.5;color:#111">
+  <p>Hi ${esc(greet)},</p>
+  <p>Your <strong>Step Up for Students</strong> allocation has been confirmed on our side. Registration is now finalized.</p>
+  <p><strong>${esc(camperName)}</strong> — ${esc(weekLabel)}</p>
+  <p><a href="${esc(MANAGE_BOOKINGS_URL)}">Open camp registration</a></p>
+  <p>Questions? <a href="mailto:tom@imaimpact.com">tom@imaimpact.com</a></p>
+  <p>— <strong>Impact Martial Athletics</strong></p>
+</div>`;
+
+  const subject = '🥊 IMA Summer Camp — Registration confirmed (Step Up)';
+
+  if (parentEmail) {
+    const r = await sendResend({
+      to: parentEmail,
+      subject,
+      text: textBody,
+      html: htmlBody,
+    });
+    console.log('[email] step-up marked paid', r.ok ? 'ok' : 'fail', parentEmail, r.error || r.id || '');
+    return { ok: true, emailed: r.ok };
+  }
+  console.warn('[email] step-up marked paid skipped (no parent email)');
+  return { ok: true, emailed: false };
+}
+
 module.exports = {
   sendResend,
   sendCampPaymentEmails,
   sendStepUpReservationEmails,
+  sendStepUpMarkedPaidEmail,
   sendResendToStaff,
   resolveResendApiKey,
   CAMP_STAFF_NOTIFY,

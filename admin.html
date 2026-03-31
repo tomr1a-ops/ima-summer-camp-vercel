@@ -81,6 +81,29 @@
       justify-content: space-between;
       gap: 8px;
     }
+    .btn-step-paid {
+      background: #15803d;
+      color: #fff;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      margin-right: 6px;
+    }
+    .btn-step-paid:hover { filter: brightness(1.08); }
+    .btn-step-release {
+      background: #b91c1c;
+      color: #fff;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .btn-step-release:hover { filter: brightness(1.08); }
     @media (max-width: 720px) {
       .admin-layout { flex-direction: column; }
       .admin-sidebar {
@@ -155,6 +178,27 @@
           <button type="button" class="btn-ghost" id="week-people-close">Close</button>
         </div>
         <div class="admin-modal-body" id="week-people-body"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">Step Up holds <span class="panel-hint">· pending_step_up; counts toward capacity until Mark as Paid, Release Hold, or 24h expiry (cron)</span></div>
+      <div class="panel-body table-wrap">
+        <table class="data" id="tbl-step-up-holds">
+          <thead>
+            <tr>
+              <th>Parent</th>
+              <th>Camper</th>
+              <th>Week</th>
+              <th>Schedule</th>
+              <th>Hold started</th>
+              <th>Hours left</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty-hint" id="step-up-holds-empty" hidden>No active Step Up holds.</p>
       </div>
     </div>
 
@@ -334,7 +378,7 @@
       async function loadEnrollments(sb) {
         const { data, error } = await sb
           .from('enrollments')
-          .select('id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at, campers(first_name,last_name), weeks(label,week_number)')
+          .select('id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at,step_up_hold_expires_at, campers(first_name,last_name), weeks(label,week_number)')
           .order('created_at', { ascending: false });
         if (error) {
           const { data: d2, error: e2 } = await sb.from('enrollments').select('*').order('created_at', { ascending: false });
@@ -643,6 +687,116 @@
         return n + ' day' + (n === 1 ? '' : 's');
       }
 
+      function stepUpHoursRemainingLabel(iso) {
+        if (!iso) return '—';
+        var end = new Date(iso).getTime();
+        var ms = end - Date.now();
+        if (ms <= 0) return '0';
+        var h = ms / (1000 * 60 * 60);
+        return (h < 1 ? '<1' : h.toFixed(1)) + ' h';
+      }
+
+      function renderStepUpHolds(enr, parents) {
+        var holds = (enr || []).filter(function (e) {
+          return e.status === 'pending_step_up';
+        });
+        var body = document.querySelector('#tbl-step-up-holds tbody');
+        var empty = document.getElementById('step-up-holds-empty');
+        var tbl = document.getElementById('tbl-step-up-holds');
+        if (!body || !tbl) return;
+        if (!holds.length) {
+          body.innerHTML = '';
+          if (empty) empty.hidden = false;
+          tbl.style.display = 'none';
+          return;
+        }
+        if (empty) empty.hidden = true;
+        tbl.style.display = '';
+        body.innerHTML = holds
+          .map(function (e) {
+            var c = e.campers || {};
+            var w = e.weeks || {};
+            var pname = parentGuestLabel(e, parents);
+            var cname = escapeHtml((c.first_name || '') + ' ' + (c.last_name || ''));
+            var eid = escapeHtml(String(e.id));
+            var hrs = escapeHtml(stepUpHoursRemainingLabel(e.step_up_hold_expires_at));
+            return (
+              '<tr>' +
+              '<td>' +
+              pname +
+              '</td><td>' +
+              cname +
+              '</td><td>' +
+              escapeHtml(w.label || '') +
+              '</td><td>' +
+              escapeHtml(scheduleLabel(e)) +
+              '</td><td>' +
+              escapeHtml(IMA.formatDate(e.created_at)) +
+              '</td><td>' +
+              hrs +
+              '</td><td>' +
+              '<button type="button" class="btn-step-paid" data-step-paid="' +
+              eid +
+              '">Mark as Paid</button>' +
+              '<button type="button" class="btn-step-release" data-step-release="' +
+              eid +
+              '">Release Hold</button></td></tr>'
+            );
+          })
+          .join('');
+      }
+
+      var stepUpHoldsActionsBound = false;
+
+      function bindStepUpHoldsActions(sb) {
+        if (stepUpHoldsActionsBound) return;
+        var tbl = document.getElementById('tbl-step-up-holds');
+        if (!tbl) return;
+        stepUpHoldsActionsBound = true;
+        tbl.addEventListener('click', function (ev) {
+          var paidBtn = ev.target.closest('[data-step-paid]');
+          var relBtn = ev.target.closest('[data-step-release]');
+          if (!paidBtn && !relBtn) return;
+          var trigger = paidBtn || relBtn;
+          var id = paidBtn ? paidBtn.getAttribute('data-step-paid') : relBtn.getAttribute('data-step-release');
+          var action = paidBtn ? 'mark_paid' : 'release_hold';
+          if (!id) return;
+          var tr = trigger.closest('tr');
+          var buttons = tr ? Array.prototype.slice.call(tr.querySelectorAll('button')) : [trigger];
+          if (buttons.some(function (b) { return b.disabled; })) return;
+          buttons.forEach(function (b) {
+            b.disabled = true;
+          });
+          (async function () {
+            try {
+              var tok = await IMA.refreshSessionForApi();
+              var at = tok && tok.accessToken ? tok.accessToken : null;
+              if (!at) throw new Error('Not signed in');
+              var res = await fetch('/api/admin-step-up-enrollment', {
+                method: 'POST',
+                headers: {
+                  Authorization: 'Bearer ' + at,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ enrollmentId: id, action: action }),
+              });
+              var j = await res.json().catch(function () {
+                return {};
+              });
+              if (!res.ok) throw new Error(j.error || res.statusText || 'Request failed');
+              showBanner(action === 'mark_paid' ? 'Marked as paid; parent emailed.' : 'Hold released.', true);
+              await refreshAdminData(sb, {});
+            } catch (err) {
+              showBanner(err.message || String(err), false);
+            } finally {
+              buttons.forEach(function (b) {
+                b.disabled = false;
+              });
+            }
+          })();
+        });
+      }
+
       function filterEnrollmentsForTable(enr) {
         const flt = document.getElementById('flt-week').value;
         const st = document.getElementById('flt-status') && document.getElementById('flt-status').value;
@@ -795,6 +949,7 @@
         renderWeekManage(sb, state.weeks, peakByWeekId);
         fillWeekFilterSelect();
         renderTable(state.enr, state.parents);
+        renderStepUpHolds(state.enr, state.parents);
       }
 
       var adminRealtimeBound = false;
@@ -851,6 +1006,7 @@
         const sb = await IMA.getSupabase();
 
         await refreshAdminData(sb, { initial: true });
+        bindStepUpHoldsActions(sb);
         bindRosterModalUiOnce();
         var scheduleAdminRefresh = createAdminDebouncedRefresh(sb);
         subscribeAdminCampRealtime(sb, scheduleAdminRefresh);

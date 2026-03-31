@@ -4,7 +4,8 @@
     { "source": "/admin/backup", "destination": "/admin/backup.html" }
   ],
   "crons": [
-    { "path": "/api/backup-cron", "schedule": "0 * * * *" }
+    { "path": "/api/backup-cron", "schedule": "0 * * * *" },
+    { "path": "/api/step-up-hold-expire", "schedule": "*/15 * * * *" }
   ],
   "headers": [
     {
@@ -170,6 +171,13 @@
     },
     {
       "source": "/api/backup-cron",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, private" },
+        { "key": "Pragma", "value": "no-cache" }
+      ]
+    },
+    {
+      "source": "/api/step-up-hold-expire",
       "headers": [
         { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate, private" },
         { "key": "Pragma", "value": "no-cache" }
