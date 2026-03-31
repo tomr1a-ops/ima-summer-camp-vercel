@@ -4604,16 +4604,18 @@
     }
 
     if (!bookings.length && shirtTotal <= 0) {
-      empty.textContent = fwConflictMsgs.length
-        ? fwConflictMsgs[0]
-        : 'Choose at least one full week or individual days for your selections — or select an extra T-shirt above.';
-      empty.style.display = '';
-      lines.style.display = 'none';
-      totalRow.style.display = 'none';
       if (fwConflictMsgs.length) {
+        empty.textContent = fwConflictMsgs[0];
+        empty.style.display = '';
         msg.className = 'msg error';
         msg.textContent = fwConflictMsgs[0];
+      } else {
+        empty.textContent = '';
+        empty.style.display = 'none';
+        msg.textContent = '';
       }
+      lines.style.display = 'none';
+      totalRow.style.display = 'none';
       btn.disabled = true;
       hideCampAgreementSection();
       persistEnrollLocal();
