@@ -1,5 +1,6 @@
 const { dayRate, weekRate, registrationFee } = require('./pricing');
 const { subtractFamilyCampLedgerCents } = require('./family-camp-ledger');
+const { ENROLLMENT_STATUS } = require('./enrollment-status');
 
 /**
  * After payment (Stripe) or $0 prepaid checkout: confirm pending rows, bump day counts,
@@ -40,7 +41,7 @@ async function finalizePendingEnrollmentBatch(sb, batchId, options) {
   let didConfirmAny = false;
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    if (row.status === 'confirmed') {
+    if (row.status === ENROLLMENT_STATUS.CONFIRMED) {
       continue;
     }
 
@@ -57,14 +58,14 @@ async function finalizePendingEnrollmentBatch(sb, batchId, options) {
     const { data: updated, error: ue } = await sb
       .from('enrollments')
       .update({
-        status: 'confirmed',
+        status: ENROLLMENT_STATUS.CONFIRMED,
         stripe_session_id: stripeSessionId || null,
         price_paid: pricePaid,
         registration_fee_paid: false,
         guest_email: row.parent_id ? null : customerEmail || null,
       })
       .eq('id', row.id)
-      .eq('status', 'pending')
+      .eq('status', ENROLLMENT_STATUS.PENDING)
       .select('id')
       .maybeSingle();
 
@@ -155,7 +156,7 @@ async function finalizeStepUpReservationBatch(sb, batchId, options) {
   let didAny = false;
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    if (row.status === 'confirmed' || row.status === 'pending_step_up') {
+    if (row.status === ENROLLMENT_STATUS.CONFIRMED || row.status === ENROLLMENT_STATUS.PENDING_STEP_UP) {
       continue;
     }
 
@@ -171,14 +172,14 @@ async function finalizeStepUpReservationBatch(sb, batchId, options) {
     const { data: updated, error: ue } = await sb
       .from('enrollments')
       .update({
-        status: 'pending_step_up',
+        status: ENROLLMENT_STATUS.PENDING_STEP_UP,
         stripe_session_id: null,
         price_paid: pricePaid,
         registration_fee_paid: false,
         guest_email: row.parent_id ? null : customerEmail || null,
       })
       .eq('id', row.id)
-      .eq('status', 'pending')
+      .eq('status', ENROLLMENT_STATUS.PENDING)
       .select('id')
       .maybeSingle();
 

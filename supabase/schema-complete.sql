@@ -6,7 +6,7 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 CREATE TYPE public.user_role AS ENUM ('admin', 'parent');
-CREATE TYPE public.enrollment_status AS ENUM ('pending', 'confirmed', 'cancelled');
+CREATE TYPE public.enrollment_status AS ENUM ('pending', 'confirmed', 'cancelled', 'pending_step_up');
 
 -- -----------------------------------------------------------------------------
 -- Tables

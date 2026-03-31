@@ -4,6 +4,7 @@
  * Authorization: Bearer <CRON_SECRET> when CRON_SECRET is configured.
  */
 const { serviceClient } = require('./lib/supabase');
+const { ENROLLMENT_STATUS } = require('./lib/enrollment-status');
 
 module.exports = async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
@@ -27,7 +28,7 @@ module.exports = async (req, res) => {
     const { data: pending, error: fe } = await sb
       .from('enrollments')
       .select('id')
-      .eq('status', 'pending')
+      .eq('status', ENROLLMENT_STATUS.PENDING)
       .is('stripe_session_id', null)
       .lt('created_at', cutoff);
 

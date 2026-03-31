@@ -22,6 +22,7 @@ const {
   insertAgreementRecord,
   sendAgreementAcknowledgmentEmailOnce,
 } = require('./lib/agreement-record');
+const { ENROLLMENT_STATUS } = require('./lib/enrollment-status');
 
 function json(res, code, obj) {
   res.statusCode = code;
@@ -520,7 +521,7 @@ module.exports = async (req, res) => {
       day_ids: b.dayIds,
       price_paid: 0,
       registration_fee_paid: false,
-      status: 'pending',
+      status: ENROLLMENT_STATUS.PENDING,
       checkout_batch_id: batchId,
     }));
     const { error: ie } = await sb.from('enrollments').insert(insertRows);

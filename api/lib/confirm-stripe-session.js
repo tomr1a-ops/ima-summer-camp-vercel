@@ -1,4 +1,5 @@
 const { serviceClient } = require('./supabase');
+const { ENROLLMENT_STATUS } = require('./enrollment-status');
 const { dayRate, weekRate, registrationFee } = require('./pricing');
 const { subtractFamilyCampLedgerCents } = require('./family-camp-ledger');
 
@@ -109,14 +110,14 @@ async function confirmStripeSession(stripe, session) {
     const { data: updated, error: ue } = await sb
       .from('enrollments')
       .update({
-        status: 'confirmed',
+        status: ENROLLMENT_STATUS.CONFIRMED,
         stripe_session_id: session.id,
         price_paid: pricePaid,
         registration_fee_paid: rowGetsRegFlag,
         guest_email: row.parent_id ? null : customerEmail || null,
       })
       .eq('id', row.id)
-      .eq('status', 'pending')
+      .eq('status', ENROLLMENT_STATUS.PENDING)
       .select('id')
       .maybeSingle();
 

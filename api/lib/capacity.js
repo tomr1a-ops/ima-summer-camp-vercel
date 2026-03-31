@@ -2,6 +2,8 @@
  * Shared week/day capacity checks for checkout and enrollment updates.
  */
 
+const { CAPACITY_STATUSES, OVERLAP_BLOCK_STATUSES } = require('./enrollment-status');
+
 /** Case-insensitive UUID/string compare (client may send different casing than Postgres). */
 function normUuid(v) {
   if (v == null) return '';
@@ -20,7 +22,7 @@ async function countDistinctCampersInWeek(sb, weekId, excludeEnrollmentId) {
     .from('enrollments')
     .select('camper_id')
     .eq('week_id', weekId)
-    .in('status', ['pending', 'confirmed', 'pending_step_up']);
+    .in('status', CAPACITY_STATUSES);
   if (excludeEnrollmentId) q = q.neq('id', excludeEnrollmentId);
   const { data, error } = await q;
   if (error) throw error;
@@ -33,7 +35,7 @@ async function camperHasEnrollmentInWeek(sb, weekId, camperId, excludeEnrollment
     .select('id')
     .eq('week_id', weekId)
     .eq('camper_id', camperId)
-    .in('status', ['pending', 'confirmed', 'pending_step_up']);
+    .in('status', CAPACITY_STATUSES);
   if (excludeEnrollmentId) q = q.neq('id', excludeEnrollmentId);
   const { data, error } = await q.limit(1);
   if (error) throw error;
@@ -61,7 +63,7 @@ async function firstConfirmedOverlapDay(sb, weekId, camperId, proposedDayIds, ex
     .select('id,day_ids')
     .eq('week_id', weekId)
     .eq('camper_id', camperId)
-    .in('status', ['confirmed', 'pending_step_up']);
+    .in('status', OVERLAP_BLOCK_STATUSES);
   if (excludeEnrollmentId) q = q.neq('id', excludeEnrollmentId);
   const { data, error } = await q;
   if (error) throw error;

@@ -9,6 +9,7 @@ const {
 } = require('./lib/capacity');
 const { campCreditCentsForConfirmedRow, addFamilyCampLedgerCents } = require('./lib/family-camp-ledger');
 const { enrollmentQualifiesForCampCredit } = require('./lib/enrollment-credit-eligibility');
+const { ENROLLMENT_STATUS } = require('./lib/enrollment-status');
 
 async function readJsonBody(req) {
   if (req.body !== undefined && req.body !== null) {
@@ -127,7 +128,7 @@ module.exports = async (req, res) => {
           camper_id,
           week_id,
           day_ids,
-          status: 'pending',
+          status: ENROLLMENT_STATUS.PENDING,
           price_paid: 0,
           registration_fee_paid: false,
         })
@@ -184,7 +185,7 @@ module.exports = async (req, res) => {
             excludeEnrollmentId: row.id,
             pricingMode,
           });
-        } else if (row.status === 'confirmed' || row.status === 'pending_step_up') {
+        } else if (row.status === ENROLLMENT_STATUS.CONFIRMED || row.status === ENROLLMENT_STATUS.PENDING_STEP_UP) {
           if (weekChanged) {
             await validateBooking(sb, {
               weekId: newWeekId,
@@ -206,7 +207,7 @@ module.exports = async (req, res) => {
       const { error: ue } = await sb.from('enrollments').update(patch).eq('id', id);
       if (ue) throw ue;
 
-      if (row.status === 'confirmed' || row.status === 'pending_step_up') {
+      if (row.status === ENROLLMENT_STATUS.CONFIRMED || row.status === ENROLLMENT_STATUS.PENDING_STEP_UP) {
         await syncConfirmedDayCounts(sb, oldDayIds, newDayIds);
       }
 
@@ -241,7 +242,7 @@ module.exports = async (req, res) => {
         res.statusCode = 200;
         return res.end(JSON.stringify({ ok: true, already: true }));
       }
-      if (row.status === 'confirmed' || row.status === 'pending_step_up') {
+      if (row.status === ENROLLMENT_STATUS.CONFIRMED || row.status === ENROLLMENT_STATUS.PENDING_STEP_UP) {
         await syncConfirmedDayCounts(sb, row.day_ids || [], []);
         if (enrollmentQualifiesForCampCredit(row)) {
           try {
@@ -252,7 +253,10 @@ module.exports = async (req, res) => {
           }
         }
       }
-      const { error: ue } = await sb.from('enrollments').update({ status: 'cancelled' }).eq('id', enrollmentId);
+      const { error: ue } = await sb
+        .from('enrollments')
+        .update({ status: ENROLLMENT_STATUS.CANCELLED })
+        .eq('id', enrollmentId);
       if (ue) throw ue;
       res.statusCode = 200;
       return res.end(JSON.stringify({ ok: true }));
