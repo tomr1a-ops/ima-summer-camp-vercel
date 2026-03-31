@@ -88,11 +88,13 @@ module.exports = async (req, res) => {
           regAlreadyPaid = !!(otherConf && otherConf.length);
         }
       }
-      const regDollars = regAlreadyPaid ? 0 : registrationFee(false);
+      /** Reg is part of this Step Up hold only when finalize marked the row (waived parents: flag stays false). */
+      const regInHold = row.registration_fee_paid === true;
+      const regDollars = regAlreadyPaid || !regInHold ? 0 : registrationFee(false);
       const prevPrice = Number(row.price_paid) || 0;
       const nextPrice = prevPrice + regDollars;
       /** Child has (or just received) one-time reg fee — flag row so admin + previews never look “unpaid”. */
-      const registrationSatisfiedOnRow = regAlreadyPaid || regDollars > 0;
+      const registrationSatisfiedOnRow = regAlreadyPaid || regDollars > 0 || !regInHold;
 
       const updateFields = {
         status: ENROLLMENT_STATUS.CONFIRMED,

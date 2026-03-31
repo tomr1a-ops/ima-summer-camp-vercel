@@ -99,7 +99,12 @@ module.exports = async (req, res) => {
       const camperRegPaid = camper.registration_fee_paid === true;
       const cid = String(r.camper_id || '');
       let regDollars = 0;
-      if (!camperRegPaid && cid) {
+      /**
+       * Match parent `pendingStepUpAmountOwedDollars`: add reg only when this hold batch marked
+       * registration as part of Step Up billing (`enrollments.registration_fee_paid`), not when
+       * parent waived (IMA member) — then the flag stays false and camp-only is correct.
+       */
+      if (!camperRegPaid && cid && r.registration_fee_paid === true) {
         const first = firstHoldRowIdByCamper.get(cid);
         if (first && first.id === String(r.id)) {
           regDollars = regFeeDollars;

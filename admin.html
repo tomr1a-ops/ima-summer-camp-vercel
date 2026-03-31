@@ -806,7 +806,11 @@
         return String((e && e.status) || '').trim();
       }
 
-      /** Match Step Up holds table: camp stored in price_paid + registration fee until row is paid (confirmed). */
+      /**
+       * Match parent `pendingStepUpAmountOwedDollars` / index.html: for pending_step_up,
+       * `enrollments.registration_fee_paid` means registration is included in the Step Up hold
+       * (still owed). When parent waived (IMA member), finalize leaves it false — show camp only.
+       */
       var ADMIN_STEP_UP_REG_FEE = 65;
 
       function adminEnrollmentPriceDisplayed(e) {
@@ -814,9 +818,9 @@
         var camp = Number(e.price_paid);
         if (!Number.isFinite(camp) || camp < 0) camp = 0;
         if (enrollmentStatusKey(e) !== 'pending_step_up') return camp;
-        if (e.registration_fee_paid) return camp;
         var c = e.campers || {};
         if (c.registration_fee_paid) return camp;
+        if (!e.registration_fee_paid) return camp;
         return camp + ADMIN_STEP_UP_REG_FEE;
       }
 
