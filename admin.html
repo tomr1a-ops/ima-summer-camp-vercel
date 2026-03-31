@@ -748,7 +748,26 @@
                 return {};
               });
               if (!res.ok) throw new Error(j.error || res.statusText || 'Request failed');
-              showBanner(action === 'mark_paid' ? 'Marked as paid; parent emailed.' : 'Hold released.', true);
+              var wantStatus = action === 'mark_paid' ? 'confirmed' : 'cancelled';
+              state.stepUpHolds = (state.stepUpHolds || []).filter(function (e) {
+                return String(e.id) !== String(id);
+              });
+              state.enr = (state.enr || []).map(function (e) {
+                if (String(e.id) !== String(id)) return e;
+                return Object.assign({}, e, { status: wantStatus, step_up_hold_expires_at: null });
+              });
+              renderTable(state.enr, state.parents);
+              renderStepUpHolds(state.stepUpHolds, state.parents);
+              closeWeekPeopleModal();
+              var msg =
+                action === 'mark_paid'
+                  ? j.already
+                    ? 'Already marked paid.'
+                    : 'Marked as paid; parent emailed.'
+                  : j.already
+                    ? 'Hold was already released.'
+                    : 'Hold released.';
+              showBanner(msg, true);
               await refreshAdminData(sb, {});
             } catch (err) {
               showBanner(err.message || String(err), false);
@@ -761,13 +780,18 @@
         });
       }
 
+      function enrollmentStatusKey(e) {
+        return String((e && e.status) || '').trim();
+      }
+
       function filterEnrollmentsForTable(enr) {
         const flt = document.getElementById('flt-week').value;
         const st = document.getElementById('flt-status') && document.getElementById('flt-status').value;
         return enr.filter(function (e) {
           if (flt && e.week_id !== flt) return false;
-          if (st === 'active') return e.status === 'confirmed' || e.status === 'pending' || e.status === 'pending_step_up';
-          if (st === 'cancelled') return e.status === 'cancelled';
+          var s = enrollmentStatusKey(e);
+          if (st === 'active') return s === 'confirmed' || s === 'pending' || s === 'pending_step_up';
+          if (st === 'cancelled') return s === 'cancelled';
           return true;
         });
       }
@@ -838,20 +862,23 @@
        * but profiles.role is still parent — browser RLS would hide other enrollments and skew week counts.
        */
       async function fetchAdminCampSnapshot() {
-        try {
-          var tok = await IMA.refreshSessionForApi();
-          var at = tok && tok.accessToken ? tok.accessToken : null;
-          if (!at) return null;
-          var res = await fetch('/api/admin-camp-snapshot', {
-            method: 'GET',
-            headers: { Authorization: 'Bearer ' + at },
-            cache: 'no-store',
-          });
-          if (!res.ok) return null;
-          return await res.json();
-        } catch (e) {
-          return null;
+        for (var attempt = 0; attempt < 2; attempt++) {
+          try {
+            var tok = await IMA.refreshSessionForApi();
+            var at = tok && tok.accessToken ? tok.accessToken : null;
+            if (!at) return null;
+            var res = await fetch('/api/admin-camp-snapshot', {
+              method: 'GET',
+              headers: { Authorization: 'Bearer ' + at },
+              cache: 'no-store',
+            });
+            if (!res.ok) continue;
+            return await res.json();
+          } catch (e) {
+            if (attempt) return null;
+          }
         }
+        return null;
       }
 
       async function fetchAdminStepUpHoldsRows() {
@@ -881,12 +908,17 @@
         state.weeks = await loadWeeks(sb);
         var snap = await fetchAdminCampSnapshot();
         var peakByWeekId;
-        if (snap && snap.weekCapacity && Array.isArray(snap.enrollments)) {
+        // Use snapshot enrollments whenever present. (Do not require weekCapacity: allowlist admins
+        // fall back to RLS-limited loadEnrollments if this branch is skipped, which leaves stale rows.)
+        if (snap && Array.isArray(snap.enrollments)) {
           state.enr = snap.enrollments;
           await hydrateCampersWeeks(sb, state.enr);
           state.parents =
             snap.parentsById && typeof snap.parentsById === 'object' ? Object.assign({}, snap.parentsById) : {};
-          peakByWeekId = snap.weekCapacity;
+          peakByWeekId =
+            snap.weekCapacity && typeof snap.weekCapacity === 'object' && !Array.isArray(snap.weekCapacity)
+              ? snap.weekCapacity
+              : await loadWeekPeakForAdminCapacity(sb);
           applyOverviewFromServer(snap.overview);
         } else {
           state.enr = await loadEnrollments(sb);
