@@ -4511,9 +4511,7 @@
     if (!bookings.length && shirtTotal <= 0) {
       empty.textContent = fwConflictMsgs.length
         ? fwConflictMsgs[0]
-        : confirmedEnrollmentsCache && confirmedEnrollmentsCache.length
-          ? 'Your paid registrations are in Your camp schedule above. Add more weeks or days below, then checkout.'
-          : 'Choose at least one full week or individual days for your selections — or select an extra T-shirt above.';
+        : 'Choose at least one full week or individual days for your selections — or select an extra T-shirt above.';
       empty.style.display = '';
       lines.style.display = 'none';
       totalRow.style.display = 'none';
