@@ -16,6 +16,12 @@ const {
 const { finalizePendingEnrollmentBatch } = require('./lib/finalize-batch-enrollments');
 const { normCamperKey, normalizeIncomingBookings } = require('./lib/normalize-checkout-bookings');
 const { isCampRegistrationFeePaid } = require('./lib/camper-registration-fee');
+const {
+  AGREEMENT_VERSION,
+  clientIpFromRequest,
+  insertAgreementRecord,
+  sendAgreementAcknowledgmentEmailOnce,
+} = require('./lib/agreement-record');
 
 function json(res, code, obj) {
   res.statusCode = code;
@@ -132,7 +138,8 @@ module.exports = async (req, res) => {
     return failCheckout(res, 400, 'INVALID_JSON', 'Invalid JSON', parseErr && parseErr.message ? parseErr.message : '');
   }
 
-  const { testPricing, imaMember, registrationFeeForCamper, extraShirtByCamper } = body;
+  const { testPricing, imaMember, registrationFeeForCamper, extraShirtByCamper, agreementAccepted, agreementVersion } =
+    body;
   const rawBookings = Array.isArray(body.bookings) ? body.bookings : [];
   let bookingsArray = normalizeIncomingBookings(rawBookings);
   if (rawBookings.length > 0 && bookingsArray.length === 0) {
@@ -169,6 +176,23 @@ module.exports = async (req, res) => {
       'EMPTY_CART',
       'Add camp weeks or an extra T-shirt to checkout.',
       { hadBookingsKey: Object.prototype.hasOwnProperty.call(body, 'bookings'), bookingsType: typeof body.bookings }
+    );
+  }
+
+  if (agreementAccepted !== true) {
+    return failCheckout(
+      res,
+      400,
+      'AGREEMENT_REQUIRED',
+      'Please read and confirm the agreement before continuing.'
+    );
+  }
+  if (String(agreementVersion || '') !== AGREEMENT_VERSION) {
+    return failCheckout(
+      res,
+      400,
+      'AGREEMENT_VERSION',
+      'Please refresh the page and accept the current camp agreement.'
     );
   }
 
@@ -475,6 +499,32 @@ module.exports = async (req, res) => {
     }
   }
 
+  let agreementRecordId = null;
+  try {
+    const rec = await insertAgreementRecord(sb, {
+      parentId,
+      parentName: (profile && profile.full_name) || '',
+      email: (profile && profile.email) || (user.email || ''),
+      ipAddress: clientIpFromRequest(req),
+      camperIds: camperIdsToVerify,
+    });
+    agreementRecordId = rec.id;
+  } catch (arErr) {
+    console.error('[create-checkout-session] agreement record', arErr);
+    if (bookingsArray.length) {
+      try {
+        await sb.from('enrollments').delete().eq('checkout_batch_id', batchId);
+      } catch (delE) {}
+    }
+    return failCheckout(
+      res,
+      500,
+      'AGREEMENT_SAVE',
+      'Could not save agreement acceptance. Try again.',
+      arErr && arErr.message
+    );
+  }
+
   const totalDueCents = campCentsTotal + regCentsTotal + shirtCentsTotal;
 
   if (!line_items.length) {
@@ -499,6 +549,17 @@ module.exports = async (req, res) => {
           await sb.from('enrollments').delete().eq('checkout_batch_id', batchId);
         } catch (delE) {}
         return failCheckout(res, 500, 'FINALIZE_BATCH', fz.message || 'Could not complete registration', '');
+      }
+      if (agreementRecordId) {
+        try {
+          await sendAgreementAcknowledgmentEmailOnce(
+            sb,
+            agreementRecordId,
+            (profile && profile.email) || user.email || ''
+          );
+        } catch (ackE) {
+          console.error('[create-checkout-session] agreement ack email', ackE && ackE.message);
+        }
       }
       return json(res, 200, {
         sessionId: null,
@@ -549,6 +610,7 @@ module.exports = async (req, res) => {
         extra_shirt_cents: String(shirtCentsTotal),
         extra_shirt_camper_ids: shirtCamperIds.join(','),
         ledger_consume_cents: String(ledgerConsumedCents || 0),
+        agreement_record_id: agreementRecordId ? String(agreementRecordId) : '',
       },
     };
     if (emailForStripe) sessionParams.customer_email = emailForStripe;

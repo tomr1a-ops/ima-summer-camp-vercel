@@ -672,6 +672,67 @@
 
   #checkout-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
 
+  .camp-agreement-section {
+    margin: 16px 0 12px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+  .camp-agreement-heading {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--cyan);
+    margin-bottom: 8px;
+  }
+  .camp-agreement-scroll-hint {
+    font-size: 11px;
+    color: var(--muted);
+    margin: 0 0 8px;
+  }
+  .camp-agreement-scroll {
+    height: 400px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    background: rgba(0, 0, 0, 0.35);
+    margin-bottom: 12px;
+  }
+  .camp-agreement-pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: Barlow, system-ui, sans-serif;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #e8e8e8;
+  }
+  .camp-agreement-check-label {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #ddd;
+  }
+  .camp-agreement-check-label input:disabled + span {
+    opacity: 0.45;
+  }
+  .camp-agreement-check-label input {
+    margin-top: 3px;
+    flex-shrink: 0;
+    accent-color: var(--cyan);
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+  }
+  .camp-agreement-check-label input:disabled {
+    cursor: not-allowed;
+  }
+
   .btn-loading { display: none; }
   #checkout-btn.loading .btn-text    { display: none; }
   #checkout-btn.loading .btn-loading { display: inline; }
@@ -1838,6 +1899,23 @@
         <div class="total-label">Total</div>
         <div class="total-amount" id="total-amount">$0</div>
       </div>
+      <div id="camp-agreement-section" class="camp-agreement-section" hidden>
+        <div class="camp-agreement-heading">IMA Summer Camp 2026 — Policies, Terms &amp; Liability Agreement</div>
+        <p class="camp-agreement-scroll-hint">Scroll to the bottom of the box below to enable the confirmation checkbox.</p>
+        <div
+          class="camp-agreement-scroll"
+          id="camp-agreement-scroll"
+          tabindex="0"
+          role="region"
+          aria-label="IMA Summer Camp 2026 agreement text"
+        >
+          <pre class="camp-agreement-pre" id="camp-agreement-pre">Loading agreement…</pre>
+        </div>
+        <label class="camp-agreement-check-label" for="camp-agreement-accept" id="camp-agreement-check-label">
+          <input type="checkbox" id="camp-agreement-accept" autocomplete="off" disabled />
+          <span>I confirm that I have fully read and understood all sections of this IMA Summer Camp 2026 Policies, Terms &amp; Liability Agreement. I am the parent or legal guardian of the enrolled camper. I agree to all terms and conditions set forth in this document on behalf of myself and the camper(s).</span>
+        </label>
+      </div>
       <div id="msg" class="msg"></div>
       <button type="button" id="checkout-btn" disabled>
         <span class="btn-text">Secure Checkout →</span>
@@ -1884,6 +1962,7 @@
 <script>
 (function () {
   const API_CHECKOUT = '/api/create-checkout-session';
+  const CAMP_AGREEMENT_VERSION = '1.0';
   const EARLY = new Date('2026-05-01T00:00:00.000Z');
 
   const LS_STRIPE_TEST_UI = 'ima_stripe_test_ui';
@@ -4183,6 +4262,75 @@
     updateSummaryImmediate();
   }
 
+  var campAgreementScrollUnlocked = false;
+  var campAgreementTextPromise = null;
+
+  function hideCampAgreementSection() {
+    var agreeSection = document.getElementById('camp-agreement-section');
+    var agreeChk = document.getElementById('camp-agreement-accept');
+    var sc = document.getElementById('camp-agreement-scroll');
+    if (agreeSection) agreeSection.hidden = true;
+    if (agreeChk) {
+      agreeChk.checked = false;
+      agreeChk.disabled = true;
+    }
+    if (sc) sc.scrollTop = 0;
+    campAgreementScrollUnlocked = false;
+  }
+
+  function updateCampAgreementScrollGate() {
+    var sc = document.getElementById('camp-agreement-scroll');
+    var agreeChk = document.getElementById('camp-agreement-accept');
+    if (!sc || !agreeChk) return;
+    var threshold = 12;
+    var atBottom = sc.scrollTop + sc.clientHeight >= sc.scrollHeight - threshold;
+    if (atBottom) campAgreementScrollUnlocked = true;
+    if (campAgreementScrollUnlocked) {
+      agreeChk.disabled = false;
+    } else {
+      agreeChk.disabled = true;
+      agreeChk.checked = false;
+    }
+  }
+
+  function ensureCampAgreementTextLoaded() {
+    var pre = document.getElementById('camp-agreement-pre');
+    if (!pre || pre.dataset.loaded === '1') {
+      updateCampAgreementScrollGate();
+      return;
+    }
+    if (campAgreementTextPromise) return;
+    campAgreementTextPromise = fetch('/agreement/camp-2026-v1.txt', { cache: 'no-store' })
+      .then(function (r) {
+        return r.text();
+      })
+      .then(function (t) {
+        if (pre) {
+          pre.textContent = t || 'Agreement text unavailable.';
+          pre.dataset.loaded = '1';
+        }
+        updateCampAgreementScrollGate();
+      })
+      .catch(function () {
+        if (pre) {
+          pre.textContent = 'Could not load agreement. Refresh the page or contact IMA.';
+          pre.dataset.loaded = '1';
+        }
+        updateCampAgreementScrollGate();
+      });
+  }
+
+  function initCampAgreementScrollUnlock() {
+    var sc = document.getElementById('camp-agreement-scroll');
+    var agreeChk = document.getElementById('camp-agreement-accept');
+    if (!sc || !agreeChk || sc.dataset.agreementInit) return;
+    sc.dataset.agreementInit = '1';
+    sc.addEventListener('scroll', updateCampAgreementScrollGate, { passive: true });
+    agreeChk.addEventListener('change', function () {
+      updateSummary();
+    });
+  }
+
   function updateSummaryImmediate() {
     updateEnrollmentGate();
     renderScheduleOverview();
@@ -4237,6 +4385,7 @@
       lines.style.display = 'none';
       totalRow.style.display = 'none';
       btn.disabled = true;
+      hideCampAgreementSection();
       persistEnrollLocal();
       return;
     }
@@ -4248,6 +4397,7 @@
       lines.style.display = 'none';
       totalRow.style.display = 'none';
       btn.disabled = true;
+      hideCampAgreementSection();
       persistEnrollLocal();
       return;
     }
@@ -4266,6 +4416,7 @@
         msg.textContent = fwConflictMsgs[0];
       }
       btn.disabled = true;
+      hideCampAgreementSection();
       persistEnrollLocal();
       return;
     }
@@ -4282,6 +4433,19 @@
     empty.style.display = 'none';
     lines.style.display = '';
     totalRow.style.display = '';
+
+    var agreeSection = document.getElementById('camp-agreement-section');
+    if (agreeSection) {
+      agreeSection.hidden = false;
+      ensureCampAgreementTextLoaded();
+      try {
+        requestAnimationFrame(function () {
+          updateCampAgreementScrollGate();
+        });
+      } catch (eRaf) {
+        updateCampAgreementScrollGate();
+      }
+    }
 
     let html = '';
     creditApplied.lines.forEach(function (row) {
@@ -4407,14 +4571,16 @@
         ? 'No payment due — we save automatically. Tap Confirm if it does not save.'
         : '🔒 Powered by Stripe · Card data stays safe';
     }
+    var agreeChk = document.getElementById('camp-agreement-accept');
+    var agreementOk = !!(agreeChk && agreeChk.checked);
     if (fwConflictMsgs.length) {
       msg.className = 'msg error';
       msg.textContent = fwConflictMsgs[0];
       btn.disabled = true;
     } else if (zeroDue) {
-      btn.disabled = !!checkoutSessionInFlight;
+      btn.disabled = !!checkoutSessionInFlight || !agreementOk;
     } else {
-      btn.disabled = false;
+      btn.disabled = !agreementOk;
     }
     persistEnrollLocal();
     if (session && zeroDue && !fwConflictMsgs.length && !checkoutSessionInFlight) {
@@ -5406,6 +5572,8 @@
         shirtMap[ck] = !!(extraShirtByCamper[ck] || extraShirtByCamper[cid]);
       });
     }
+    var agreeElReq = document.getElementById('camp-agreement-accept');
+    var agreementAcceptedReq = !!(agreeElReq && agreeElReq.checked);
     const body = {
       bookings: bookings,
       testPricing: testPriceMode,
@@ -5415,6 +5583,8 @@
       imaMember: ids.some(function (cid) {
         return !registrationFeeAppliesToCamper(cid);
       }),
+      agreementAccepted: agreementAcceptedReq,
+      agreementVersion: CAMP_AGREEMENT_VERSION,
     };
 
     const res = await fetch(API_CHECKOUT, {
@@ -5448,6 +5618,8 @@
   async function attemptZeroBalanceAutoSave() {
     if (!session || checkoutSessionInFlight) return;
     if (lastSummaryGrandDollars >= 0.01) return;
+    var agreeAuto = document.getElementById('camp-agreement-accept');
+    if (!agreeAuto || !agreeAuto.checked) return;
     var bookingsProbe = collectBookings();
     if (!bookingsProbe.length && !hasShirtCheckoutSelection()) return;
     if (getFullWeekPaidDayConflictMessages().length) return;
@@ -5504,6 +5676,12 @@
         msg.className = 'msg error';
         msg.textContent = t;
       }
+    }
+
+    var agreeElStart = document.getElementById('camp-agreement-accept');
+    if (!agreeElStart || !agreeElStart.checked) {
+      showCheckoutErr('Please read and confirm the agreement before continuing.');
+      return;
     }
 
     if (btn) {
@@ -5651,6 +5829,7 @@
     setEnrollmentType('daily');
   });
   document.getElementById('checkout-btn').addEventListener('click', startCheckout);
+  initCampAgreementScrollUnlock();
 
   /** Camp registration tab / #schedule only after sign-in + ≥1 child. */
   function canUseCampScheduleTab() {

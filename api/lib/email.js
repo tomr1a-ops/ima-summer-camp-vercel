@@ -247,6 +247,18 @@ async function sendCampPaymentEmails(stripe, session, result) {
       staffPaidOk
     );
   }
+
+  const agreementId = meta.agreement_record_id && String(meta.agreement_record_id).trim();
+  if (agreementId && customerEmail) {
+    try {
+      const sbAck = serviceClient();
+      const { sendAgreementAcknowledgmentEmailOnce } = require('./agreement-record');
+      const ack = await sendAgreementAcknowledgmentEmailOnce(sbAck, agreementId, customerEmail);
+      console.log('[email] agreement acknowledgment', ack.sent ? 'sent' : ack.reason || 'skip');
+    } catch (ackErr) {
+      console.error('[email] agreement acknowledgment failed:', ackErr && ackErr.message ? ackErr.message : ackErr);
+    }
+  }
 }
 
 module.exports = {
