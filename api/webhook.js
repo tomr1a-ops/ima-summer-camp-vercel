@@ -1,7 +1,12 @@
 const getRawBody = require('raw-body');
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { confirmStripeSession } = require('./lib/confirm-stripe-session');
 const { sendCampPaymentEmails } = require('./lib/email');
+
+function stripeClient() {
+  const k = String(process.env.STRIPE_SECRET_KEY || '').trim();
+  if (!k) throw new Error('STRIPE_SECRET_KEY not configured');
+  return require('stripe')(k);
+}
 
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
@@ -18,6 +23,7 @@ module.exports = async (req, res) => {
 
   let event;
   try {
+    const stripe = stripeClient();
     const buf = await getRawBody(req, {
       length: req.headers['content-length'],
       limit: '2mb',
@@ -32,6 +38,7 @@ module.exports = async (req, res) => {
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
     try {
+      const stripe = stripeClient();
       const result = await confirmStripeSession(stripe, session);
       if (result.ok) {
         try {

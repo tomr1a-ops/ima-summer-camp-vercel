@@ -1,4 +1,3 @@
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { confirmStripeSession } = require('./lib/confirm-stripe-session');
 const { sendCampPaymentEmails } = require('./lib/email');
 
@@ -43,6 +42,12 @@ module.exports = async (req, res) => {
     return res.end(JSON.stringify({ error: 'sessionId required' }));
   }
   try {
+    const sk = String(process.env.STRIPE_SECRET_KEY || '').trim();
+    if (!sk) {
+      res.statusCode = 503;
+      return res.end(JSON.stringify({ error: 'Stripe is not configured on the server.' }));
+    }
+    const stripe = require('stripe')(sk);
     const session = await stripe.checkout.sessions.retrieve(sessionId, {
       expand: ['customer_details', 'line_items'],
     });

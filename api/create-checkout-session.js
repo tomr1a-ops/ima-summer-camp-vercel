@@ -1,6 +1,4 @@
 const { randomUUID } = require('crypto');
-/** Use Stripe Node SDK default API version (kept in sync with package; avoids mismatched Basil pins). */
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const { serviceClient } = require('./lib/supabase');
 const { getUserFromRequest, upsertParentProfile } = require('./lib/auth');
 const { dayRate, weekRate, registrationFee, extraCampShirt } = require('./lib/pricing');
@@ -30,12 +28,16 @@ function json(res, code, obj) {
 }
 
 /** Log + JSON error body (code helps client / support). */
-function failCheckout(res, httpStatus, code, message, logDetail) {
+function failCheckout(res, httpStatus, code, message, logDetail, extraJson) {
   const detail = logDetail !== undefined ? logDetail : '';
   console.error('[create-checkout-session]', code || 'ERROR', message, detail);
   res.statusCode = httpStatus;
   res.setHeader('Content-Type', 'application/json');
-  res.end(JSON.stringify({ error: message, code: code || 'ERROR' }));
+  const body = { error: message, code: code || 'ERROR' };
+  if (extraJson && typeof extraJson === 'object') {
+    Object.assign(body, extraJson);
+  }
+  res.end(JSON.stringify(body));
 }
 
 /**
@@ -155,6 +157,9 @@ module.exports = async (req, res) => {
     );
   }
 
+  /** Lazy init: top-level `require('stripe')(undefined)` crashes module load on Vercel if env is not injected at import time. */
+  const stripe = require('stripe')(String(process.env.STRIPE_SECRET_KEY).trim());
+
   const { testPricing, imaMember, registrationFeeForCamper, extraShirtByCamper } = body;
   const agreementAccepted =
     body.agreementAccepted === true ||
@@ -257,7 +262,11 @@ module.exports = async (req, res) => {
   try {
     profile = await upsertParentProfile(user, {});
   } catch (pe) {
-    return json(res, pe.statusCode || 500, { error: pe.message });
+    const code = pe && pe.code ? String(pe.code) : 'PROFILE_UPSERT';
+    return json(res, pe.statusCode || 500, {
+      error: pe.message || 'Profile update failed',
+      code,
+    });
   }
   parentId = user.id;
   for (const b of bookingsArray) {
@@ -795,7 +804,21 @@ module.exports = async (req, res) => {
     } catch (delErr) {
       console.error('[create-checkout-session] rollback delete failed', delErr);
     }
-    return failCheckout(res, 500, 'STRIPE_ERROR', err && err.message ? err.message : String(err));
+    const stripeExtra = {};
+    if (err && typeof err === 'object') {
+      if (err.code != null) stripeExtra.stripeCode = String(err.code);
+      if (err.type != null) stripeExtra.stripeType = String(err.type);
+      if (err.requestId != null) stripeExtra.stripeRequestId = String(err.requestId);
+      if (err.param != null) stripeExtra.stripeParam = String(err.param);
+    }
+    return failCheckout(
+      res,
+      500,
+      'STRIPE_ERROR',
+      err && err.message ? err.message : String(err),
+      '',
+      stripeExtra
+    );
   }
 
   } catch (fatal) {

@@ -5712,6 +5712,8 @@
     if (!res.ok) {
       var errParts = [];
       if (data && data.code) errParts.push(String(data.code));
+      if (data && data.stripeCode) errParts.push('Stripe ' + String(data.stripeCode));
+      if (data && data.stripeType) errParts.push(String(data.stripeType));
       if (data && data.error) errParts.push(String(data.error));
       var errMsg =
         errParts.length > 0
