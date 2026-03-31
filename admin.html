@@ -7,34 +7,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/ima-theme.css" />
   <style>
-    .admin-nav-inv {
-      position: relative;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      text-decoration: none;
-    }
-    .admin-nav-inv-badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 18px;
-      height: 18px;
-      padding: 0 5px;
-      border-radius: 999px;
-      background: #f59e0b;
-      color: #1a1206;
-      font-size: 11px;
-      font-weight: 700;
-      line-height: 1;
-      font-family: var(--font-body);
-      letter-spacing: 0;
-      text-transform: none;
-      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
-    }
-    .admin-nav-inv-badge[hidden] {
-      display: none !important;
-    }
     .admin-layout {
       display: flex;
       min-height: calc(100vh - 64px);
@@ -74,12 +46,6 @@
       color: var(--muted);
       font-family: var(--font-cond);
       opacity: 0.85;
-    }
-    .admin-sidebar a.admin-nav-inv-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
     }
     .btn-step-paid {
       background: #15803d;
@@ -135,11 +101,6 @@
   <div class="admin-layout">
     <aside class="admin-sidebar" aria-label="Admin navigation">
       <a class="active" href="/admin.html">Dashboard</a>
-      <a class="admin-nav-inv-row" href="/admin/inventory.html" id="link-inventory">
-        <span>Inventory</span>
-        <span class="admin-nav-inv-badge" id="inv-low-badge" hidden aria-hidden="true" title="Items at or below reorder point"></span>
-      </a>
-      <a href="/admin/gear-distribution.html">Gear</a>
       <div class="admin-sidebar-label">Admin</div>
       <a href="/admin/backup">Backup</a>
       <a href="/admin/system-health.html">System Health</a>
@@ -286,7 +247,7 @@
           .replace(/"/g, '&quot;');
       }
 
-      var state = { weeks: [], enr: [], parents: {} };
+      var state = { weeks: [], enr: [], parents: {}, stepUpHolds: [] };
 
       async function requireAdmin() {
         const session = await IMA.requireAuth('/admin-login.html');
@@ -378,7 +339,7 @@
       async function loadEnrollments(sb) {
         const { data, error } = await sb
           .from('enrollments')
-          .select('id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at,step_up_hold_expires_at, campers(first_name,last_name), weeks(label,week_number)')
+          .select('id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at, campers(first_name,last_name), weeks(label,week_number)')
           .order('created_at', { ascending: false });
         if (error) {
           const { data: d2, error: e2 } = await sb.from('enrollments').select('*').order('created_at', { ascending: false });
@@ -670,6 +631,11 @@
       }
 
       function parentGuestLabel(e, parents) {
+        if (e.profiles && typeof e.profiles === 'object') {
+          var pr = e.profiles;
+          var fromProf = String(pr.full_name || pr.email || '').trim();
+          if (fromProf) return escapeHtml(fromProf);
+        }
         if (!e.parent_id && e.guest_email) {
           return 'Guest · ' + escapeHtml(e.guest_email);
         }
@@ -696,15 +662,13 @@
         return (h < 1 ? '<1' : h.toFixed(1)) + ' h';
       }
 
-      function renderStepUpHolds(enr, parents) {
-        var holds = (enr || []).filter(function (e) {
-          return e.status === 'pending_step_up';
-        });
+      function renderStepUpHolds(holds, parents) {
+        var list = holds || [];
         var body = document.querySelector('#tbl-step-up-holds tbody');
         var empty = document.getElementById('step-up-holds-empty');
         var tbl = document.getElementById('tbl-step-up-holds');
         if (!body || !tbl) return;
-        if (!holds.length) {
+        if (!list.length) {
           body.innerHTML = '';
           if (empty) empty.hidden = false;
           tbl.style.display = 'none';
@@ -712,7 +676,7 @@
         }
         if (empty) empty.hidden = true;
         tbl.style.display = '';
-        body.innerHTML = holds
+        body.innerHTML = list
           .map(function (e) {
             var c = e.campers || {};
             var w = e.weeks || {};
@@ -869,31 +833,6 @@
         return t;
       }
 
-      function inventoryLowStockCount(rows) {
-        return (rows || []).filter(function (r) {
-          if (r.reorder_point == null || r.reorder_point === '') return false;
-          const rp = Number(r.reorder_point);
-          if (!Number.isFinite(rp)) return false;
-          return Number(r.quantity_on_hand) <= rp;
-        }).length;
-      }
-
-      async function refreshInventoryLowBadge(sb) {
-        const el = document.getElementById('inv-low-badge');
-        if (!el) return;
-        try {
-          const { data, error } = await sb.from('inventory_items').select('quantity_on_hand,reorder_point');
-          if (error) throw error;
-          const n = inventoryLowStockCount(data || []);
-          el.textContent = String(n);
-          el.hidden = n === 0;
-          el.setAttribute('aria-hidden', n === 0 ? 'true' : 'false');
-        } catch (e) {
-          el.hidden = true;
-          el.setAttribute('aria-hidden', 'true');
-        }
-      }
-
       /**
        * Full camp dashboard payload with service role (all families). Required when JWT is allowlist-admin
        * but profiles.role is still parent — browser RLS would hide other enrollments and skew week counts.
@@ -915,13 +854,30 @@
         }
       }
 
+      async function fetchAdminStepUpHoldsRows() {
+        try {
+          var tok = await IMA.refreshSessionForApi();
+          var at = tok && tok.accessToken ? tok.accessToken : null;
+          if (!at) return [];
+          var res = await fetch('/api/admin-step-up-holds', {
+            method: 'GET',
+            headers: { Authorization: 'Bearer ' + at },
+            cache: 'no-store',
+          });
+          if (!res.ok) return [];
+          var j = await res.json();
+          return Array.isArray(j.holds) ? j.holds : [];
+        } catch (e) {
+          return [];
+        }
+      }
+
       /**
        * Reload dashboard from Supabase (initial load + debounced Realtime).
        * @param {{ initial?: boolean }} opts
        */
       async function refreshAdminData(sb, opts) {
         opts = opts || {};
-        await refreshInventoryLowBadge(sb);
         state.weeks = await loadWeeks(sb);
         var snap = await fetchAdminCampSnapshot();
         var peakByWeekId;
@@ -949,7 +905,8 @@
         renderWeekManage(sb, state.weeks, peakByWeekId);
         fillWeekFilterSelect();
         renderTable(state.enr, state.parents);
-        renderStepUpHolds(state.enr, state.parents);
+        state.stepUpHolds = await fetchAdminStepUpHoldsRows();
+        renderStepUpHolds(state.stepUpHolds, state.parents);
       }
 
       var adminRealtimeBound = false;
@@ -974,7 +931,7 @@
         document.addEventListener('visibilitychange', function () {
           if (document.visibilityState === 'visible') scheduleAdminRefresh();
         });
-        var tables = ['enrollments', 'campers', 'days', 'weeks', 'inventory_items'];
+        var tables = ['enrollments', 'campers', 'days', 'weeks'];
         var ch = sb.channel('ima-admin-camp-live');
         tables.forEach(function (table) {
           ch.on(
