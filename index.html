@@ -6989,17 +6989,36 @@
     } catch (e) {}
   }
 
-  function applyStepUpRegistrationSavedUi(data) {
+  async function applyStepUpRegistrationSavedUi(data) {
     try {
-      stepUpHoldSummarySnapshot = null;
-      stepUpHoldSnapshotProtectUntil = 0;
+      var baseTot = 0;
+      var baseSh = 0;
+      var ps0 = stepUpHoldSummarySnapshot;
+      if (ps0 && Number.isFinite(Number(ps0.total)) && Number(ps0.total) >= 0) {
+        baseTot = Number(ps0.total);
+        var psx = Number(ps0.extraShirts);
+        baseSh = Number.isFinite(psx) && psx > 0 ? psx : 0;
+      } else {
+        try {
+          var rawB = sessionStorage.getItem(IMA_STEP_UP_HOLD_TOTALS_SS);
+          if (rawB) {
+            var oB = JSON.parse(rawB);
+            if (oB && Number.isFinite(Number(oB.total)) && Number(oB.total) >= 0) {
+              baseTot = Number(oB.total);
+              var xB = Number(oB.extraShirts);
+              baseSh = Number.isFinite(xB) && xB > 0 ? xB : 0;
+            }
+          }
+        } catch (eB) {}
+      }
       if (data && data.totals && Number.isFinite(Number(data.totals.total))) {
         var tSnap = Number(data.totals.total);
         if (tSnap >= 0) {
           var xSh = Number(data.totals.extraShirts);
+          var xAdd = Number.isFinite(xSh) && xSh > 0 ? xSh : 0;
           stepUpHoldSummarySnapshot = {
-            total: tSnap,
-            extraShirts: Number.isFinite(xSh) && xSh > 0 ? xSh : 0,
+            total: baseTot + tSnap,
+            extraShirts: baseSh + xAdd,
           };
           try {
             sessionStorage.setItem(IMA_STEP_UP_HOLD_TOTALS_SS, JSON.stringify(stepUpHoldSummarySnapshot));
@@ -7009,6 +7028,7 @@
       }
       resetCampAgreementAfterSuccessfulCheckout();
       clearEnrollmentSelections();
+      await refreshConfirmedEnrollmentsFromServer();
       refreshScheduleUiAfterEnrollStorageChange();
       schedulePostCheckoutEnrollmentRefetchRetries();
       var msgOk = document.getElementById('msg');
@@ -7224,7 +7244,7 @@
         return;
       }
       if (r.data && r.data.stepUpComplete) {
-        applyStepUpRegistrationSavedUi(r.data);
+        await applyStepUpRegistrationSavedUi(r.data);
         return;
       }
 
