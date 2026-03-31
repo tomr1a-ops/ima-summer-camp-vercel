@@ -4376,6 +4376,21 @@
     var raw = (confirmedEnrollmentsCache || []).filter(function (r) {
       return r && r.status === 'pending_step_up';
     });
+    if (!raw.length) return { sum: 0, html: '' };
+    /**
+     * Non-empty cart path: previously summed pendingStepUpAmountOwedDollars per row (recalculates with
+     * pricing preview) and skipped rows when camper|week was in cart — so adding days in the same week
+     * dropped the hold from the total and showed only “current pick” pricing. Use the server snapshot
+     * total for the whole active hold instead.
+     */
+    if (stepUpHoldOrderUsesStableServerTotal()) {
+      var stHold = Number(stepUpHoldSummarySnapshot.total);
+      var oneHoldLine =
+        '<div class="summary-line"><span class="label">Step Up hold <span class="summary-line-detail">· Active reservation — total from checkout</span></span><span class="val">' +
+        fmt(stHold) +
+        '</span></div>';
+      return { sum: stHold, html: oneHoldLine };
+    }
     var coalesced = coalesceEnrollmentRowsForSidebar(raw);
     var inCart = new Set();
     (bookings || []).forEach(function (b) {
