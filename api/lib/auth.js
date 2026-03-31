@@ -160,6 +160,16 @@ function isAdminLoginEmail(email) {
   return getAdminEmailAllowlist().indexOf(e) !== -1;
 }
 
+/** Same rule as admin API routes: profiles.role admin, or allowlisted staff email (JWT or profile row). */
+function canAccessAdminPortal(user, profile) {
+  if (!profile) return false;
+  const roleNorm = String(profile.role || '').trim().toLowerCase();
+  if (roleNorm === 'admin') return true;
+  const userEmail = resolveUserEmail(user);
+  const profileEmail = profile.email ? String(profile.email).trim().toLowerCase() : '';
+  return isAdminLoginEmail(userEmail) || isAdminLoginEmail(profileEmail);
+}
+
 function maskToken(t) {
   if (!t || typeof t !== 'string') return '(none)';
   if (t.length <= 14) return '(len=' + t.length + ')';
@@ -205,9 +215,10 @@ async function requireAdmin(req) {
   const profile = await getProfileForUser(user.id);
   const userEmail = resolveUserEmail(user);
   const profileEmail = profile && profile.email ? String(profile.email).trim().toLowerCase() : '';
-  const roleNorm = profile ? String(profile.role || '').trim().toLowerCase() : '';
-  const adminByRole = roleNorm === 'admin';
-  const adminByEmail = isAdminLoginEmail(userEmail) || isAdminLoginEmail(profileEmail);
+  const adminByRole = profile ? String(profile.role || '').trim().toLowerCase() === 'admin' : false;
+  const adminByEmail =
+    profile && (isAdminLoginEmail(userEmail) || isAdminLoginEmail(profileEmail));
+  const portalOk = profile && canAccessAdminPortal(user, profile);
 
   if (!profile) {
     console.warn(
@@ -224,7 +235,7 @@ async function requireAdmin(req) {
     err.statusCode = 403;
     throw err;
   }
-  if (!adminByRole && !adminByEmail) {
+  if (!portalOk) {
     console.warn(
       '[admin-auth]',
       JSON.stringify({
@@ -257,6 +268,7 @@ module.exports = {
   requireParent,
   requireAdmin,
   isAdminLoginEmail,
+  canAccessAdminPortal,
   logAdminAuthProbe,
   getAdminEmailAllowlist,
 };

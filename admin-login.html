@@ -93,15 +93,37 @@
         );
       }
 
+      /** Server reads profiles with service role; matches admin API (role admin or allowlisted staff). */
+      async function redirectFromAdminSession(accessToken, profileFallback) {
+        if (!accessToken) {
+          window.location.replace('/index.html');
+          return;
+        }
+        try {
+          const r = await fetch('/api/admin-session', {
+            headers: { Authorization: 'Bearer ' + accessToken },
+            cache: 'no-store',
+          });
+          const j = r.ok ? await r.json() : null;
+          if (j && j.canAccessAdminPortal) {
+            window.location.replace('/admin.html');
+          } else {
+            window.location.replace('/index.html');
+          }
+        } catch (e) {
+          if (isProfileAdmin(profileFallback)) {
+            window.location.replace('/admin.html');
+          } else {
+            window.location.replace('/index.html');
+          }
+        }
+      }
+
       async function redirectIfSession() {
         const session = await IMA.getSession();
         if (!session) return false;
         const profile = await IMA.getProfile();
-        if (isProfileAdmin(profile)) {
-          window.location.replace('/admin.html');
-          return true;
-        }
-        window.location.replace('/index.html');
+        await redirectFromAdminSession(session.access_token, profile);
         return true;
       }
 
@@ -143,11 +165,8 @@
               localStorage.removeItem(REMEMBER_EMAIL_KEY);
             }
           } catch (eSave) {}
-          if (isProfileAdmin(profile)) {
-            window.location.replace('/admin.html');
-          } else {
-            window.location.replace('/index.html');
-          }
+          const token = signData.session && signData.session.access_token;
+          await redirectFromAdminSession(token, profile);
         } catch (e) {
           show(e.message || 'Sign in failed', false);
           btn.disabled = false;
