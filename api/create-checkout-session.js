@@ -27,16 +27,54 @@ function json(res, code, obj) {
   res.end(JSON.stringify(obj));
 }
 
-/** Log + JSON error body (code helps client / support). */
+function logStep(step, data) {
+  const tag = '[create-checkout-session] STEP:' + step;
+  try {
+    if (data === undefined) console.log(tag);
+    else if (typeof data === 'string') console.log(tag, data);
+    else console.log(tag, JSON.stringify(data));
+  } catch (e) {
+    console.log(tag, String(data));
+  }
+}
+
+function logFullError(tag, err) {
+  if (err == null) return;
+  if (err instanceof Error) {
+    console.error('[create-checkout-session]', tag, 'Error name:', err.name, 'message:', err.message);
+    console.error('[create-checkout-session]', tag, 'stack:\n', err.stack);
+    return;
+  }
+  console.error('[create-checkout-session]', tag, typeof err, err && err.message ? err.message : err);
+  if (err && err.stack) console.error('[create-checkout-session]', tag, 'stack:\n', err.stack);
+  try {
+    console.error('[create-checkout-session]', tag, 'serialized:', JSON.stringify(err));
+  } catch (e) {
+    console.error('[create-checkout-session]', tag, '(not JSON-serializable)');
+  }
+}
+
+/** Log + JSON error body; include stack / Supabase fields in response for debugging. */
 function failCheckout(res, httpStatus, code, message, logDetail, extraJson) {
-  const detail = logDetail !== undefined ? logDetail : '';
-  console.error('[create-checkout-session]', code || 'ERROR', message, detail);
+  logFullError('FAIL ' + (code || 'ERROR') + ' — ' + (message || ''), logDetail instanceof Error ? logDetail : null);
+  if (logDetail != null && !(logDetail instanceof Error)) {
+    console.error('[create-checkout-session] FAIL detail:', logDetail);
+  }
   res.statusCode = httpStatus;
   res.setHeader('Content-Type', 'application/json');
-  const body = { error: message, code: code || 'ERROR' };
-  if (extraJson && typeof extraJson === 'object') {
-    Object.assign(body, extraJson);
+  const body = { code: code || 'ERROR' };
+  let primaryMsg = message;
+  if (logDetail instanceof Error && logDetail.message) primaryMsg = logDetail.message;
+  else if (logDetail && typeof logDetail === 'object' && logDetail.message) primaryMsg = String(logDetail.message);
+  body.error = primaryMsg || message || 'Error';
+  if (message && message !== body.error) body.description = message;
+  if (logDetail instanceof Error && logDetail.stack) body.stack = logDetail.stack;
+  if (logDetail && typeof logDetail === 'object' && !(logDetail instanceof Error)) {
+    if (logDetail.details != null) body.details = logDetail.details;
+    if (logDetail.hint != null) body.hint = logDetail.hint;
+    if (logDetail.code != null) body.dbCode = String(logDetail.code);
   }
+  if (extraJson && typeof extraJson === 'object') Object.assign(body, extraJson);
   res.end(JSON.stringify(body));
 }
 
@@ -137,14 +175,17 @@ module.exports = async (req, res) => {
   try {
     body = await readJsonBody(req);
   } catch (parseErr) {
-    return failCheckout(res, 400, 'INVALID_JSON', 'Invalid JSON', parseErr && parseErr.message ? parseErr.message : '');
+    logFullError('parse JSON body', parseErr);
+    return failCheckout(res, 400, 'INVALID_JSON', 'Invalid JSON', parseErr);
   }
 
   try {
     try {
-      console.log('[create-checkout-session] request body', JSON.stringify(body));
+      logStep('request_body', body);
+      console.log('[create-checkout-session] request body (stringified)', JSON.stringify(body));
     } catch (stringifyErr) {
-      console.log('[create-checkout-session] request body (could not stringify)', typeof body, stringifyErr && stringifyErr.message);
+      logFullError('stringify request body for log', stringifyErr);
+      console.log('[create-checkout-session] request body (could not stringify)', typeof body);
     }
 
   if (!process.env.STRIPE_SECRET_KEY || !String(process.env.STRIPE_SECRET_KEY).trim()) {
@@ -158,7 +199,9 @@ module.exports = async (req, res) => {
   }
 
   /** Lazy init: top-level `require('stripe')(undefined)` crashes module load on Vercel if env is not injected at import time. */
+  logStep('before_stripe_client_init', { hasKey: !!String(process.env.STRIPE_SECRET_KEY || '').trim() });
   const stripe = require('stripe')(String(process.env.STRIPE_SECRET_KEY).trim());
+  logStep('after_stripe_client_init', 'ok');
 
   const { testPricing, imaMember, registrationFeeForCamper, extraShirtByCamper } = body;
   const agreementAccepted =
@@ -193,7 +236,11 @@ module.exports = async (req, res) => {
 
   let tp = !!testPricing;
   if (tp && !isStripeTestKey) {
-    return json(res, 403, { error: 'Test pricing requires Stripe test secret key.' });
+    logStep('reject_test_pricing_live_key', { isStripeTestKey });
+    return json(res, 403, {
+      error: 'Test pricing requires Stripe test secret key.',
+      code: 'TEST_PRICING_LIVE_KEY',
+    });
   }
 
   if (!bookingsArray.length && !shirtIdsRequested.length) {
@@ -236,36 +283,53 @@ module.exports = async (req, res) => {
     });
   }
 
+  logStep('before_getUserFromRequest', {});
   const { user, token } = await getUserFromRequest(req);
   let parentId = null;
   let profile = null;
   let sb = null;
+  logStep('after_getUserFromRequest', { hasUser: !!user, hasToken: !!token, userId: user && user.id });
 
   if (!user) {
     if (token) {
+      logStep('auth_fail_expired_session', {});
       return json(res, 401, {
         error: 'Your sign-in session expired. Refresh this page and try checkout again (you will stay signed in if your browser still has your session).',
+        code: 'SESSION_EXPIRED',
       });
     }
-    return json(res, 401, { error: 'Sign in with your parent account to register for camp.' });
+    logStep('auth_fail_no_user', {});
+    return json(res, 401, {
+      error: 'Sign in with your parent account to register for camp.',
+      code: 'SIGN_IN_REQUIRED',
+    });
   }
-  if (!token) return json(res, 401, { error: 'Sign in required' });
+  if (!token) {
+    logStep('auth_fail_no_token', {});
+    return json(res, 401, { error: 'Sign in required', code: 'NO_TOKEN' });
+  }
   try {
     sb = serviceClient();
+    logStep('after_serviceClient', 'ok');
   } catch (e) {
+    logFullError('serviceClient()', e);
     return json(res, 503, {
-      error:
-        'Checkout needs SUPABASE_SERVICE_ROLE_KEY on the server. Add it in Vercel → Environment Variables → Production, then redeploy.',
+      error: e.message || 'Missing Supabase service role key',
       code: 'MISSING_SERVICE_ROLE',
+      stack: e.stack,
     });
   }
   try {
+    logStep('before_upsertParentProfile', { userId: user.id });
     profile = await upsertParentProfile(user, {});
+    logStep('after_upsertParentProfile', { profileId: profile && profile.id });
   } catch (pe) {
+    logFullError('upsertParentProfile', pe);
     const code = pe && pe.code ? String(pe.code) : 'PROFILE_UPSERT';
     return json(res, pe.statusCode || 500, {
       error: pe.message || 'Profile update failed',
       code,
+      stack: pe.stack,
     });
   }
   parentId = user.id;
@@ -286,7 +350,8 @@ module.exports = async (req, res) => {
       .select('id, parent_id')
       .in('id', camperIdsToVerify);
     if (batchCe) {
-      return failCheckout(res, 500, 'CAMPER_LOOKUP', batchCe.message || 'Camper lookup failed');
+      logFullError('camper batch lookup', batchCe);
+      return failCheckout(res, 500, 'CAMPER_LOOKUP', batchCe.message || 'Camper lookup failed', batchCe);
     }
     const byKey = new Map((camperList || []).map((r) => [normCamperKey(r.id), r]));
     for (const cid of camperIdsToVerify) {
@@ -327,8 +392,14 @@ module.exports = async (req, res) => {
       campLineCents = applied.campLineCents;
       ledgerConsumedCents = applied.ledgerConsumedCents || 0;
     } catch (poolErr) {
-      console.error('[create-checkout-session] prepaid pool', poolErr);
-      return failCheckout(res, 500, 'PREPAID_POOL', 'Could not apply prepaid credits. Try again or contact IMA.', poolErr && poolErr.message);
+      logFullError('prepaid pool', poolErr);
+      return failCheckout(
+        res,
+        500,
+        'PREPAID_POOL',
+        'Could not apply prepaid credits. Try again or contact IMA.',
+        poolErr
+      );
     }
   }
 
@@ -347,11 +418,11 @@ module.exports = async (req, res) => {
         )
       );
     } catch (e) {
-      return failCheckout(res, e.statusCode || 400, 'VALIDATE_BOOKING', e.message || String(e), {
-        detail: e && e.message,
-      });
+      logFullError('validateBooking', e);
+      return failCheckout(res, e.statusCode || 400, 'VALIDATE_BOOKING', e.message || String(e), e);
     }
   }
+  logStep('after_validateBooking', { bookingRows: bookingsArray.length });
 
   const uniqueCampers = [...new Set(bookingsArray.map((b) => String(b.camperId)).filter(Boolean))];
   const allShirtRelatedIds = [...new Set([...uniqueCampers, ...shirtIdsRequested.map(String)])].filter(Boolean);
@@ -363,9 +434,12 @@ module.exports = async (req, res) => {
       .select('id, extra_shirt_addon_paid, parent_id, first_name, last_name')
       .in('id', allShirtRelatedIds);
     if (camperShirtErr) {
+      logFullError('camper shirt rows select', camperShirtErr);
       return json(res, 500, {
-        error:
-          'Could not load camper records for checkout. If this is new, run the latest Supabase migration (extra_shirt_addon_paid on campers).',
+        error: camperShirtErr.message || 'Could not load camper records for checkout.',
+        code: 'CAMPER_SHIRT_LOAD',
+        details: camperShirtErr.details,
+        dbCode: camperShirtErr.code,
       });
     }
     camperShirtRows = rows || [];
@@ -408,7 +482,8 @@ module.exports = async (req, res) => {
   if (uniqueWeekIds.length) {
     const { data: wkRows, error: wkErr } = await sb.from('weeks').select('id,label').in('id', uniqueWeekIds);
     if (wkErr) {
-      return failCheckout(res, 500, 'WEEK_LABELS', wkErr.message || 'Could not load week labels');
+      logFullError('week labels', wkErr);
+      return failCheckout(res, 500, 'WEEK_LABELS', wkErr.message || 'Could not load week labels', wkErr);
     }
     (wkRows || []).forEach((w) => weekLabelById.set(String(w.id), w.label || 'Week'));
   }
@@ -523,6 +598,7 @@ module.exports = async (req, res) => {
 
   /** Batch insert — row order matches `booking_modes` / `camp_line_cents` (confirm uses row index). */
   if (bookingsArray.length) {
+    logStep('before_enrollment_insert', { batchId, rowCount: bookingsArray.length });
     const insertRows = bookingsArray.map((b) => ({
       parent_id: parentId,
       camper_id: b.camperId,
@@ -535,16 +611,17 @@ module.exports = async (req, res) => {
     }));
     const { error: ie } = await sb.from('enrollments').insert(insertRows);
     if (ie) {
-      console.error('[create-checkout-session] enrollment insert failed', ie);
-      return failCheckout(res, 500, 'ENROLLMENT_INSERT', ie.message || 'Could not create enrollment', {
-        code: ie.code,
-        details: ie.details,
+      logFullError('enrollment insert', ie);
+      return failCheckout(res, 500, 'ENROLLMENT_INSERT', ie.message || 'Could not create enrollment', ie, {
+        dbCode: ie.code,
       });
     }
+    logStep('after_enrollment_insert', { batchId });
   }
 
   let agreementRecordId = null;
   try {
+    logStep('before_insertAgreementRecord', { batchId });
     const rec = await insertAgreementRecord(sb, {
       parentId,
       parentName: (profile && profile.full_name) || '',
@@ -553,21 +630,33 @@ module.exports = async (req, res) => {
       camperIds: camperIdsToVerify,
     });
     agreementRecordId = rec.id;
+    logStep('after_insertAgreementRecord', { agreementRecordId });
   } catch (arErr) {
-    console.error('[create-checkout-session] agreement record', arErr);
+    logFullError('insertAgreementRecord', arErr);
     if (bookingsArray.length) {
       try {
         await sb.from('enrollments').delete().eq('checkout_batch_id', batchId);
-      } catch (delE) {}
+      } catch (delE) {
+        logFullError('rollback enrollments after agreement failure', delE);
+      }
     }
     return failCheckout(
       res,
       500,
       'AGREEMENT_SAVE',
       'Could not save agreement acceptance. Try again.',
-      arErr && arErr.message
+      arErr instanceof Error ? arErr : arErr
     );
   }
+
+  logStep('before_payment_branch', {
+    paymentMethod,
+    batchId,
+    lineItemsCount: line_items.length,
+    campCentsTotal,
+    regCentsTotal,
+    shirtCentsTotal,
+  });
 
   if (paymentMethod === 'step_up') {
     if (!bookingsArray.length) {
@@ -582,18 +671,22 @@ module.exports = async (req, res) => {
       );
     }
     try {
+      logStep('before_finalizeStepUpReservationBatch', { batchId });
       await finalizeStepUpReservationBatch(sb, batchId, {
         customerEmail: (profile && profile.email) || user.email || null,
         testPricing: tp,
         campLineCents,
         bookingModes,
       });
+      logStep('after_finalizeStepUpReservationBatch', { batchId });
     } catch (fz) {
-      console.error('[create-checkout-session] step-up finalize failed', fz);
+      logFullError('finalizeStepUpReservationBatch', fz);
       try {
         await sb.from('enrollments').delete().eq('checkout_batch_id', batchId);
-      } catch (delE) {}
-      return failCheckout(res, 500, 'STEP_UP_FINALIZE', fz.message || 'Could not reserve spot', '');
+      } catch (delE) {
+        logFullError('rollback enrollments after step-up finalize', delE);
+      }
+      return failCheckout(res, 500, 'STEP_UP_FINALIZE', fz.message || 'Could not reserve spot', fz);
     }
     const parentMail = (profile && profile.email) || user.email || '';
     try {
@@ -647,11 +740,13 @@ module.exports = async (req, res) => {
           ledgerParentId: parentId,
         });
       } catch (fz) {
-        console.error('[create-checkout-session] zero-dollar finalize failed', fz);
+        logFullError('finalizePendingEnrollmentBatch zero-dollar', fz);
         try {
           await sb.from('enrollments').delete().eq('checkout_batch_id', batchId);
-        } catch (delE) {}
-        return failCheckout(res, 500, 'FINALIZE_BATCH', fz.message || 'Could not complete registration', '');
+        } catch (delE) {
+          logFullError('rollback after zero-dollar finalize', delE);
+        }
+        return failCheckout(res, 500, 'FINALIZE_BATCH', fz.message || 'Could not complete registration', fz);
       }
       if (agreementRecordId) {
         try {
@@ -753,7 +848,22 @@ module.exports = async (req, res) => {
     };
     if (emailForStripe) sessionParams.customer_email = emailForStripe;
 
+    logStep('before_stripe_checkout_sessions_create', {
+      batchId,
+      lineItemsCount: line_items.length,
+      mode: sessionParams.mode,
+      ui_mode: sessionParams.ui_mode,
+      successUrlHost: (sessionParams.success_url && String(sessionParams.success_url).split('/')[2]) || '',
+      hasCustomerEmail: !!sessionParams.customer_email,
+      metadataKeys: sessionParams.metadata ? Object.keys(sessionParams.metadata) : [],
+    });
     const session = await stripe.checkout.sessions.create(sessionParams);
+    logStep('after_stripe_checkout_sessions_create', {
+      sessionId: session.id,
+      urlPresent: !!session.url,
+      payment_status: session.payment_status,
+      status: session.status,
+    });
 
     const totalCents = campCentsTotal + regCentsTotal + shirtCentsTotal;
 
@@ -798,11 +908,11 @@ module.exports = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('[create-checkout-session] Stripe error:', err && err.message, err && err.stack);
+    logFullError('stripe.checkout.sessions.create', err);
     try {
       await sb.from('enrollments').delete().eq('checkout_batch_id', batchId);
     } catch (delErr) {
-      console.error('[create-checkout-session] rollback delete failed', delErr);
+      logFullError('rollback enrollments after Stripe error', delErr);
     }
     const stripeExtra = {};
     if (err && typeof err === 'object') {
@@ -816,23 +926,19 @@ module.exports = async (req, res) => {
       500,
       'STRIPE_ERROR',
       err && err.message ? err.message : String(err),
-      '',
+      err,
       stripeExtra
     );
   }
 
   } catch (fatal) {
-    console.error(
-      '[create-checkout-session] unhandled exception',
-      fatal && fatal.message ? fatal.message : fatal,
-      fatal && fatal.stack ? fatal.stack : ''
-    );
+    logFullError('OUTER_UNHANDLED', fatal);
     return failCheckout(
       res,
       500,
       'CHECKOUT_UNHANDLED',
       fatal && fatal.message ? fatal.message : String(fatal),
-      ''
+      fatal instanceof Error ? fatal : fatal
     );
   }
 };

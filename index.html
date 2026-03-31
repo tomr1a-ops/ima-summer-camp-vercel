@@ -5710,6 +5710,7 @@
       return {};
     });
     if (!res.ok) {
+      console.error('[create-checkout-session] HTTP', res.status, data);
       var errParts = [];
       if (data && data.code) errParts.push(String(data.code));
       if (data && data.stripeCode) errParts.push('Stripe ' + String(data.stripeCode));
