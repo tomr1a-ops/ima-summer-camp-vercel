@@ -2224,13 +2224,13 @@
    * Refreshes Supabase JWT and updates module `session` before Vercel API calls (enrollments, checkout, etc.).
    * @returns {Promise<string|null>}
    */
-  async function freshAccessTokenForApi() {
+  async function freshAccessTokenForApi(opts) {
     if (!session) return null;
     try {
       if (typeof IMA !== 'undefined' && typeof IMA.refreshSessionForApi === 'function') {
-        var ref = await IMA.refreshSessionForApi();
+        var ref = await IMA.refreshSessionForApi(opts);
         if (ref && ref.accessToken) {
-          session = ref.session;
+          if (ref.session) session = ref.session;
           return ref.accessToken;
         }
       }
@@ -3967,7 +3967,7 @@
         headers: { Authorization: 'Bearer ' + tok },
       });
       if (res.status === 401) {
-        tok = await freshAccessTokenForApi();
+        tok = await freshAccessTokenForApi({ force: true });
         if (!tok) return;
         res = await imaNoStoreFetch('/api/enrollments', {
           headers: { Authorization: 'Bearer ' + tok },
@@ -6425,7 +6425,7 @@
       .eq('parent_id', session.user.id);
     if (error) {
       console.error(error);
-      parentCampers = [];
+      /* Do not clear children on transient errors (e.g. rate limits) — empty list bricks the whole camp UI. */
     } else {
       parentCampers = campers || [];
     }

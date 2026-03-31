@@ -134,21 +134,66 @@
     return data.session;
   };
 
+  /** @returns {number} JWT exp in ms, or 0 if missing/unparseable */
+  function jwtExpMs(accessToken) {
+    if (!accessToken || typeof accessToken !== 'string') return 0;
+    try {
+      const parts = accessToken.split('.');
+      if (parts.length < 2) return 0;
+      let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      const json = JSON.parse(g.atob(b64));
+      const exp = Number(json.exp);
+      return Number.isFinite(exp) ? exp * 1000 : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  function accessTokenNeedsRefresh(accessToken, skewSeconds) {
+    const exp = jwtExpMs(accessToken);
+    if (!exp) return true;
+    const skew = (skewSeconds != null ? skewSeconds : 120) * 1000;
+    return Date.now() >= exp - skew;
+  }
+
+  /** Single in-flight refresh so parallel API calls do not hit /auth/v1/token dozens of times (429). */
+  let refreshSessionPromise = null;
+
   /**
-   * Refresh JWT before POSTs to Vercel APIs (create-checkout-session, etc.).
-   * Avoids 401 when the UI still looks signed in but access_token expired (common on mobile).
+   * Return a valid access token for Vercel API calls.
+   * Uses getSession + JWT exp; only calls refreshSession() when near expiry or when opts.force is true.
    */
-  g.IMA.refreshSessionForApi = async function () {
+  g.IMA.refreshSessionForApi = async function (opts) {
+    const force = opts && opts.force === true;
     const sb = await g.IMA.getSupabase();
-    const { data: ref, error: refErr } = await sb.auth.refreshSession();
-    if (!refErr && ref.session && ref.session.access_token) {
-      return { session: ref.session, accessToken: ref.session.access_token };
+    const { data: existing, error: exErr } = await sb.auth.getSession();
+    if (exErr) {
+      void exErr;
     }
-    const { data, error } = await sb.auth.getSession();
-    if (error || !data.session || !data.session.access_token) {
-      return { session: null, accessToken: null };
+    const sess = existing && existing.session;
+    if (!force && sess && sess.access_token && !accessTokenNeedsRefresh(sess.access_token, 120)) {
+      return { session: sess, accessToken: sess.access_token };
     }
-    return { session: data.session, accessToken: data.session.access_token };
+    if (refreshSessionPromise) {
+      return refreshSessionPromise;
+    }
+    refreshSessionPromise = (async function () {
+      try {
+        const { data: ref, error: refErr } = await sb.auth.refreshSession();
+        if (!refErr && ref.session && ref.session.access_token) {
+          return { session: ref.session, accessToken: ref.session.access_token };
+        }
+        const { data: after, error: err2 } = await sb.auth.getSession();
+        if (err2 || !after.session || !after.session.access_token) {
+          return { session: null, accessToken: null };
+        }
+        return { session: after.session, accessToken: after.session.access_token };
+      } finally {
+        refreshSessionPromise = null;
+      }
+    })();
+    return refreshSessionPromise;
   };
 
   g.IMA.getProfile = async function () {
