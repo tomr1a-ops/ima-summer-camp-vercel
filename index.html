@@ -3281,6 +3281,9 @@
       u.searchParams.delete('stripe_cancel');
       var qs = u.searchParams.toString();
       history.replaceState(null, '', u.pathname + (qs ? '?' + qs : '') + u.hash);
+      try {
+        armScheduleRailChosen();
+      } catch (eArm) {}
       var bid = null;
       try {
         bid = sessionStorage.getItem('ima_stripe_pending_batch');
@@ -7546,6 +7549,11 @@
       }
       await handleStripeCheckoutCancelIfAny();
       var stripeReturnSid = consumeStripeReturnSessionIdFromUrl();
+      if (stripeReturnSid) {
+        try {
+          armScheduleRailChosen();
+        } catch (eSr) {}
+      }
       await loadParentCampers();
       await refreshParentProfileWaiverFromServer();
       if (stripeReturnSid) {
@@ -7579,6 +7587,9 @@
       }
       var effPortalPm = urlPaymentPortalBoot || urlPortalPaymentBoot || '';
       if (effPortalPm) {
+        try {
+          armScheduleRailChosen();
+        } catch (eArm2) {}
         try {
           document.documentElement.setAttribute('data-portal-payment', effPortalPm);
           writeCampPaymentMethodOk(effPortalPm);
@@ -7637,6 +7648,9 @@
     }
     function onLogoutClick(ev) {
       ev.preventDefault();
+      try {
+        clearScheduleRailChosen();
+      } catch (eClr) {}
       IMA.signOut();
     }
     document.getElementById('logout-link-top').addEventListener('click', onLogoutClick);
@@ -8286,9 +8300,56 @@
     } catch (eH) {}
   }
 
+  function armScheduleRailChosen() {
+    try {
+      sessionStorage.setItem('ima_schedule_rail_chosen', '1');
+    } catch (e) {}
+  }
+
+  function clearScheduleRailChosen() {
+    try {
+      sessionStorage.removeItem('ima_schedule_rail_chosen');
+    } catch (e) {}
+  }
+
+  function hasScheduleRailChosen() {
+    try {
+      return sessionStorage.getItem('ima_schedule_rail_chosen') === '1';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /** Plain #schedule links skip portal unless test mode (Stripe test footer, etc.). */
+  function shouldForcePortalBeforeScheduleUrl() {
+    if (checkoutEmbedMode) return false;
+    if (urlTest) return false;
+    try {
+      var q = new URLSearchParams(location.search || '');
+      if (q.get('test') === 'true' || q.get('stripe_test') === '1') return false;
+    } catch (e) {}
+    return true;
+  }
+
+  /**
+   * Load or hash #schedule: require portal pick (Step Up vs card) first unless user came from portal, Stripe, or test mode.
+   */
+  function applyHashScheduleOrRedirectToPortal() {
+    if (!canUseCampScheduleTab()) {
+      setRegTab('account');
+      return;
+    }
+    if (hasScheduleRailChosen() || !shouldForcePortalBeforeScheduleUrl()) {
+      setRegTab('schedule');
+      return;
+    }
+    location.replace('/portal-landing.html');
+  }
+
   /**
    * #schedule in the URL must not open camp registration before auth (shared links on mobile).
    * Signed-in parents with no children stay on My kids until they add a camper.
+   * Do not auto-open Camp registration on plain index — parents enter via portal landing first.
    */
   function applyScheduleTabFromUrl() {
     if (checkoutEmbedMode) {
@@ -8297,15 +8358,8 @@
       return;
     }
     if (location.hash === '#schedule') {
-      if (!canUseCampScheduleTab()) {
-        setRegTab('account');
-        return;
-      }
-      setRegTab('schedule');
+      applyHashScheduleOrRedirectToPortal();
       return;
-    }
-    if (session && parentCampers.length > 0 && location.hash !== '#account') {
-      setRegTab('schedule');
     }
   }
 
@@ -8348,11 +8402,7 @@
     }
     window.addEventListener('hashchange', function () {
       if (location.hash === '#schedule') {
-        if (!canUseCampScheduleTab()) {
-          setRegTab('account');
-          return;
-        }
-        setRegTab('schedule');
+        applyHashScheduleOrRedirectToPortal();
       } else if (location.hash === '#account' || location.hash === '') {
         setRegTab('account');
       }
