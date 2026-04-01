@@ -41,6 +41,40 @@ async function applyExtraShirtPaidFromStripeSession(sb, session, enrollmentRows)
 }
 
 /**
+ * Set campers.registration_fee_waived_ima_member from session metadata (IMA member checkbox).
+ * Idempotent; parent-scoped. Used on first confirm and on idempotent "already confirmed" replays.
+ */
+async function applyRegistrationWaivedFromStripeSession(sb, session, enrollmentRows) {
+  const meta = session.metadata || {};
+  const waivedRaw = String(meta.registration_waived_camper_ids || '').trim();
+  if (!waivedRaw) return 0;
+  const waivedList = waivedRaw.split(',').map((s) => s.trim()).filter(Boolean);
+  if (!waivedList.length) return 0;
+
+  const parentIdW =
+    (enrollmentRows && enrollmentRows[0] && enrollmentRows[0].parent_id) || meta.checkout_parent_id || null;
+  if (!parentIdW) {
+    console.warn('[confirm-stripe-session] registration waived ids in metadata but no parent id');
+    return 0;
+  }
+
+  const { data: ownedW, error: owErr } = await sb
+    .from('campers')
+    .select('id')
+    .eq('parent_id', parentIdW)
+    .in('id', waivedList);
+  if (owErr) throw owErr;
+  if (!ownedW || !ownedW.length) return 0;
+  const safeW = ownedW.map((r) => r.id);
+  const { error: wuErr } = await sb
+    .from('campers')
+    .update({ registration_fee_waived_ima_member: true })
+    .in('id', safeW);
+  if (wuErr) throw wuErr;
+  return safeW.length;
+}
+
+/**
  * Idempotent: confirms pending enrollments for session.metadata.checkout_batch_id
  */
 async function confirmStripeSession(stripe, session) {
@@ -93,6 +127,11 @@ async function confirmStripeSession(stripe, session) {
       await removeStalePendingForBatchSlots(sb, enrollmentRows, batchId);
     } catch (supErr) {
       console.error('[confirm-stripe-session] supersede stale pending (already)', supErr && supErr.message);
+    }
+    try {
+      await applyRegistrationWaivedFromStripeSession(sb, session, enrollmentRows);
+    } catch (wErr) {
+      console.error('[confirm-stripe-session] registration waived (already-confirmed path)', wErr && wErr.message);
     }
     return { ok: true, already: true, count: enrollmentRows.length, email: customerEmail };
   }
@@ -185,31 +224,12 @@ async function confirmStripeSession(stripe, session) {
     }
   }
 
-  if (didConfirmAny && enrollmentRows[0] && enrollmentRows[0].parent_id) {
-    const parentIdW = enrollmentRows[0].parent_id;
-    const waivedRaw = String((session.metadata && session.metadata.registration_waived_camper_ids) || '').trim();
-    if (waivedRaw) {
-      const waivedList = waivedRaw.split(',').map((s) => s.trim()).filter(Boolean);
-      if (waivedList.length) {
-        const { data: ownedW, error: owErr } = await sb
-          .from('campers')
-          .select('id')
-          .eq('parent_id', parentIdW)
-          .in('id', waivedList);
-        if (owErr) throw owErr;
-        if (ownedW && ownedW.length) {
-          const safeW = ownedW.map((r) => r.id);
-          const { error: wuErr } = await sb
-            .from('campers')
-            .update({ registration_fee_waived_ima_member: true })
-            .in('id', safeW);
-          if (wuErr) throw wuErr;
-        }
-      }
-    }
-  }
-
   if (didConfirmAny) {
+    try {
+      await applyRegistrationWaivedFromStripeSession(sb, session, enrollmentRows);
+    } catch (wErr) {
+      console.error('[confirm-stripe-session] registration waived (after confirm)', wErr && wErr.message);
+    }
     const wlRaw = session.metadata && session.metadata.waitlist_ids;
     if (wlRaw && String(wlRaw).trim()) {
       const wlIds = String(wlRaw)
