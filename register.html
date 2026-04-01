@@ -94,7 +94,7 @@
       function safeReturnPath() {
         var ret = new URLSearchParams(window.location.search).get('return');
         if (ret && ret.startsWith('/') && !ret.startsWith('//')) return ret;
-        return '/index.html#schedule';
+        return '/portal-landing.html';
       }
 
       function wireSignInLink() {

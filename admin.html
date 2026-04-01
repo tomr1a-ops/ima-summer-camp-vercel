@@ -111,12 +111,33 @@
 
     <div class="grid-cards" id="admin-overview">
       <div class="stat-card">
-        <h3>Enrolled campers (confirmed)</h3>
+        <h3>Enrolled campers (confirmed, all rails)</h3>
         <div class="num" id="st-kids">0</div>
       </div>
       <div class="stat-card">
-        <h3>Revenue (confirmed)</h3>
+        <h3>Revenue (confirmed, all rails)</h3>
         <div class="num" id="st-rev">$0</div>
+      </div>
+      <div class="stat-card">
+        <h3>Credit card · campers (confirmed)</h3>
+        <div class="num" id="st-kids-cc">0</div>
+      </div>
+      <div class="stat-card">
+        <h3>Credit card · revenue (confirmed)</h3>
+        <div class="num" id="st-rev-cc">$0</div>
+      </div>
+      <div class="stat-card">
+        <h3>Step Up · campers (confirmed)</h3>
+        <div class="num" id="st-kids-su">0</div>
+      </div>
+      <div class="stat-card">
+        <h3>Step Up · revenue (confirmed)</h3>
+        <div class="num" id="st-rev-su-conf">$0</div>
+      </div>
+      <div class="stat-card">
+        <h3>Step Up holds · camp on hold</h3>
+        <div class="num" id="st-rev-holds">$0</div>
+        <div class="panel-hint" style="margin-top:6px;font-size:12px"><span id="st-hold-rows">0</span> hold row(s)</div>
       </div>
       <div class="stat-card">
         <h3>Active enrollment rows</h3>
@@ -147,6 +168,27 @@
       <div class="panel-head">Waitlist <span class="panel-hint">· names waiting (below) + per-week tables (position, child, parent, joined, status)</span></div>
       <div class="panel-body" id="admin-waitlist-mount">
         <p class="empty-hint">Loading…</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">Credit card enrollments <span class="panel-hint">· <code>confirmed</code> rows paid via Stripe (Step Up confirmed rows are listed under registrations / Step Up holds only)</span></div>
+      <div class="panel-body table-wrap">
+        <table class="data" id="tbl-cc-enr">
+          <thead>
+            <tr>
+              <th>Parent / guest</th>
+              <th>Camper</th>
+              <th>Week</th>
+              <th>Schedule</th>
+              <th>Status</th>
+              <th>Amount</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty-hint" id="cc-enr-empty" hidden>No Stripe-confirmed enrollments yet.</p>
       </div>
     </div>
 
@@ -201,6 +243,11 @@
           <select class="input input-inline" id="flt-week" style="min-width:160px;margin:0">
             <option value="">All weeks</option>
           </select>
+          <select class="input input-inline" id="flt-payment" style="min-width:170px;margin:0">
+            <option value="" selected>All payment rails</option>
+            <option value="credit_card">Credit card rail</option>
+            <option value="step_up">Step Up rail</option>
+          </select>
           <select class="input input-inline" id="flt-status" style="min-width:150px;margin:0">
             <option value="active" selected>Active (card + confirmed)</option>
             <option value="all">All statuses</option>
@@ -209,7 +256,7 @@
           <button type="button" class="btn-ghost" id="btn-csv">Export CSV</button>
         </span>
       </div>
-      <p class="panel-hint" style="margin:0 0 10px 16px">Step Up holds are listed in the Step Up holds panel only — not in this table. Active = <code>pending</code> (in-flight card) or <code>confirmed</code>.</p>
+      <p class="panel-hint" style="margin:0 0 10px 16px">Step Up holds appear only in the Step Up holds panel. This table is filterable by rail: card = in-flight Stripe <code>pending</code> or Stripe <code>confirmed</code>; Step Up = confirmed without Stripe. Active = <code>pending</code> or <code>confirmed</code>.</p>
       <div class="panel-body table-wrap">
         <table class="data" id="tbl">
           <thead>
@@ -218,6 +265,7 @@
               <th>Camper</th>
               <th>Week</th>
               <th>Schedule</th>
+              <th>Payment</th>
               <th>Status</th>
               <th>Amount</th>
               <th>Created</th>
@@ -360,7 +408,7 @@
       async function loadEnrollments(sb) {
         const { data, error } = await sb
           .from('enrollments')
-          .select('id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at, campers(first_name,last_name,registration_fee_paid), weeks(label,week_number)')
+          .select('id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at,stripe_session_id, campers(first_name,last_name,registration_fee_paid), weeks(label,week_number)')
           .in('status', ADMIN_ENROLLMENT_STATUSES)
           .order('created_at', { ascending: false });
         if (error) {
@@ -424,25 +472,68 @@
         if (!o) return;
         document.getElementById('st-kids').textContent = String(o.enrolledCampersConfirmed != null ? o.enrolledCampersConfirmed : 0);
         document.getElementById('st-rev').textContent = IMA.formatMoney(o.revenueConfirmed != null ? o.revenueConfirmed : 0);
+        var kcc = document.getElementById('st-kids-cc');
+        if (kcc) kcc.textContent = String(o.enrolledCampersCreditCard != null ? o.enrolledCampersCreditCard : 0);
+        var rcc = document.getElementById('st-rev-cc');
+        if (rcc) rcc.textContent = IMA.formatMoney(o.revenueCreditCard != null ? o.revenueCreditCard : 0);
+        var ksu = document.getElementById('st-kids-su');
+        if (ksu) ksu.textContent = String(o.enrolledCampersStepUp != null ? o.enrolledCampersStepUp : 0);
+        var rsu = document.getElementById('st-rev-su-conf');
+        if (rsu) rsu.textContent = IMA.formatMoney(o.revenueStepUpConfirmed != null ? o.revenueStepUpConfirmed : 0);
+        var rh = document.getElementById('st-rev-holds');
+        if (rh) rh.textContent = IMA.formatMoney(o.revenueStepUpHolds != null ? o.revenueStepUpHolds : 0);
+        var hr = document.getElementById('st-hold-rows');
+        if (hr) hr.textContent = String(o.pendingStepUpHoldRows != null ? o.pendingStepUpHoldRows : 0);
         document.getElementById('st-enr').textContent = String(o.activeEnrollmentRows != null ? o.activeEnrollmentRows : 0);
         var stc = document.getElementById('st-cancel');
         if (stc) stc.textContent = String(o.cancelledRows != null ? o.cancelledRows : 0);
       }
 
       function overviewStats(enr) {
-        const confirmed = enr.filter(function (e) { return e.status === 'confirmed'; });
-        const activeRows = enr.filter(function (e) {
-          return e.status === 'confirmed' || e.status === 'pending' || e.status === 'pending_step_up';
+        const o = {
+          enrolledCampersConfirmed: 0,
+          revenueConfirmed: 0,
+          enrolledCampersCreditCard: 0,
+          enrolledCampersStepUp: 0,
+          revenueCreditCard: 0,
+          revenueStepUpConfirmed: 0,
+          revenueStepUpHolds: 0,
+          pendingStepUpHoldRows: 0,
+          activeEnrollmentRows: 0,
+          cancelledRows: 0,
+        };
+        const confirmedCampers = new Set();
+        const confirmedCampersCreditCard = new Set();
+        const confirmedCampersStepUp = new Set();
+        (enr || []).forEach(function (row) {
+          const st = row.status;
+          if (st === 'confirmed') {
+            o.activeEnrollmentRows++;
+            if (row.camper_id) confirmedCampers.add(String(row.camper_id));
+            const pp = Number(row.price_paid) || 0;
+            o.revenueConfirmed += pp;
+            const hasStripe = enrollmentPaidViaStripe(row);
+            if (hasStripe) {
+              o.revenueCreditCard += pp;
+              if (row.camper_id) confirmedCampersCreditCard.add(String(row.camper_id));
+            } else {
+              o.revenueStepUpConfirmed += pp;
+              if (row.camper_id) confirmedCampersStepUp.add(String(row.camper_id));
+            }
+          } else if (st === 'pending' || st === 'pending_step_up') {
+            o.activeEnrollmentRows++;
+            if (st === 'pending_step_up') {
+              o.pendingStepUpHoldRows += 1;
+              o.revenueStepUpHolds += Number(row.price_paid) || 0;
+            }
+          } else if (st === 'cancelled') {
+            o.cancelledRows++;
+          }
         });
-        const cancelledRows = enr.filter(function (e) { return e.status === 'cancelled'; });
-        const campers = {};
-        confirmed.forEach(function (e) { campers[e.camper_id] = true; });
-        const rev = confirmed.reduce(function (s, e) { return s + (Number(e.price_paid) || 0); }, 0);
-        document.getElementById('st-kids').textContent = String(Object.keys(campers).length);
-        document.getElementById('st-rev').textContent = IMA.formatMoney(rev);
-        document.getElementById('st-enr').textContent = String(activeRows.length);
-        var stc = document.getElementById('st-cancel');
-        if (stc) stc.textContent = String(cancelledRows.length);
+        o.enrolledCampersConfirmed = confirmedCampers.size;
+        o.enrolledCampersCreditCard = confirmedCampersCreditCard.size;
+        o.enrolledCampersStepUp = confirmedCampersStepUp.size;
+        applyOverviewFromServer(o);
       }
 
       function renderShirtAddons(campers, parents) {
@@ -820,6 +911,28 @@
         return String((e && e.status) || '').trim();
       }
 
+      function enrollmentPaidViaStripe(e) {
+        return !!(e && e.stripe_session_id != null && String(e.stripe_session_id).trim() !== '');
+      }
+
+      /** For filters / badges: credit_card | step_up (pending_step_up excluded — separate panel). */
+      function enrollmentPaymentRailKey(e) {
+        var s = enrollmentStatusKey(e);
+        if (s === 'pending') return 'credit_card';
+        if (s === 'confirmed') return enrollmentPaidViaStripe(e) ? 'credit_card' : 'step_up';
+        if (s === 'cancelled') return enrollmentPaidViaStripe(e) ? 'credit_card' : 'step_up';
+        return '';
+      }
+
+      function enrollmentPaymentLabel(e) {
+        var s = enrollmentStatusKey(e);
+        if (s === 'pending_step_up') return 'Step Up (hold)';
+        if (s === 'pending') return 'Credit card';
+        if (s === 'confirmed') return enrollmentPaidViaStripe(e) ? 'Credit card' : 'Step Up';
+        if (s === 'cancelled') return enrollmentPaidViaStripe(e) ? 'Credit card' : 'Step Up';
+        return '—';
+      }
+
       /**
        * Match parent `pendingStepUpAmountOwedDollars` / index.html: for pending_step_up,
        * `enrollments.registration_fee_paid` means registration is included in the Step Up hold
@@ -841,14 +954,65 @@
       function filterEnrollmentsForTable(enr) {
         const flt = document.getElementById('flt-week').value;
         const st = document.getElementById('flt-status') && document.getElementById('flt-status').value;
+        const pmFltEl = document.getElementById('flt-payment');
+        const pmFlt = pmFltEl && pmFltEl.value ? pmFltEl.value : '';
         return enr.filter(function (e) {
           var s = enrollmentStatusKey(e);
           if (s === 'pending_step_up') return false;
           if (flt && e.week_id !== flt) return false;
+          if (pmFlt === 'credit_card') {
+            if (s !== 'pending' && s !== 'confirmed') return false;
+            if (s === 'confirmed' && !enrollmentPaidViaStripe(e)) return false;
+          } else if (pmFlt === 'step_up') {
+            if (s !== 'confirmed' || enrollmentPaidViaStripe(e)) return false;
+          }
           if (st === 'active') return s === 'confirmed' || s === 'pending';
           if (st === 'cancelled') return s === 'cancelled';
           return true;
         });
+      }
+
+      function renderCreditCardEnrollments(enr, parents) {
+        var list = (enr || []).filter(function (e) {
+          return enrollmentStatusKey(e) === 'confirmed' && enrollmentPaidViaStripe(e);
+        });
+        var body = document.querySelector('#tbl-cc-enr tbody');
+        var empty = document.getElementById('cc-enr-empty');
+        var tbl = document.getElementById('tbl-cc-enr');
+        if (!body || !tbl) return;
+        if (!list.length) {
+          body.innerHTML = '';
+          if (empty) empty.hidden = false;
+          tbl.style.display = 'none';
+          return;
+        }
+        if (empty) empty.hidden = true;
+        tbl.style.display = '';
+        body.innerHTML = list
+          .map(function (e) {
+            var c = e.campers || {};
+            var w = e.weeks || {};
+            var pname = parentGuestLabel(e, parents);
+            var cname = escapeHtml((c.first_name || '') + ' ' + (c.last_name || ''));
+            return (
+              '<tr><td>' +
+              pname +
+              '</td><td>' +
+              cname +
+              '</td><td>' +
+              escapeHtml(w.label || '') +
+              '</td><td>' +
+              escapeHtml(scheduleLabel(e)) +
+              '</td><td>' +
+              escapeHtml(e.status) +
+              '</td><td>' +
+              escapeHtml(IMA.formatMoney(adminEnrollmentPriceDisplayed(e))) +
+              '</td><td>' +
+              escapeHtml(IMA.formatDate(e.created_at)) +
+              '</td></tr>'
+            );
+          })
+          .join('');
       }
 
       function renderTable(enr, parents) {
@@ -869,6 +1033,8 @@
             '</td><td>' +
             escapeHtml(scheduleLabel(e)) +
             '</td><td>' +
+            escapeHtml(enrollmentPaymentLabel(e)) +
+            '</td><td>' +
             escapeHtml(e.status) +
             '</td><td>' +
             escapeHtml(IMA.formatMoney(adminEnrollmentPriceDisplayed(e))) +
@@ -881,7 +1047,7 @@
 
       function exportCsv(enr, parents) {
         const rows = filterEnrollmentsForTable(enr);
-        const lines = [['parent_name', 'parent_email', 'guest_email', 'camper', 'week', 'schedule', 'status', 'price_paid', 'created_at'].join(',')];
+        const lines = [['parent_name', 'parent_email', 'guest_email', 'camper', 'week', 'schedule', 'payment_rail', 'status', 'price_paid', 'created_at'].join(',')];
         rows.forEach(function (e) {
           const p = parents[e.parent_id] || {};
           const c = e.campers || {};
@@ -893,6 +1059,7 @@
             csv((c.first_name || '') + ' ' + (c.last_name || '')),
             csv(w.label || ''),
             csv(scheduleLabel(e)),
+            csv(enrollmentPaymentLabel(e)),
             csv(e.status),
             csv(String(adminEnrollmentPriceDisplayed(e))),
             csv(e.created_at),
@@ -1130,6 +1297,7 @@
         renderWeekManage(sb, state.weeks, peakByWeekId);
         fillWeekFilterSelect();
         renderTable(state.enr, state.parents);
+        renderCreditCardEnrollments(state.enr, state.parents);
         state.stepUpHolds = await fetchAdminStepUpHoldsRows();
         renderStepUpHolds(state.stepUpHolds, state.parents);
         var waitWeeks = await fetchAdminWaitlistWeeks();
@@ -1203,6 +1371,12 @@
           document.getElementById('flt-status').addEventListener('change', function () {
             renderTable(state.enr, state.parents);
           });
+          var fltPm = document.getElementById('flt-payment');
+          if (fltPm) {
+            fltPm.addEventListener('change', function () {
+              renderTable(state.enr, state.parents);
+            });
+          }
           document.getElementById('btn-csv').addEventListener('click', function () {
             exportCsv(state.enr, state.parents);
           });

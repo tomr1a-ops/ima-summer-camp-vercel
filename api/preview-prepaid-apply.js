@@ -73,6 +73,8 @@ module.exports = async (req, res) => {
   const rawBookings = Array.isArray(body.bookings) ? body.bookings : [];
   let bookingsArray = normalizeIncomingBookings(rawBookings);
   const prepaidCoverageKeys = Array.isArray(body.prepaidCoverageKeys) ? body.prepaidCoverageKeys : [];
+  const pmRaw = body && body.paymentMethod != null ? String(body.paymentMethod).trim().toLowerCase() : '';
+  const checkoutPaymentMethod = pmRaw === 'step_up' ? 'step_up' : 'credit_card';
 
   if (!bookingsArray.length) {
     res.statusCode = 200;
@@ -114,7 +116,8 @@ module.exports = async (req, res) => {
       user.id,
       bookingsArray,
       normCamperKey,
-      prepaidCoverageKeys
+      prepaidCoverageKeys,
+      checkoutPaymentMethod
     );
     const sorted = sortBookingsForCreditApply(bookingsArray, weekMetaMap);
     const applied = applyPoolToBookings(sorted, poolW, poolD, wr, dr, ledgerWeekCents, ledgerDayCents);

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>Parent portal — IMA Summer Camp</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/ima-theme.css" />
+  <style>
+    .portal-landing-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-top: 22px;
+    }
+    .portal-landing-actions .btn-primary,
+    .portal-landing-actions .btn-secondary {
+      width: 100%;
+      text-align: center;
+      justify-content: center;
+      text-decoration: none;
+      box-sizing: border-box;
+    }
+    .portal-landing-actions .btn-secondary {
+      border: 1px solid rgba(0, 229, 204, 0.45);
+      color: var(--cyan);
+      background: rgba(0, 229, 204, 0.08);
+    }
+    .portal-landing-actions .btn-secondary:hover {
+      background: rgba(0, 229, 204, 0.14);
+    }
+    .portal-landing-foot {
+      margin-top: 22px;
+      text-align: center;
+      font-size: 13px;
+    }
+    .portal-landing-foot a {
+      color: var(--cyan);
+    }
+  </style>
+</head>
+<body style="background:#050505;color:#f0f0f0">
+  <noscript>
+    <p style="max-width:420px;margin:24px auto;padding:20px;font-family:system-ui,sans-serif">
+      Turn on JavaScript to use the portal, then reload.
+    </p>
+  </noscript>
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-card-head">
+        <img class="auth-logo" src="/logo.png" alt="Impact Martial Athletics" />
+        <div class="auth-title">Summer camp portal</div>
+        <div class="auth-sub">Choose where to go next</div>
+      </div>
+      <div class="auth-body">
+        <div id="msg" class="msg"></div>
+        <div id="signed-out" hidden>
+          <p style="font-size:14px;line-height:1.55;color:#b8b8b8;margin-bottom:8px">
+            Sign in to open registration, holds, or your enrollment list.
+          </p>
+          <a class="btn-primary" href="/login.html?return=/portal-landing.html" style="display:block;text-align:center;text-decoration:none">Parent sign-in</a>
+        </div>
+        <div id="signed-in" hidden>
+          <div class="portal-landing-actions">
+            <a id="link-step-up" class="btn-primary" href="#">Step Up Portal</a>
+            <a id="link-credit-card" class="btn-primary" href="#">Credit Card Portal</a>
+            <a id="link-enrollments" class="btn-secondary" href="#">View All Enrollments</a>
+          </div>
+          <div class="portal-landing-foot">
+            <a href="#" id="logout-link">Log out</a>
+            &nbsp;·&nbsp;
+            <a href="/index.html">Camp home</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.48.1/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
+  <script src="/js/ima-core.js?v=20260409"></script>
+  <script>
+(function () {
+  var msg = document.getElementById('msg');
+  var out = document.getElementById('signed-out');
+  var inn = document.getElementById('signed-in');
+  var linkSu = document.getElementById('link-step-up');
+  var linkCc = document.getElementById('link-credit-card');
+  var linkEnr = document.getElementById('link-enrollments');
+  var logoutEl = document.getElementById('logout-link');
+
+  function showErr(text) {
+    if (!msg) return;
+    msg.textContent = text;
+    msg.className = 'msg show error';
+  }
+
+  function portalUrls(parentId) {
+    var id = encodeURIComponent(parentId);
+    return {
+      stepUp: '/stepup-portal.html',
+      card: '/cc-portal.html',
+      enrollments: '/view-all-enrollments.html?parent_id=' + id
+    };
+  }
+
+  function setSignedIn(uid) {
+    if (out) out.hidden = true;
+    if (inn) inn.hidden = false;
+    var u = portalUrls(uid);
+    if (linkSu) linkSu.href = u.stepUp;
+    if (linkCc) linkCc.href = u.card;
+    if (linkEnr) linkEnr.href = u.enrollments;
+  }
+
+  function setSignedOut() {
+    if (inn) inn.hidden = true;
+    if (out) out.hidden = false;
+    if (msg) {
+      msg.textContent = '';
+      msg.className = 'msg';
+    }
+  }
+
+  async function boot() {
+    try {
+      await IMA.getSupabase();
+      var session = await IMA.getSession();
+      if (session && session.user && session.user.id) {
+        if (typeof IMA.refreshSessionForApi === 'function') {
+          try {
+            var ref = await IMA.refreshSessionForApi();
+            if (ref && ref.session) session = ref.session;
+          } catch (eR) {}
+        }
+        setSignedIn(session.user.id);
+      } else {
+        setSignedOut();
+      }
+    } catch (e) {
+      showErr(e.message || 'Could not load sign-in.');
+      setSignedOut();
+    }
+  }
+
+  if (logoutEl) {
+    logoutEl.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      IMA.signOut('/portal-landing.html');
+    });
+  }
+
+  boot();
+})();
+  </script>
+</body>
+</html>

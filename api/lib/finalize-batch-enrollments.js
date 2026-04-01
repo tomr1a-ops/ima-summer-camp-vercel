@@ -132,7 +132,7 @@ async function finalizePendingEnrollmentBatch(sb, batchId, options) {
   }
   const lid = ledgerParentId || (rows[0] && rows[0].parent_id);
   if (didConfirmAny && (lw > 0 || ld > 0) && lid) {
-    await subtractFamilyCampLedgerSplit(sb, lid, lw, ld);
+    await subtractFamilyCampLedgerSplit(sb, lid, lw, ld, 'credit_card');
   }
 
   if (didConfirmAny && waitlistIds && waitlistIds.length && lid) {
@@ -323,7 +323,7 @@ async function finalizeStepUpReservationBatch(sb, batchId, options) {
   }
   const lid = ledgerParentId || (rows[0] && rows[0].parent_id);
   if (didAny && (lw > 0 || ld > 0) && lid) {
-    await subtractFamilyCampLedgerSplit(sb, lid, lw, ld);
+    await subtractFamilyCampLedgerSplit(sb, lid, lw, ld, 'step_up');
   }
 
   if (didAny && waitlistIds && waitlistIds.length && lid) {

@@ -702,12 +702,10 @@
         if (daysCoveredByConfirmedForCamperWeek(w.id, cid).size > 0) return;
         var k = String(cid) + ':' + String(w.id);
         fullWeekKey.add(k);
-        if (enrollmentType === 'full') {
-          var lineFw = { weekId: w.id, dayIds: ids, pricingMode: 'full_week', camperId: cid };
-          var wlIdFw = waitlistOfferIdForCheckout(cid, w.id);
-          if (wlIdFw) lineFw.waitlistEntryId = wlIdFw;
-          out.push(lineFw);
-        }
+        var lineFw = { weekId: w.id, dayIds: ids, pricingMode: 'full_week', camperId: cid };
+        var wlIdFw = waitlistOfferIdForCheckout(cid, w.id);
+        if (wlIdFw) lineFw.waitlistEntryId = wlIdFw;
+        out.push(lineFw);
       });
     });
     if (enrollmentType !== 'daily') return out;
@@ -910,10 +908,31 @@
       }
       return true;
     }
+    function weeksHandoffMatches(actual, expected) {
+      var es = expected.slice().sort();
+      var as = actual.slice().sort();
+      if (sameSorted(as, es)) return true;
+      if (!es.length && as.length) return true;
+      return false;
+    }
+    function childrenHandoffMatches(actual, expected) {
+      var es = expected.slice().sort();
+      var as = actual.slice().sort();
+      if (sameSorted(as, es)) return true;
+      if (!es.length) return true;
+      var have = {};
+      as.forEach(function (id) {
+        have[id] = true;
+      });
+      for (var i = 0; i < es.length; i++) {
+        if (!have[es[i]]) return false;
+      }
+      return true;
+    }
     var wa = Object.keys(weekSet).sort();
     var ca = Object.keys(childSet).sort();
     if (!bookings.length && !hasShirtCheckoutSelection()) return false;
-    return sameSorted(wa, expectedWeeks.slice().sort()) && sameSorted(ca, expectedChildren.slice().sort());
+    return weeksHandoffMatches(wa, expectedWeeks) && childrenHandoffMatches(ca, expectedChildren);
   }
 
   async function fetchPrepaidApply(bookings) {
@@ -927,6 +946,7 @@
         testPricing: testPriceMode,
         bookings: bookings,
         prepaidCoverageKeys: prepaidCoverageKeysForApi(),
+        paymentMethod: 'credit_card',
       }),
     });
     if (!res.ok) return null;
@@ -952,6 +972,7 @@
     }
     var previewIds = Array.from(previewIdSet);
     if (previewIds.length && session) params.set('camperIds', previewIds.join(','));
+    params.set('paymentMethod', 'credit_card');
     var q = params.toString();
     try {
       var res = await imaNoStoreFetch('/api/preview-pricing' + (q ? '?' + q : ''), { headers });

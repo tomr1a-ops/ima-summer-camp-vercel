@@ -6,7 +6,7 @@
  * Plus optional `family_camp_credit_ledger` week/day balances (cents) from cancelled paid enrollments.
  */
 
-const { getReconciledFamilyCampLedgerBalances } = require('./family-camp-ledger');
+const { getReconciledFamilyCampLedgerBalances, ledgerPaymentMethodForEnrollment } = require('./family-camp-ledger');
 const { enrollmentQualifiesForCampCredit } = require('./enrollment-credit-eligibility');
 
 function normUuid(v) {
@@ -168,13 +168,22 @@ function applyPoolToBookings(sortedBookings, poolW, poolD, wr, dr, ledgerWeekCen
 /**
  * Load confirmed enrollments for parent's campers; return floating week/day pool + week meta for sorting.
  */
-async function loadFloatingPrepaidPool(sb, parentId, bookingsArray, normCamperKeyFn, prepaidUiCoverageKeys) {
+async function loadFloatingPrepaidPool(
+  sb,
+  parentId,
+  bookingsArray,
+  normCamperKeyFn,
+  prepaidUiCoverageKeys,
+  paymentMethod = 'credit_card'
+) {
+  const pm = paymentMethod === 'step_up' ? 'step_up' : 'credit_card';
   const { data: campers, error: ce } = await sb.from('campers').select('id').eq('parent_id', parentId);
   if (ce) throw ce;
   const camperIds = (campers || []).map((c) => String(c.id));
   const { weekCents: ledgerWeekCents, dayCents: ledgerDayCents } = await getReconciledFamilyCampLedgerBalances(
     sb,
-    parentId
+    parentId,
+    { paymentMethod: pm }
   );
   if (!camperIds.length) {
     return { poolW: 0, poolD: 0, weekMetaMap: new Map(), ledgerWeekCents, ledgerDayCents };
@@ -188,7 +197,9 @@ async function loadFloatingPrepaidPool(sb, parentId, bookingsArray, normCamperKe
     .in('camper_id', camperIds);
   if (ee) throw ee;
 
-  const enrollRows = (enrollRowsRaw || []).filter((r) => enrollmentQualifiesForCampCredit(r));
+  const enrollRows = (enrollRowsRaw || []).filter(
+    (r) => enrollmentQualifiesForCampCredit(r) && ledgerPaymentMethodForEnrollment(r) === pm
+  );
 
   const weekIds = [...new Set((enrollRows || []).map((r) => String(r.week_id)))];
   const weekMetaMap = new Map();

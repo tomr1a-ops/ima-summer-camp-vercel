@@ -133,6 +133,14 @@
     return sb.from('profiles').select('role').eq('id', userId).maybeSingle();
   }
 
+  function safeCampReturnPath() {
+    try {
+      var ret = new URLSearchParams(window.location.search).get('return');
+      if (ret && ret.startsWith('/') && !ret.startsWith('//')) return ret;
+    } catch (e) {}
+    return '/portal-landing.html';
+  }
+
   /** Parent camp login never sends users to admin — staff use /admin-login.html only. */
   function goAfterSignIn(sb, session) {
     var token = session.access_token;
@@ -168,7 +176,7 @@
       return profile;
     }).then(function (profile) {
       if (!profile) throw new Error('Profile not found. Complete registration or contact IMA.');
-      window.location.replace('/index.html?portal=1#schedule');
+      window.location.replace(safeCampReturnPath());
     });
   }
 

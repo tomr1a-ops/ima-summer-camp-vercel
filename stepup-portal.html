@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>Step Up portal — IMA Summer Camp</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      background: #050505;
+      color: #b8b8b8;
+      font-family: system-ui, sans-serif;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      text-align: center;
+    }
+    #msg { font-size: 15px; max-width: 360px; line-height: 1.5; }
+    #msg.error { color: #ffb4b4; }
+  </style>
+</head>
+<body>
+  <noscript>
+    <p id="msg">Turn on JavaScript to open the Step Up portal.</p>
+  </noscript>
+  <p id="msg">Opening Step Up registration…</p>
+  <script src="/js/ima-core.js?v=20260409"></script>
+  <script>
+(function () {
+  var msg = document.getElementById('msg');
+  async function go() {
+    try {
+      await IMA.getSupabase();
+      var session = await IMA.getSession();
+      if (!session || !session.user || !session.user.id) {
+        location.replace('/login.html?return=' + encodeURIComponent('/stepup-portal.html'));
+        return;
+      }
+      if (typeof IMA.refreshSessionForApi === 'function') {
+        try {
+          var ref = await IMA.refreshSessionForApi();
+          if (ref && ref.session) session = ref.session;
+        } catch (eR) {}
+      }
+      var id = encodeURIComponent(session.user.id);
+      location.replace('/index.html?parent_id=' + id + '&paymentPortal=step_up#schedule');
+    } catch (e) {
+      if (msg) {
+        msg.className = 'error';
+        msg.textContent = (e && e.message) || 'Could not open the Step Up portal.';
+      }
+    }
+  }
+  go();
+})();
+  </script>
+</body>
+</html>

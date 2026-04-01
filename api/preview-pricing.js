@@ -24,6 +24,9 @@ module.exports = async (req, res) => {
   try {
     const url = new URL(req.url || '', 'http://local');
     const testPricing = url.searchParams.get('test') === 'true';
+    const paymentMethodRaw = (url.searchParams.get('paymentMethod') || '').trim().toLowerCase();
+    const ledgerPaymentMethod =
+      paymentMethodRaw === 'step_up' ? 'step_up' : paymentMethodRaw === 'credit_card' ? 'credit_card' : 'credit_card';
     const camperIds = uniqueCamperIdsFromQuery(url);
     const { user, token } = await getUserFromRequest(req);
 
@@ -51,7 +54,7 @@ module.exports = async (req, res) => {
 
       if (profile && sb) {
         try {
-          const lb = await getReconciledFamilyCampLedgerBalances(sb, user.id);
+          const lb = await getReconciledFamilyCampLedgerBalances(sb, user.id, { paymentMethod: ledgerPaymentMethod });
           prepaidCampBalanceWeekCents = lb.weekCents;
           prepaidCampBalanceDayCents = lb.dayCents;
         } catch (le) {

@@ -395,7 +395,8 @@ module.exports = async (req, res) => {
         parentId,
         bookingsArray,
         normCamperKey,
-        prepaidCoverageKeys
+        prepaidCoverageKeys,
+        paymentMethod === 'step_up' ? 'step_up' : 'credit_card'
       );
       bookingsArray = sortBookingsForCreditApply(bookingsArray, weekMetaMap);
       const applied = applyPoolToBookings(bookingsArray, poolW, poolD, wr, dr, ledgerWeekCents, ledgerDayCents);

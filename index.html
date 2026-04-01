@@ -2049,6 +2049,7 @@
 
 <header>
   <div id="header-auth-bar" class="header-auth-bar" hidden>
+    <a href="/portal-landing.html" class="header-logout-btn" style="margin-right:8px">Portal</a>
     <a href="#" id="logout-link-header" class="header-logout-btn">Log out</a>
   </div>
   <img class="logo-img" src="/logo.png" alt="Impact Martial Athletics" />
@@ -2091,8 +2092,8 @@
           <h1 class="auth-hero-title">Parent account</h1>
           <p class="auth-hero-sub">All parent sign-ins use one page. Sign in there, then you’ll come back here to add your children and open <strong>Camp registration</strong>.</p>
           <div class="auth-hero-actions">
-            <a class="btn-primary" href="/login.html?return=/index.html">Parent sign-in</a>
-            <a class="btn-secondary" href="/register.html?return=/index.html">Create account</a>
+            <a class="btn-primary" href="/login.html?return=/portal-landing.html">Parent sign-in</a>
+            <a class="btn-secondary" href="/register.html?return=/portal-landing.html">Create account</a>
           </div>
           <p id="auth-config-err" class="week-dates-label" style="display:none;margin-top:16px;line-height:1.5;color:#ff8888"></p>
         </div>
@@ -2203,7 +2204,7 @@
       <div id="schedule-overview" class="schedule-overview" hidden aria-live="polite"></div>
       <div id="credit-by-camper" class="credit-by-camper" hidden aria-live="polite"></div>
       <div id="empty-state" class="empty-state">
-        Use <a href="/login.html?return=/index.html" style="color:var(--cyan)">parent sign-in</a>, add children on <strong>My kids</strong>, then choose <strong>weekly</strong> or <strong>daily</strong> and check which children are in each week.
+        Use <a href="/login.html?return=/portal-landing.html" style="color:var(--cyan)">parent sign-in</a>, add children on <strong>My kids</strong>, then choose <strong>weekly</strong> or <strong>daily</strong> and check which children are in each week.
       </div>
       <div id="summary-lines" style="display:none"></div>
       <div id="total-row" class="summary-total-row" style="display:none">
@@ -2278,7 +2279,7 @@
 <footer>
   © 2026 Impact Martial Athletics · 4401 S Flamingo Rd, Davie FL 33330
   &nbsp;·&nbsp; <a href="mailto:info@impactmartialathletics.com">Contact Us</a>
-  &nbsp;·&nbsp; <a href="/login.html?return=/index.html">Parent sign-in</a>
+  &nbsp;·&nbsp; <a href="/login.html?return=/portal-landing.html">Parent sign-in</a>
   &nbsp;·&nbsp; <a href="/register.html">Register</a>
   <span class="footer-stripe-test">
     &nbsp;·&nbsp;
@@ -2294,6 +2295,11 @@
 
   const LS_STRIPE_TEST_UI = 'ima_stripe_test_ui';
   const qsBoot = new URLSearchParams(window.location.search);
+  var urlParentIdBoot = (qsBoot.get('parent_id') || '').trim();
+  var urlPortalPaymentBoot = (qsBoot.get('portalPayment') || '').trim();
+  if (urlPortalPaymentBoot !== 'step_up' && urlPortalPaymentBoot !== 'credit_card') urlPortalPaymentBoot = '';
+  var urlPaymentPortalBoot = (qsBoot.get('paymentPortal') || '').trim();
+  if (urlPaymentPortalBoot !== 'step_up' && urlPaymentPortalBoot !== 'credit_card') urlPaymentPortalBoot = '';
   var checkoutEmbedMode = qsBoot.get('checkoutEmbed') === '1';
   var embedPaymentMethod = '';
   if (checkoutEmbedMode) {
@@ -2329,6 +2335,77 @@
       var pathClean = location.pathname + (qsStripped ? '?' + qsStripped : '') + (location.hash || '');
       history.replaceState(null, '', pathClean);
     } catch (eStrip) {}
+  }
+
+  function getPaymentPortalMode() {
+    try {
+      var v = document.documentElement.getAttribute('data-payment-portal') || '';
+      return v === 'step_up' || v === 'credit_card' ? v : '';
+    } catch (ePpm) {
+      return '';
+    }
+  }
+
+  /** Ledger + prepaid preview APIs: match checkout rail (portal lock, embed, or payment select). */
+  function currentCheckoutPaymentMethod() {
+    var ppm = getPaymentPortalMode();
+    if (ppm === 'step_up') return 'step_up';
+    if (ppm === 'credit_card') return 'credit_card';
+    if (checkoutEmbedMode && embedPaymentMethod) return embedPaymentMethod;
+    var sel = document.getElementById('payment-method-select');
+    var v = sel && sel.value;
+    if (v === 'step_up' || v === 'credit_card') return v;
+    return 'credit_card';
+  }
+
+  function applyPaymentPortalChrome() {
+    var m = getPaymentPortalMode();
+    var bcc = document.getElementById('btn-pay-credit-card');
+    var bsu = document.getElementById('btn-pay-step-up');
+    var pmLabel = document.getElementById('payment-method-label-main');
+    var sn = document.getElementById('step-up-notice');
+    var sel = document.getElementById('payment-method-select');
+    if (m === 'step_up') {
+      if (bcc) {
+        bcc.hidden = true;
+        bcc.style.display = 'none';
+      }
+      if (bsu) {
+        bsu.hidden = true;
+        bsu.style.display = 'none';
+      }
+      if (pmLabel) pmLabel.textContent = 'Payment — Step Up for Students';
+      if (sel) {
+        sel.value = 'step_up';
+        writeCampPaymentMethodOk('step_up');
+      }
+      try {
+        document.documentElement.setAttribute('data-portal-payment', 'step_up');
+      } catch (eDp) {}
+      if (sn) sn.hidden = false;
+    } else if (m === 'credit_card') {
+      if (bcc) {
+        bcc.hidden = true;
+        bcc.style.display = 'none';
+      }
+      if (bsu) {
+        bsu.hidden = true;
+        bsu.style.display = 'none';
+      }
+      if (pmLabel) pmLabel.textContent = 'Payment — Credit card (Stripe)';
+      if (sel) {
+        sel.value = 'credit_card';
+        writeCampPaymentMethodOk('credit_card');
+      }
+      try {
+        document.documentElement.setAttribute('data-portal-payment', 'credit_card');
+      } catch (eDp2) {}
+      if (sn) sn.hidden = true;
+    }
+  }
+
+  function enrollmentRowPaidViaStripe(row) {
+    return !!(row && row.stripe_session_id != null && String(row.stripe_session_id).trim() !== '');
   }
 
   /** Parent portal / registration: never use cached API responses (CDN or browser HTTP cache). */
@@ -3275,18 +3352,29 @@
     var uid = enrollUserId();
     if (!uid) return '';
     var bookings = collectBookings();
-    if (!bookings.length && !hasShirtCheckoutSelection()) return '';
     var weekSet = {};
     var childSet = {};
     bookings.forEach(function (b) {
       if (b.weekId != null) weekSet[String(b.weekId)] = true;
       if (b.camperId != null) childSet[String(b.camperId)] = true;
     });
+    try {
+      collectDraftCamperWeekKeysUnion().forEach(function (key) {
+        var parts = String(key).split('|');
+        if (parts.length >= 2) {
+          var cid = String(parts[0]).trim();
+          var wk = String(parts[1]).trim();
+          if (cid) childSet[cid] = true;
+          if (wk) weekSet[wk] = true;
+        }
+      });
+    } catch (eHandoffUnion) {}
     if (session && parentCampers.length) {
       parentCampers.forEach(function (c) {
         if (extraShirtChargesThisCheckout(c.id)) childSet[String(c.id)] = true;
       });
     }
+    if (!bookings.length && !hasShirtCheckoutSelection() && Object.keys(weekSet).length === 0) return '';
     var qs = new URLSearchParams();
     qs.set('parent', uid);
     qs.set('weeks', Object.keys(weekSet).sort().join(','));
@@ -3320,6 +3408,17 @@
       if (b.weekId != null) weekSet[String(b.weekId)] = true;
       if (b.camperId != null) childSet[String(b.camperId)] = true;
     });
+    try {
+      collectDraftCamperWeekKeysUnion().forEach(function (key) {
+        var parts = String(key).split('|');
+        if (parts.length >= 2) {
+          var cid = String(parts[0]).trim();
+          var wk = String(parts[1]).trim();
+          if (cid) childSet[cid] = true;
+          if (wk) weekSet[wk] = true;
+        }
+      });
+    } catch (eEmbedUnion) {}
     if (session && parentCampers.length) {
       parentCampers.forEach(function (c) {
         if (extraShirtChargesThisCheckout(c.id)) childSet[String(c.id)] = true;
@@ -3334,7 +3433,28 @@
       }
       return true;
     }
-    if (!sameSorted(weekArr, expectedWeeks.slice().sort()) || !sameSorted(childArr, expectedChildren.slice().sort())) {
+    function weeksHandoffMatchesEmbed(actual, expected) {
+      var es = expected.slice().sort();
+      var as = actual.slice().sort();
+      if (sameSorted(as, es)) return true;
+      if (!es.length && as.length) return true;
+      return false;
+    }
+    function childrenHandoffMatchesEmbed(actual, expected) {
+      var es = expected.slice().sort();
+      var as = actual.slice().sort();
+      if (sameSorted(as, es)) return true;
+      if (!es.length) return true;
+      var have = {};
+      as.forEach(function (id) {
+        have[id] = true;
+      });
+      for (var i = 0; i < es.length; i++) {
+        if (!have[es[i]]) return false;
+      }
+      return true;
+    }
+    if (!weeksHandoffMatchesEmbed(weekArr, expectedWeeks) || !childrenHandoffMatchesEmbed(childArr, expectedChildren)) {
       redirectCheckoutEmbedParent('/index.html#schedule');
       return false;
     }
@@ -5103,7 +5223,11 @@
       return (Number(a.week_number) || 0) - (Number(b.week_number) || 0);
     });
     var anyDraft = false;
-    var html = '<div class="schedule-overview-title">Your camp schedule</div>';
+    var ppm = getPaymentPortalMode();
+    var ovTitle = 'Your camp schedule';
+    if (ppm === 'step_up') ovTitle = 'Your Step Up enrollments';
+    else if (ppm === 'credit_card') ovTitle = 'Your card-paid enrollments';
+    var html = '<div class="schedule-overview-title">' + escapeHtml(ovTitle) + '</div>';
 
     const paidByCamperRows = {};
     (confirmedEnrollmentsCache || []).forEach(function (row) {
@@ -5129,9 +5253,13 @@
       const name = escapeHtml(String((camper.first_name + ' ' + camper.last_name).trim()));
       const paidRows = paidByCamperRows[cid] || [];
       const paidOnlyRows = paidRows.filter(function (r) {
-        return r && r.status === 'confirmed';
+        if (!r || r.status !== 'confirmed') return false;
+        if (ppm === 'credit_card') return enrollmentRowPaidViaStripe(r);
+        if (ppm === 'step_up') return !enrollmentRowPaidViaStripe(r);
+        return true;
       });
       const stepUpRows = paidRows.filter(function (r) {
+        if (ppm === 'credit_card') return false;
         return r && r.status === 'pending_step_up';
       });
       const coalescedPaid = coalesceEnrollmentRowsForSidebar(paidOnlyRows);
@@ -5149,7 +5277,9 @@
       html += '<div class="schedule-overview-name">' + name + '</div>';
 
       if (paidDisplayLis.length) {
-        html += '<div class="schedule-overview-sub">Registered &amp; paid</div>';
+        var paidSub =
+          ppm === 'step_up' ? 'Registered via Step Up (confirmed)' : 'Registered &amp; paid';
+        html += '<div class="schedule-overview-sub">' + paidSub + '</div>';
         html += '<ul class="schedule-overview-list">' + paidDisplayLis.join('') + '</ul>';
       }
 
@@ -5192,7 +5322,7 @@
       stepUpHoldSummarySnapshot && Number.isFinite(Number(stepUpHoldSummarySnapshot.extraShirts))
         ? Number(stepUpHoldSummarySnapshot.extraShirts)
         : 0;
-    if (ovShirtSnap > 0.01) {
+    if (ovShirtSnap > 0.01 && ppm !== 'credit_card') {
       var anyStepUpOv = (confirmedEnrollmentsCache || []).some(function (r) {
         return r && r.status === 'pending_step_up';
       });
@@ -5210,7 +5340,14 @@
     }
 
     const anyPaid = (confirmedEnrollmentsCache || []).some(function (r) {
-      return r && (r.status === 'confirmed' || r.status === 'pending_step_up');
+      if (!r) return false;
+      if (ppm === 'credit_card') {
+        return r.status === 'confirmed' && enrollmentRowPaidViaStripe(r);
+      }
+      if (ppm === 'step_up') {
+        return r.status === 'pending_step_up' || (r.status === 'confirmed' && !enrollmentRowPaidViaStripe(r));
+      }
+      return r.status === 'confirmed' || r.status === 'pending_step_up';
     });
     if (!anyPaid && !anyDraft) {
       html +=
@@ -5234,6 +5371,11 @@
   function renderStepUpPendingBannerImpl() {
     var el = document.getElementById('step-up-pending-banner');
     if (!el) return;
+    if (getPaymentPortalMode() === 'credit_card') {
+      el.hidden = true;
+      el.innerHTML = '';
+      return;
+    }
     if (!session || !parentCampers.length) {
       el.hidden = true;
       el.innerHTML = '';
@@ -5437,6 +5579,7 @@
     }
     const previewIds = Array.from(previewIdSet);
     if (previewIds.length && session) params.set('camperIds', previewIds.join(','));
+    params.set('paymentMethod', currentCheckoutPaymentMethod());
     const q = params.toString();
     const url = '/api/preview-pricing' + (q ? '?' + q : '');
     try {
@@ -5536,6 +5679,7 @@
           testPricing: !!testPriceMode,
           bookings: bookings,
           prepaidCoverageKeys: prepaidCoverageKeysForApi(),
+          paymentMethod: currentCheckoutPaymentMethod(),
         }),
       });
       if (gen !== serverPrepaidFetchGen) return;
@@ -5642,6 +5786,12 @@
       sessionStorage.removeItem(ka);
       sessionStorage.removeItem(campPaymentMethodSessionKey());
     } catch (eR) {}
+    try {
+      if (!getPaymentPortalMode()) document.documentElement.removeAttribute('data-portal-payment');
+    } catch (eDp) {}
+    try {
+      if (getPaymentPortalMode()) applyPaymentPortalChrome();
+    } catch (eApcR) {}
     var agreeChk = document.getElementById('camp-agreement-accept');
     if (agreeChk) agreeChk.checked = false;
   }
@@ -5867,7 +6017,9 @@
           ? Number(stepUpHoldSummarySnapshot.extraShirts)
           : 0;
       var useStepUpHoldOrderSummary =
-        session && (stepUpRowsForSummary.length > 0 || stepUpHoldOrderUsesStableServerTotal());
+        session &&
+        getPaymentPortalMode() !== 'credit_card' &&
+        (stepUpRowsForSummary.length > 0 || stepUpHoldOrderUsesStableServerTotal());
 
       if (useStepUpHoldOrderSummary) {
         empty.textContent = '';
@@ -6104,9 +6256,23 @@
     if (paySection) paySection.hidden = false;
     var pmSelRestore = document.getElementById('payment-method-select');
     if (pmSelRestore && !checkoutEmbedMode) {
-      /* Main portal: card vs Step Up is chosen only via the two buttons (standalone checkout pages).
-         Do not restore session payment method — stale step_up showed #step-up-notice without tapping Pay with Step Up. */
-      pmSelRestore.selectedIndex = 0;
+      var dpPref = '';
+      try {
+        dpPref = document.documentElement.getAttribute('data-portal-payment') || '';
+      } catch (eDp) {}
+      if (dpPref === 'step_up' || dpPref === 'credit_card') {
+        pmSelRestore.value = dpPref;
+        writeCampPaymentMethodOk(dpPref);
+      } else {
+        var ppmR = getPaymentPortalMode();
+        if (ppmR === 'step_up' || ppmR === 'credit_card') {
+          pmSelRestore.value = ppmR;
+          writeCampPaymentMethodOk(ppmR);
+        } else {
+          /* Main portal: default card until parent picks Step Up / card or lands from portal with a preference. */
+          pmSelRestore.selectedIndex = 0;
+        }
+      }
     }
 
     var stepUpHeldAddon = pendingStepUpHoldAddonForBookings(bookings);
@@ -7358,7 +7524,7 @@
         errBanner.style.display = 'block';
       }
       if (checkoutEmbedMode) {
-        redirectCheckoutEmbedParent('/login.html?return=/index.html#schedule');
+        redirectCheckoutEmbedParent('/login.html?return=/portal-landing.html');
         return;
       }
       showAuthPanels();
@@ -7374,6 +7540,10 @@
       }
     }
     if (session) {
+      if (urlParentIdBoot && String(session.user.id) !== urlParentIdBoot) {
+        location.replace('/portal-landing.html');
+        return;
+      }
       await handleStripeCheckoutCancelIfAny();
       var stripeReturnSid = consumeStripeReturnSessionIdFromUrl();
       await loadParentCampers();
@@ -7402,11 +7572,47 @@
       try {
         persistEnrollLocal();
       } catch (ePe) {}
+      if (urlPaymentPortalBoot) {
+        try {
+          document.documentElement.setAttribute('data-payment-portal', urlPaymentPortalBoot);
+        } catch (ePpb) {}
+      }
+      var effPortalPm = urlPaymentPortalBoot || urlPortalPaymentBoot || '';
+      if (effPortalPm) {
+        try {
+          document.documentElement.setAttribute('data-portal-payment', effPortalPm);
+          writeCampPaymentMethodOk(effPortalPm);
+          var pmLanding = document.getElementById('payment-method-select');
+          if (pmLanding) pmLanding.value = effPortalPm;
+        } catch (ePl) {}
+      }
+      try {
+        applyPaymentPortalChrome();
+      } catch (eApc) {}
       await refreshPricingPreview();
+      if (urlParentIdBoot || urlPortalPaymentBoot || urlPaymentPortalBoot) {
+        try {
+          var uStripPortal = new URL(location.href);
+          uStripPortal.searchParams.delete('parent_id');
+          uStripPortal.searchParams.delete('portalPayment');
+          uStripPortal.searchParams.delete('paymentPortal');
+          history.replaceState(null, '', uStripPortal.pathname + uStripPortal.search + uStripPortal.hash);
+        } catch (eStripP) {}
+      }
       void subscribeParentEnrollmentsRealtime();
     } else {
       if (checkoutEmbedMode) {
-        redirectCheckoutEmbedParent('/login.html?return=/index.html#schedule');
+        if (urlParentIdBoot) {
+          redirectCheckoutEmbedParent(
+            '/login.html?return=' + encodeURIComponent(location.pathname + location.search + location.hash)
+          );
+        } else {
+          redirectCheckoutEmbedParent('/login.html?return=/portal-landing.html');
+        }
+        return;
+      }
+      if (urlParentIdBoot) {
+        location.replace('/login.html?return=' + encodeURIComponent(location.pathname + location.search + location.hash));
         return;
       }
       parentProfileWaiverSigned = false;
@@ -7645,6 +7851,9 @@
       var pmReq = document.getElementById('payment-method-select');
       var pmOut =
         pmReq && pmReq.value === 'step_up' ? 'step_up' : pmReq && pmReq.value === 'credit_card' ? 'credit_card' : '';
+      var ppmCo = getPaymentPortalMode();
+      if (ppmCo === 'step_up') pmOut = 'step_up';
+      else if (ppmCo === 'credit_card') pmOut = 'credit_card';
       const body = {
         bookings: bookings,
         testPricing: testPriceMode,
@@ -7990,7 +8199,7 @@
       p.dataset.pmInit = '1';
       p.addEventListener('change', function () {
         writeCampPaymentMethodOk(p.value);
-        updateSummary();
+        void refreshPricingPreview();
       });
     }
   })();

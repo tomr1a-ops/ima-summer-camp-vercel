@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>All enrollments — IMA Summer Camp</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --cyan: #00e5cc;
+      --black: #050505;
+      --card: #111111;
+      --border: #1e1e1e;
+      --text: #f0f0f0;
+      --muted: #b8b8b8;
+      --font-display: 'Bebas Neue', sans-serif;
+      --font-body: 'Barlow', sans-serif;
+      --font-cond: 'Barlow Condensed', sans-serif;
+    }
+    body {
+      background: var(--black);
+      color: var(--text);
+      font-family: var(--font-body);
+      min-height: 100vh;
+      padding: 0 16px 48px;
+    }
+    .va-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 0 20px;
+      border-bottom: 1px solid var(--border);
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    .va-top h1 {
+      font-family: var(--font-cond);
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--cyan);
+      font-weight: 600;
+    }
+    .va-back {
+      font-family: var(--font-cond);
+      font-size: 12px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--cyan);
+      text-decoration: none;
+      padding: 8px 12px;
+      border: 1px solid rgba(0, 229, 204, 0.35);
+      border-radius: 6px;
+      background: rgba(0, 229, 204, 0.06);
+    }
+    .va-back:hover { background: rgba(0, 229, 204, 0.12); }
+    .va-wrap { max-width: 960px; margin: 24px auto 0; }
+    .va-msg { font-size: 14px; margin-bottom: 16px; padding: 12px 14px; border-radius: 8px; }
+    .va-msg.error { background: rgba(255,80,80,0.12); border: 1px solid rgba(255,100,100,0.35); color: #ffb4b4; }
+    .va-msg.info { background: rgba(0,229,204,0.08); border: 1px solid rgba(0,229,204,0.25); color: #cdeef0; }
+    .va-totals {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .va-total-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--card);
+      padding: 14px 16px;
+    }
+    .va-total-card h2 {
+      font-family: var(--font-cond);
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .va-total-card .amt {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .va-total-card.grand .amt { color: var(--cyan); }
+    .va-table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--card);
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    th {
+      font-family: var(--font-cond);
+      font-size: 11px;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--cyan);
+      font-weight: 600;
+    }
+    tr:last-child td { border-bottom: none; }
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      text-transform: none;
+    }
+    .badge-su {
+      background: rgba(0, 229, 204, 0.14);
+      color: var(--cyan);
+      border: 1px solid rgba(0, 229, 204, 0.35);
+    }
+    .badge-cc {
+      background: rgba(99, 102, 241, 0.2);
+      color: #c4c6ff;
+      border: 1px solid rgba(129, 140, 248, 0.4);
+    }
+    .status-pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      background: rgba(255,255,255,0.08);
+    }
+    .muted { color: var(--muted); font-size: 12px; }
+    .va-idle { margin-top: 20px; padding: 12px 14px; border-radius: 8px; border: 1px dashed var(--border); }
+  </style>
+</head>
+<body>
+  <div class="va-top">
+    <a class="va-back" href="/portal-landing.html">← Portal home</a>
+    <h1>All enrollments</h1>
+    <span style="width:120px"></span>
+  </div>
+  <div class="va-wrap">
+    <div id="msg" class="va-msg" hidden></div>
+    <div id="loading" class="va-msg info">Loading…</div>
+    <div id="totals-host" class="va-totals" hidden></div>
+    <div id="table-host" class="va-table-wrap" hidden>
+      <table>
+        <thead>
+          <tr>
+            <th>Child</th>
+            <th>Week</th>
+            <th>Payment</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <p id="empty" class="muted" hidden>No enrollments found for your account.</p>
+    <div id="idle-children" class="va-idle muted" hidden></div>
+  </div>
+
+  <script src="/js/ima-core.js?v=20260409"></script>
+  <script>
+(function () {
+  var msgEl = document.getElementById('msg');
+  var loading = document.getElementById('loading');
+  var tableHost = document.getElementById('table-host');
+  var tbody = document.getElementById('tbody');
+  var empty = document.getElementById('empty');
+  var totalsHost = document.getElementById('totals-host');
+  var idleChildren = document.getElementById('idle-children');
+  var qs = new URLSearchParams(window.location.search);
+  var wantParent = (qs.get('parent_id') || '').trim();
+  var STEP_UP_REG = 65;
+
+  function showMsg(text, kind) {
+    if (!msgEl) return;
+    msgEl.textContent = text;
+    msgEl.className = 'va-msg ' + (kind || 'error');
+    msgEl.hidden = !text;
+  }
+
+  function fmtMoney(n) {
+    var x = Number(n);
+    if (!Number.isFinite(x)) return '—';
+    return '$' + x.toFixed(2);
+  }
+
+  function imaNoStoreFetch(url, init) {
+    init = init || {};
+    var sep = url.indexOf('?') >= 0 ? '&' : '?';
+    var busted = url + sep + '_nc=' + Date.now();
+    var h = Object.assign({}, init.headers || {});
+    h['Cache-Control'] = 'no-cache';
+    h['Pragma'] = 'no-cache';
+    return fetch(busted, Object.assign({ cache: 'no-store', credentials: 'same-origin' }, init, { headers: h }));
+  }
+
+  async function freshToken() {
+    if (typeof IMA !== 'undefined' && typeof IMA.refreshSessionForApi === 'function') {
+      try {
+        var ref = await IMA.refreshSessionForApi();
+        if (ref && ref.accessToken) return ref.accessToken;
+      } catch (e) {}
+    }
+    var s = await IMA.getSession();
+    return s && s.access_token ? s.access_token : null;
+  }
+
+  function paidViaStripe(row) {
+    return !!(row && row.stripe_session_id != null && String(row.stripe_session_id).trim() !== '');
+  }
+
+  /** 'step_up' | 'credit_card' for display and totals (cancelled rows still classified for the table). */
+  function paymentRail(row) {
+    var st = String((row && row.status) || '').trim();
+    if (st === 'pending_step_up') return 'step_up';
+    if (st === 'pending') return 'credit_card';
+    if (st === 'confirmed') return paidViaStripe(row) ? 'credit_card' : 'step_up';
+    if (st === 'cancelled') return paidViaStripe(row) ? 'credit_card' : 'step_up';
+    return 'step_up';
+  }
+
+  function paymentBadgeHtml(row) {
+    var rail = paymentRail(row);
+    if (rail === 'credit_card') {
+      return '<span class="badge badge-cc">Credit Card</span>';
+    }
+    return '<span class="badge badge-su">Step Up</span>';
+  }
+
+  function rowAmountForTotals(row, camperById) {
+    var st = String((row && row.status) || '').trim();
+    if (st === 'cancelled') return 0;
+    var camp = Number(row.price_paid);
+    if (!Number.isFinite(camp) || camp < 0) camp = 0;
+    if (st === 'pending_step_up') {
+      var c = camperById[String(row.camper_id)];
+      var regPaidCamper = !!(c && c.registration_fee_paid === true);
+      if (regPaidCamper) return camp;
+      if (!row.registration_fee_paid) return camp;
+      return camp + STEP_UP_REG;
+    }
+    return camp;
+  }
+
+  async function boot() {
+    try {
+      await IMA.getSupabase();
+      var session = await IMA.getSession();
+      if (!session || !session.user || !session.user.id) {
+        var ret = encodeURIComponent(location.pathname + location.search);
+        location.replace('/login.html?return=' + ret);
+        return;
+      }
+      var uid = String(session.user.id);
+      if (wantParent && wantParent !== uid) {
+        location.replace('/portal-landing.html');
+        return;
+      }
+      try {
+        var u = new URL(location.href);
+        if (u.searchParams.get('parent_id')) {
+          u.searchParams.delete('parent_id');
+          history.replaceState(null, '', u.pathname + u.search + u.hash);
+        }
+      } catch (eH) {}
+
+      var tok = await freshToken();
+      if (!tok) {
+        location.replace('/login.html?return=' + encodeURIComponent(location.pathname));
+        return;
+      }
+
+      var weeksRes = await imaNoStoreFetch('/api/weeks');
+      var weeksMap = {};
+      if (weeksRes.ok) {
+        var wj = await weeksRes.json();
+        (wj.weeks || []).forEach(function (w) {
+          if (w && w.id != null) weeksMap[String(w.id)] = w;
+        });
+      }
+
+      var enrRes = await imaNoStoreFetch('/api/enrollments', {
+        headers: { Authorization: 'Bearer ' + tok },
+      });
+      if (enrRes.status === 401) {
+        location.replace('/login.html?return=' + encodeURIComponent(location.pathname));
+        return;
+      }
+      if (!enrRes.ok) {
+        var ej = await enrRes.json().catch(function () {
+          return {};
+        });
+        throw new Error(ej.error || 'Could not load enrollments.');
+      }
+      var data = await enrRes.json();
+      var rows = data.enrollments || [];
+
+      var sb = await IMA.getSupabase();
+      var cr = await sb
+        .from('campers')
+        .select('id,first_name,last_name,registration_fee_paid')
+        .eq('parent_id', uid);
+      var camperById = {};
+      if (!cr.error && Array.isArray(cr.data)) {
+        cr.data.forEach(function (c) {
+          camperById[String(c.id)] = c;
+        });
+      }
+
+      if (loading) loading.hidden = true;
+
+      var totalSu = 0;
+      var totalCc = 0;
+      rows.forEach(function (r) {
+        if (String(r.status || '').trim() === 'cancelled') return;
+        var amt = rowAmountForTotals(r, camperById);
+        if (paymentRail(r) === 'credit_card') totalCc += amt;
+        else totalSu += amt;
+      });
+      var grand = totalSu + totalCc;
+
+      if (totalsHost) {
+        totalsHost.innerHTML =
+          '<div class="va-total-card"><h2>Total (Step Up rail)</h2><div class="amt">' +
+          escapeHtml(fmtMoney(totalSu)) +
+          '</div></div>' +
+          '<div class="va-total-card"><h2>Total (Credit card rail)</h2><div class="amt">' +
+          escapeHtml(fmtMoney(totalCc)) +
+          '</div></div>' +
+          '<div class="va-total-card grand"><h2>Grand total</h2><div class="amt">' +
+          escapeHtml(fmtMoney(grand)) +
+          '</div></div>';
+        totalsHost.hidden = false;
+      }
+
+      var usedCamper = {};
+      rows.forEach(function (r) {
+        if (r.camper_id) usedCamper[String(r.camper_id)] = true;
+      });
+      if (idleChildren && cr.data && cr.data.length) {
+        var names = cr.data
+          .filter(function (c) {
+            return !usedCamper[String(c.id)];
+          })
+          .map(function (c) {
+            return escapeHtml(((c.first_name || '') + ' ' + (c.last_name || '')).trim() || 'Child');
+          });
+        if (names.length) {
+          idleChildren.innerHTML =
+            '<strong style="color:var(--text)">Children with no enrollments:</strong> ' + names.join(', ');
+          idleChildren.hidden = false;
+        }
+      }
+
+      if (!rows.length) {
+        if (empty) empty.hidden = false;
+        return;
+      }
+
+      if (tableHost) tableHost.hidden = false;
+      if (!tbody) return;
+      tbody.innerHTML = '';
+      rows.forEach(function (r) {
+        var tr = document.createElement('tr');
+        var wk = weeksMap[String(r.week_id)];
+        var wlabel = wk ? wk.label || ('Week ' + (wk.week_number || r.week_id)) : String(r.week_id || '—');
+        var c = camperById[String(r.camper_id)];
+        var camperName = c
+          ? ((c.first_name || '') + ' ' + (c.last_name || '')).trim()
+          : 'Camper ' + r.camper_id;
+        var st = (r.status || '').toString();
+        tr.innerHTML =
+          '<td>' +
+          escapeHtml(camperName) +
+          '</td>' +
+          '<td>' +
+          escapeHtml(wlabel) +
+          '</td>' +
+          '<td>' +
+          paymentBadgeHtml(r) +
+          '</td>' +
+          '<td><span class="status-pill">' +
+          escapeHtml(st) +
+          '</span></td>';
+        tbody.appendChild(tr);
+      });
+    } catch (e) {
+      if (loading) loading.hidden = true;
+      showMsg(e.message || 'Something went wrong.', 'error');
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  boot();
+})();
+  </script>
+</body>
+</html>

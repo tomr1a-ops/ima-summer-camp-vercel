@@ -17,9 +17,9 @@ const ADMIN_SNAPSHOT_STATUSES = [
 ];
 
 const ENR_SELECT_WITH_HOLD =
-  'id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at,step_up_hold_expires_at, campers(first_name,last_name,registration_fee_paid), weeks(label,week_number)';
+  'id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at,stripe_session_id,step_up_hold_expires_at, campers(first_name,last_name,registration_fee_paid), weeks(label,week_number)';
 const ENR_SELECT_BASE =
-  'id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at, campers(first_name,last_name,registration_fee_paid), weeks(label,week_number)';
+  'id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at,stripe_session_id, campers(first_name,last_name,registration_fee_paid), weeks(label,week_number)';
 
 function json(res, code, body) {
   res.statusCode = code;
@@ -90,7 +90,13 @@ function buildWeekCapacity(dayRows, enrRows) {
 
 function buildOverview(enrRows) {
   const confirmedCampers = new Set();
+  const confirmedCampersCreditCard = new Set();
+  const confirmedCampersStepUp = new Set();
   let revenue = 0;
+  let revenueCreditCard = 0;
+  let revenueStepUpConfirmed = 0;
+  let revenueStepUpHolds = 0;
+  let pendingStepUpHoldRows = 0;
   let activeRows = 0;
   let cancelledRows = 0;
   for (const row of enrRows || []) {
@@ -98,16 +104,36 @@ function buildOverview(enrRows) {
     if (st === 'confirmed') {
       activeRows++;
       if (row.camper_id) confirmedCampers.add(String(row.camper_id));
-      revenue += Number(row.price_paid) || 0;
+      const pp = Number(row.price_paid) || 0;
+      revenue += pp;
+      const hasStripe = row.stripe_session_id != null && String(row.stripe_session_id).trim() !== '';
+      if (hasStripe) {
+        revenueCreditCard += pp;
+        if (row.camper_id) confirmedCampersCreditCard.add(String(row.camper_id));
+      } else {
+        revenueStepUpConfirmed += pp;
+        if (row.camper_id) confirmedCampersStepUp.add(String(row.camper_id));
+      }
     } else if (st === 'pending' || st === 'pending_step_up') {
       activeRows++;
+      if (st === 'pending_step_up') {
+        pendingStepUpHoldRows += 1;
+        revenueStepUpHolds += Number(row.price_paid) || 0;
+      }
     } else if (st === 'cancelled') {
       cancelledRows++;
     }
   }
   return {
     enrolledCampersConfirmed: confirmedCampers.size,
+    enrolledCampersCreditCard: confirmedCampersCreditCard.size,
+    enrolledCampersStepUp: confirmedCampersStepUp.size,
     revenueConfirmed: revenue,
+    revenueCreditCard,
+    revenueStepUpConfirmed,
+    revenueStepUpHolds,
+    revenueStepUp: revenueStepUpConfirmed + revenueStepUpHolds,
+    pendingStepUpHoldRows,
     activeEnrollmentRows: activeRows,
     cancelledRows,
   };

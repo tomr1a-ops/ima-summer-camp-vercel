@@ -12,6 +12,7 @@ const {
   campCreditBucketForConfirmedRow,
   addFamilyCampLedgerWeekCents,
   addFamilyCampLedgerDayCents,
+  ledgerPaymentMethodForEnrollment,
 } = require('./lib/family-camp-ledger');
 const { enrollmentQualifiesForCampCredit } = require('./lib/enrollment-credit-eligibility');
 const { ENROLLMENT_STATUS } = require('./lib/enrollment-status');
@@ -250,13 +251,25 @@ module.exports = async (req, res) => {
       }
       if (row.status === ENROLLMENT_STATUS.CONFIRMED || row.status === ENROLLMENT_STATUS.PENDING_STEP_UP) {
         await syncConfirmedDayCounts(sb, row.day_ids || [], []);
-        if (enrollmentQualifiesForCampCredit(row)) {
+        if (row.status === ENROLLMENT_STATUS.PENDING_STEP_UP) {
           try {
             const cents = await campCreditCentsForConfirmedRow(sb, row, false);
             if (cents > 0) {
               const bucket = await campCreditBucketForConfirmedRow(sb, row);
-              if (bucket === 'week') await addFamilyCampLedgerWeekCents(sb, user.id, cents);
-              else await addFamilyCampLedgerDayCents(sb, user.id, cents);
+              if (bucket === 'week') await addFamilyCampLedgerWeekCents(sb, user.id, cents, 'step_up');
+              else await addFamilyCampLedgerDayCents(sb, user.id, cents, 'step_up');
+            }
+          } catch (credErr) {
+            console.error('[enrollments DELETE] step_up hold credit', credErr && credErr.message);
+          }
+        } else if (enrollmentQualifiesForCampCredit(row)) {
+          try {
+            const cents = await campCreditCentsForConfirmedRow(sb, row, false);
+            if (cents > 0) {
+              const bucket = await campCreditBucketForConfirmedRow(sb, row);
+              const pm = ledgerPaymentMethodForEnrollment(row);
+              if (bucket === 'week') await addFamilyCampLedgerWeekCents(sb, user.id, cents, pm);
+              else await addFamilyCampLedgerDayCents(sb, user.id, cents, pm);
             }
           } catch (credErr) {
             console.error('[enrollments DELETE] family_camp_credit_ledger', credErr && credErr.message);

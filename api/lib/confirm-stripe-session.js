@@ -154,7 +154,7 @@ async function confirmStripeSession(stripe, session) {
     lw = lc;
   }
   if (didConfirmAny && (lw > 0 || ld > 0) && enrollmentRows[0].parent_id) {
-    await subtractFamilyCampLedgerSplit(sb, enrollmentRows[0].parent_id, lw, ld);
+    await subtractFamilyCampLedgerSplit(sb, enrollmentRows[0].parent_id, lw, ld, 'credit_card');
   }
 
   if (paidReg && didConfirmAny && enrollmentRows[0] && enrollmentRows[0].parent_id) {
