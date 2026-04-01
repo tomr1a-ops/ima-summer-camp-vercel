@@ -969,6 +969,39 @@
   html[data-payment-portal="credit_card"] #checkout-btn {
     display: block !important;
   }
+  .portal-week-save-bar {
+    margin: 14px 0 10px;
+    padding: 14px 16px;
+    border-radius: 10px;
+    border: 2px solid rgba(0, 229, 204, 0.55);
+    background: rgba(0, 229, 204, 0.08);
+  }
+  .portal-week-save-bar[hidden] {
+    display: none !important;
+  }
+  #portal-save-week-selections {
+    width: 100%;
+    padding: 14px 18px;
+    border: none;
+    border-radius: 8px;
+    font-family: var(--font-display);
+    font-size: 16px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    background: linear-gradient(135deg, var(--cyan) 0%, var(--blue) 100%);
+    color: #000;
+  }
+  #portal-save-week-selections:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .portal-week-save-hint {
+    margin: 10px 0 0;
+    font-size: 13px;
+    line-height: 1.45;
+    color: #b8b8b8;
+  }
   html.ima-checkout-embed header {
     padding: 16px 20px 12px;
   }
@@ -2363,6 +2396,10 @@
         </div>
       </div>
       <div id="msg" class="msg"></div>
+      <div id="portal-week-save-bar" class="portal-week-save-bar" hidden>
+        <button type="button" id="portal-save-week-selections">Save week changes</button>
+        <p class="portal-week-save-hint" id="portal-week-save-hint">Week selections are saved.</p>
+      </div>
       <button type="button" id="checkout-btn" disabled>
         <span class="btn-text">Secure Checkout →</span>
         <span class="btn-loading">Processing…</span>
@@ -2697,6 +2734,187 @@
     });
   }
 
+  function isPortalBatchManageableRowClient(row) {
+    if (!row) return false;
+    var st = String(row.status || '');
+    if (st === 'cancelled') return false;
+    var pm = getPaymentPortalMode();
+    if (pm === 'credit_card') {
+      if (st === 'pending_step_up') return false;
+      if (st === 'pending') return true;
+      if (st === 'confirmed') return enrollmentRowPaidViaStripe(row);
+      return false;
+    }
+    if (pm === 'step_up') {
+      if (st === 'pending') return false;
+      if (st === 'pending_step_up') return true;
+      if (st === 'confirmed') return !enrollmentRowPaidViaStripe(row);
+      return false;
+    }
+    return false;
+  }
+
+  function paymentPortalUsesBatchWeekSave() {
+    return isSplitPaymentPortal() && enrollmentType === 'full';
+  }
+
+  function normalizeSelectedWeeksForPortalCompare(raw) {
+    var out = {};
+    Object.keys(raw || {})
+      .sort()
+      .forEach(function (wk) {
+        var arr = raw[wk];
+        if (!Array.isArray(arr) || !arr.length) return;
+        var sorted = arr
+          .map(String)
+          .filter(Boolean)
+          .sort();
+        if (sorted.length) out[wk] = sorted;
+      });
+    return out;
+  }
+
+  function buildPortalBatchSelectedWeeksPayload() {
+    var out = {};
+    if (!weeksPayload || !weeksPayload.length) return out;
+    weeksPayload.forEach(function (w) {
+      var wk = String(w.id);
+      var cset = fullWeekCampersByWeek[wk];
+      if (!cset || !cset.size) return;
+      var ids = (w.days || []).map(function (d) {
+        return d.id;
+      });
+      if (ids.length !== 5) return;
+      cset.forEach(function (cid) {
+        if (otherRailFullWeekEnrollment(w.id, cid)) return;
+        if (fullWeekPaidDayConflictMessage(w.id, cid)) return;
+        if (!out[wk]) out[wk] = [];
+        var s = String(cid);
+        if (out[wk].indexOf(s) === -1) out[wk].push(s);
+      });
+    });
+    return out;
+  }
+
+  function rebuildPortalFullWeekServerBaselineFromRows(rows) {
+    portalFullWeekServerBaseline = {};
+    if (!isSplitPaymentPortal() || !weeksPayload || !weeksPayload.length) return;
+    (rows || []).forEach(function (row) {
+      if (!row || String(row.status) === 'cancelled') return;
+      if (!isPortalBatchManageableRowClient(row)) return;
+      var w = weeksPayload.find(function (x) {
+        return String(x.id) === String(row.week_id);
+      });
+      if (!w || !enrollmentCoversFullWeek(row, w)) return;
+      var wid = String(row.week_id);
+      var cid = String(row.camper_id);
+      if (!portalFullWeekServerBaseline[wid]) portalFullWeekServerBaseline[wid] = [];
+      if (portalFullWeekServerBaseline[wid].indexOf(cid) === -1) portalFullWeekServerBaseline[wid].push(cid);
+    });
+  }
+
+  function portalBatchWeekNeedsSave() {
+    if (!paymentPortalUsesBatchWeekSave() || !session) return false;
+    try {
+      return (
+        JSON.stringify(normalizeSelectedWeeksForPortalCompare(buildPortalBatchSelectedWeeksPayload())) !==
+        JSON.stringify(normalizeSelectedWeeksForPortalCompare(portalFullWeekServerBaseline))
+      );
+    } catch (eCmp) {
+      return false;
+    }
+  }
+
+  function portalSaveBlocksCheckout() {
+    return paymentPortalUsesBatchWeekSave() && portalBatchWeekNeedsSave();
+  }
+
+  function syncPortalWeekSaveBar() {
+    var bar = document.getElementById('portal-week-save-bar');
+    var b = document.getElementById('portal-save-week-selections');
+    var hint = document.getElementById('portal-week-save-hint');
+    if (!bar || !b) return;
+    var show = paymentPortalUsesBatchWeekSave() && session && parentCampers.length > 0;
+    bar.hidden = !show;
+    if (!show) return;
+    var need = portalBatchWeekNeedsSave();
+    b.disabled = !need || portalBatchWeekSaveInFlight;
+    b.textContent = portalBatchWeekSaveInFlight ? 'Saving…' : 'Save week changes';
+    if (hint) {
+      if (portalBatchWeekSaveInFlight) {
+        hint.textContent = 'Saving your week selections…';
+      } else if (need) {
+        hint.textContent = 'Selections are not saved to your account until you tap Save.';
+      } else {
+        hint.textContent = 'Week selections match your saved enrollments.';
+      }
+    }
+  }
+
+  async function runPortalBatchWeekSave() {
+    var msgEl = document.getElementById('msg');
+    var tok = await freshAccessTokenForApi();
+    if (!tok) {
+      if (msgEl) {
+        msgEl.className = 'msg error';
+        msgEl.textContent = 'Sign in again to save week changes.';
+      }
+      return;
+    }
+    portalBatchWeekSaveInFlight = true;
+    syncPortalWeekSaveBar();
+    try {
+      var res = await imaNoStoreFetch('/api/cc-portal-commit-weeks', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + tok,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          selectedWeeks: buildPortalBatchSelectedWeeksPayload(),
+          paymentMethod: getPaymentPortalMode(),
+          testPricing: !!testPriceMode,
+        }),
+      });
+      var j = await res.json().catch(function () {
+        return {};
+      });
+      if (!res.ok) {
+        if (msgEl) {
+          msgEl.className = 'msg error';
+          msgEl.textContent = j.error || 'Could not save week changes. Try again.';
+        }
+        return;
+      }
+      if (msgEl) {
+        msgEl.className = 'msg ok';
+        var nc = Number(j.netLedgerCreditCents);
+        msgEl.textContent =
+          Number.isFinite(nc) && nc > 0
+            ? 'Saved. Camp credit added: ' + (nc / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+            : 'Week selections saved.';
+      }
+      await refreshAfterEnrollmentMutation();
+      hydrateSelectionFromConfirmedEnrollments();
+      rebuildPortalFullWeekServerBaselineFromRows(lastEnrollmentsFetchRows || []);
+      try {
+        persistEnrollLocal();
+      } catch (ePl) {}
+      await refreshPricingPreview({ skipScheduleDom: false });
+      updateSummary();
+      renderFullWeeks();
+      renderDailyWeeks();
+    } catch (eRun) {
+      if (msgEl) {
+        msgEl.className = 'msg error';
+        msgEl.textContent = (eRun && eRun.message) || 'Could not save week changes.';
+      }
+    } finally {
+      portalBatchWeekSaveInFlight = false;
+      syncPortalWeekSaveBar();
+    }
+  }
+
   /** Parent portal / registration: never use cached API responses (CDN or browser HTTP cache). */
   function imaNoStoreFetch(url, init) {
     init = init || {};
@@ -2757,11 +2975,17 @@
   try {
     window.checkboxOperationsInFlight = checkboxOperationsInFlight;
   } catch (eCbFlInit) {}
+  var portalBatchWeekSaveInFlight = false;
+  var lastEnrollmentsFetchRows = null;
+  var portalFullWeekServerBaseline = {};
   function checkboxOpKey(weekId, camperId) {
     return String(weekId) + '|' + String(camperId);
   }
   function ccPortalCheckboxOpLockActive() {
-    return getPaymentPortalMode() === 'credit_card' && checkboxOperationsInFlight.size > 0;
+    return (
+      (getPaymentPortalMode() === 'credit_card' && checkboxOperationsInFlight.size > 0) ||
+      portalBatchWeekSaveInFlight
+    );
   }
   /** @type {{ id: string, first_name: string, last_name: string }[]} */
   let parentCampers = [];
@@ -4726,6 +4950,11 @@
       if (!res.ok) return;
       const j = await res.json();
       const rows = j.enrollments || [];
+      lastEnrollmentsFetchRows = rows.slice();
+      var skipPortalBaselineRebuild = false;
+      try {
+        skipPortalBaselineRebuild = portalBatchWeekNeedsSave();
+      } catch (eSkBl) {}
       pendingEnrollmentWeekKeys = new Set();
       rows.forEach(function (r) {
         if (!r || r.status !== 'pending') return;
@@ -4783,6 +5012,11 @@
       } else if (hasPendingStepUp) {
         stepUpHoldSnapshotProtectUntil = 0;
       }
+      try {
+        if (!skipPortalBaselineRebuild && weeksPayload && weeksPayload.length) {
+          rebuildPortalFullWeekServerBaselineFromRows(rows);
+        }
+      } catch (ePfb) {}
       try {
         persistEnrollLocal();
       } catch (ePl) {}
@@ -4852,6 +5086,7 @@
     parentEnrollmentsRefreshTimer = setTimeout(function () {
       parentEnrollmentsRefreshTimer = null;
       if (!session) return;
+      if (paymentPortalUsesBatchWeekSave() && portalBatchWeekNeedsSave()) return;
       if (ccPortalCheckboxOpLockActive()) return;
       if (Date.now() < suppressEnrollmentRealtimeRefreshUntil) return;
       void refreshConfirmedEnrollmentsFromServer()
@@ -6021,6 +6256,7 @@
   }
 
   async function runServerPrepaidApply() {
+    if (paymentPortalUsesBatchWeekSave() && portalBatchWeekNeedsSave()) return;
     var gen = ++serverPrepaidFetchGen;
     const bookings = collectBookings();
     if (!bookings.length) {
@@ -6358,6 +6594,7 @@
       btn.disabled = true;
       hideCampAgreementSection();
       persistEnrollLocal();
+      syncPortalWeekSaveBar();
       return;
     }
 
@@ -6370,6 +6607,7 @@
       btn.disabled = true;
       hideCampAgreementSection();
       persistEnrollLocal();
+      syncPortalWeekSaveBar();
       return;
     }
 
@@ -6550,9 +6788,10 @@
             msg.textContent = fwConflictMsgs[0];
             btn.disabled = true;
           } else if (zeroDueSu) {
-            btn.disabled = !!checkoutSessionInFlight || !agreementOkSu || !paymentOkSu;
+            btn.disabled =
+              !!checkoutSessionInFlight || !agreementOkSu || !paymentOkSu || portalSaveBlocksCheckout();
           } else {
-            btn.disabled = !agreementOkSu || !paymentOkSu;
+            btn.disabled = !agreementOkSu || !paymentOkSu || portalSaveBlocksCheckout();
           }
         } else {
           if (agreeSU) agreeSU.hidden = true;
@@ -6566,6 +6805,7 @@
         }
         btn.classList.remove('loading');
         persistEnrollLocal();
+        syncPortalWeekSaveBar();
         return;
       }
 
@@ -6585,6 +6825,7 @@
         btn.disabled = true;
         hideCampAgreementSection();
         persistEnrollLocal();
+        syncPortalWeekSaveBar();
         return;
       }
     }
@@ -6795,14 +7036,16 @@
       msg.textContent = fwConflictMsgs[0];
       btn.disabled = true;
     } else if (zeroDue) {
-      btn.disabled = !!checkoutSessionInFlight || !agreementOk || !paymentOk;
+      btn.disabled =
+        !!checkoutSessionInFlight || !agreementOk || !paymentOk || portalSaveBlocksCheckout();
     } else {
-      btn.disabled = !agreementOk || !paymentOk;
+      btn.disabled = !agreementOk || !paymentOk || portalSaveBlocksCheckout();
     }
     persistEnrollLocal();
     if (session && zeroDue && !fwConflictMsgs.length && !checkoutSessionInFlight) {
       scheduleZeroBalanceAutoSave();
     }
+    syncPortalWeekSaveBar();
   }
 
   function buildWeekCamperCheckboxes(weekId, mode) {
@@ -6876,7 +7119,9 @@
         cb.checked = false;
         row.title = conflictMsg;
       } else if (soldOutOwnPick) {
-        cb.checked = paidWeekOwnChild || localInWeek;
+        cb.checked = paymentPortalUsesBatchWeekSave()
+          ? !!(st && st.has(cid))
+          : paidWeekOwnChild || localInWeek;
         cb.disabled = false;
         row.title = paidWeekOwnChild
           ? 'Registered for this week — uncheck or Remove to cancel.'
@@ -6911,6 +7156,23 @@
           return;
         }
         if (!cb.checked && paidHere && mode === 'full') {
+          if (paymentPortalUsesBatchWeekSave()) {
+            if (!map[wk]) map[wk] = new Set();
+            var sBatch = map[wk];
+            sBatch.delete(cid);
+            if (!sBatch.size) {
+              delete map[wk];
+            }
+            optimisticRemoveEnrollmentsMatching(weekId, cid);
+            try {
+              persistEnrollLocal();
+            } catch (ePb) {}
+            renderFullWeeks();
+            renderDailyWeeks();
+            syncPortalWeekSaveBar();
+            voidRefreshPricingPreviewMaybeSummary({ skipScheduleDom: true });
+            return;
+          }
           if (getPaymentPortalMode() === 'credit_card') {
             void (async function () {
               var opK = checkboxOpKey(weekId, cid);
@@ -7045,6 +7307,7 @@
         persistEnrollLocal();
         renderFullWeeks();
         renderDailyWeeks();
+        syncPortalWeekSaveBar();
         voidRefreshPricingPreviewMaybeSummary({ skipScheduleDom: true });
       });
       const nameStack = document.createElement('div');
@@ -7070,6 +7333,23 @@
           ev.stopPropagation();
           if (!session) return;
           void (async function () {
+            if (paymentPortalUsesBatchWeekSave()) {
+              var wkRm = String(weekId);
+              var mapRm = fullWeekCampersByWeek;
+              if (mapRm[wkRm]) {
+                mapRm[wkRm].delete(String(cid));
+                if (!mapRm[wkRm].size) delete mapRm[wkRm];
+              }
+              optimisticRemoveEnrollmentsMatching(weekId, cid);
+              try {
+                persistEnrollLocal();
+              } catch (eRmPb) {}
+              renderFullWeeks();
+              renderDailyWeeks();
+              syncPortalWeekSaveBar();
+              voidRefreshPricingPreviewMaybeSummary({ skipScheduleDom: true });
+              return;
+            }
             var tokRm = await freshAccessTokenForApi();
             var idsSnap = confirmedEnrollmentIdsForCamperWeek(weekId, cid);
             if (!tokRm || !idsSnap.length) {
@@ -7322,7 +7602,7 @@
   }
 
   function renderFullWeeks() {
-    if (ccPortalCheckboxOpLockActive()) return;
+    if (getPaymentPortalMode() === 'credit_card' && checkboxOperationsInFlight.size > 0) return;
     pruneConflictingFullWeekSelections();
     pruneFullWeekCampersUnknownToParent();
     weeksPayload.forEach(normalizeWeekCapacityFromDays);
@@ -7332,6 +7612,7 @@
     if (loadEl) loadEl.style.display = 'none';
     if (!weeksPayload.length) {
       mount.innerHTML = '<p class="empty-state">No weeks available.</p>';
+      syncPortalWeekSaveBar();
       return;
     }
     enrollDomApplyLock = true;
@@ -7466,6 +7747,7 @@
     mount.appendChild(grid);
     } finally {
       enrollDomApplyLock = false;
+      syncPortalWeekSaveBar();
     }
   }
 
@@ -7867,6 +8149,11 @@
       /* Tab (weekly vs daily) comes from restoreEnrollLocal / bootAuth — do not force “full” here or refresh/bfcache drops daily drafts */
       updateEnrollmentGate();
       await loadWaitlistMine();
+      try {
+        if (!portalBatchWeekNeedsSave() && lastEnrollmentsFetchRows && lastEnrollmentsFetchRows.length) {
+          rebuildPortalFullWeekServerBaselineFromRows(lastEnrollmentsFetchRows);
+        }
+      } catch (ePwBl) {}
     } catch (e) {
       const err = '<p class="empty-state" style="color:#f88">Could not load weeks. Check API and Supabase env.</p>';
       document.getElementById('weeks-mount-full').innerHTML = err;
@@ -8440,6 +8727,7 @@
 
   async function attemptZeroBalanceAutoSave() {
     if (!session || checkoutSessionInFlight) return;
+    if (portalSaveBlocksCheckout()) return;
     syncEmbedPaymentSelect();
     if (lastSummaryGrandDollars >= 0.01) return;
     var agreeAuto = document.getElementById('camp-agreement-accept');
@@ -8521,6 +8809,10 @@
     var pmStart = document.getElementById('payment-method-select');
     if (!pmStart || (pmStart.value !== 'credit_card' && pmStart.value !== 'step_up')) {
       showCheckoutErr('Choose a payment method to continue.');
+      return;
+    }
+    if (portalSaveBlocksCheckout()) {
+      showCheckoutErr('Save your week changes before checkout.');
       return;
     }
 
@@ -8711,6 +9003,12 @@
     setEnrollmentType('daily');
   });
   document.getElementById('checkout-btn').addEventListener('click', startCheckout);
+  var portalSaveWeeksBtn = document.getElementById('portal-save-week-selections');
+  if (portalSaveWeeksBtn) {
+    portalSaveWeeksBtn.addEventListener('click', function () {
+      void runPortalBatchWeekSave();
+    });
+  }
   initCampAgreementScrollUnlock();
   (function initPaymentMethodSelect() {
     var p = document.getElementById('payment-method-select');

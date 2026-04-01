@@ -17,6 +17,8 @@ const {
 const { enrollmentQualifiesForCampCredit } = require('./lib/enrollment-credit-eligibility');
 const { ENROLLMENT_STATUS } = require('./lib/enrollment-status');
 const { tryPromoteWaitlistAfterEnrollmentRemoved, notifyWaitlistOffer } = require('./lib/waitlist-service');
+const { weekRate } = require('./lib/pricing');
+const { isMissingStepUpHoldExpiresColumn } = require('./lib/step-up-hold-column');
 
 async function readJsonBody(req) {
   if (req.body !== undefined && req.body !== null) {
@@ -54,13 +56,21 @@ function enrollmentRowPaidViaStripe(row) {
   return false;
 }
 
-function isCcPortalManageableRow(row) {
+/** Full-week rows this portal rail may add/remove in one batch (credit card vs Step Up). */
+function isPortalBatchManageableRow(row, paymentMethod) {
   if (!row) return false;
   const st = String(row.status || '');
-  if (st === 'pending_step_up') return false;
   if (st === 'cancelled') return false;
-  if (st === 'pending') return true;
-  if (st === ENROLLMENT_STATUS.CONFIRMED) return enrollmentRowPaidViaStripe(row);
+  const pm = paymentMethod === 'step_up' ? 'step_up' : 'credit_card';
+  if (pm === 'credit_card') {
+    if (st === ENROLLMENT_STATUS.PENDING_STEP_UP) return false;
+    if (st === ENROLLMENT_STATUS.PENDING) return true;
+    if (st === ENROLLMENT_STATUS.CONFIRMED) return enrollmentRowPaidViaStripe(row);
+    return false;
+  }
+  if (st === ENROLLMENT_STATUS.PENDING) return false;
+  if (st === ENROLLMENT_STATUS.PENDING_STEP_UP) return true;
+  if (st === ENROLLMENT_STATUS.CONFIRMED) return !enrollmentRowPaidViaStripe(row);
   return false;
 }
 
@@ -79,31 +89,35 @@ async function inferPricingModeForWeek(sb, weekId, dayIds) {
   return expectedIds === gotIds ? 'full_week' : 'daily';
 }
 
+/** @returns {Promise<number>} family camp ledger credits added (cents) from this cancellation */
 async function cancelEnrollmentRow(sb, user, row) {
+  let ledgerCreditCents = 0;
   if (row.status === ENROLLMENT_STATUS.CONFIRMED || row.status === ENROLLMENT_STATUS.PENDING_STEP_UP) {
     await syncConfirmedDayCounts(sb, row.day_ids || [], []);
     if (row.status === ENROLLMENT_STATUS.PENDING_STEP_UP) {
       try {
         const cents = await campCreditCentsForConfirmedRow(sb, row, false);
         if (cents > 0) {
+          ledgerCreditCents += cents;
           const bucket = await campCreditBucketForConfirmedRow(sb, row);
           if (bucket === 'week') await addFamilyCampLedgerWeekCents(sb, user.id, cents, 'step_up');
           else await addFamilyCampLedgerDayCents(sb, user.id, cents, 'step_up');
         }
       } catch (credErr) {
-        console.error('[cc-portal-commit] step_up hold credit', credErr && credErr.message);
+        console.error('[portal-commit-weeks] step_up hold credit', credErr && credErr.message);
       }
     } else if (enrollmentQualifiesForCampCredit(row)) {
       try {
         const cents = await campCreditCentsForConfirmedRow(sb, row, false);
         if (cents > 0) {
+          ledgerCreditCents += cents;
           const bucket = await campCreditBucketForConfirmedRow(sb, row);
           const pm = ledgerPaymentMethodForEnrollment(row);
           if (bucket === 'week') await addFamilyCampLedgerWeekCents(sb, user.id, cents, pm);
           else await addFamilyCampLedgerDayCents(sb, user.id, cents, pm);
         }
       } catch (credErr) {
-        console.error('[cc-portal-commit] ledger credit', credErr && credErr.message);
+        console.error('[portal-commit-weeks] ledger credit', credErr && credErr.message);
       }
     }
   }
@@ -122,9 +136,10 @@ async function cancelEnrollmentRow(sb, user, row) {
       const nid = await tryPromoteWaitlistAfterEnrollmentRemoved(sb, row.week_id);
       if (nid) await notifyWaitlistOffer(sb, nid);
     } catch (wlE) {
-      console.error('[cc-portal-commit] waitlist', wlE && wlE.message);
+      console.error('[portal-commit-weeks] waitlist', wlE && wlE.message);
     }
   }
+  return ledgerCreditCents;
 }
 
 function pairKey(weekId, camperId) {
@@ -158,6 +173,10 @@ module.exports = async (req, res) => {
       return res.end(JSON.stringify({ error: 'selectedWeeks object required (weekId -> camperId[])' }));
     }
 
+    const pmRaw = body && body.paymentMethod != null ? String(body.paymentMethod).trim().toLowerCase() : '';
+    const paymentMethod = pmRaw === 'step_up' ? 'step_up' : 'credit_card';
+    const testPricing = !!(body && body.testPricing);
+
     const sb = serviceClient();
     const { data: enrollments, error: enrErr } = await sb
       .from('enrollments')
@@ -187,7 +206,7 @@ module.exports = async (req, res) => {
 
     const manageableFullWeekRows = [];
     for (const row of enrollments || []) {
-      if (!isCcPortalManageableRow(row)) continue;
+      if (!isPortalBatchManageableRow(row, paymentMethod)) continue;
       const dlist = await dayIdsForWeek(row.week_id);
       if (!rowCoversFullWeek(row, dlist)) continue;
       manageableFullWeekRows.push(row);
@@ -213,16 +232,20 @@ module.exports = async (req, res) => {
         return res.end(
           JSON.stringify({
             error:
-              'One or more selections conflict with an existing registration (e.g. Step Up). Use camp registration to adjust.',
+              'One or more selections conflict with an existing registration (e.g. the other payment portal). Use camp registration to adjust.',
           })
         );
       }
       toAdd.push({ weekId, camperId });
     }
 
+    let netLedgerCreditCents = 0;
     for (let i = 0; i < toCancel.length; i++) {
-      await cancelEnrollmentRow(sb, user, toCancel[i]);
+      netLedgerCreditCents += await cancelEnrollmentRow(sb, user, toCancel[i]);
     }
+
+    const wrVal = weekRate(testPricing);
+    const holdExpiresIso = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
     for (let j = 0; j < toAdd.length; j++) {
       const { weekId, camperId } = toAdd[j];
@@ -239,20 +262,42 @@ module.exports = async (req, res) => {
         excludeEnrollmentId: null,
         pricingMode,
       });
-      const { error: insE } = await sb.from('enrollments').insert({
-        parent_id: user.id,
-        camper_id: camperId,
-        week_id: weekId,
-        day_ids: dayIds,
-        status: ENROLLMENT_STATUS.PENDING,
-        price_paid: 0,
-        registration_fee_paid: false,
-      });
-      if (insE) throw insE;
+      if (paymentMethod === 'step_up') {
+        const baseRow = {
+          parent_id: user.id,
+          camper_id: camperId,
+          week_id: weekId,
+          day_ids: dayIds,
+          status: ENROLLMENT_STATUS.PENDING_STEP_UP,
+          price_paid: wrVal,
+          registration_fee_paid: false,
+          stripe_session_id: null,
+          step_up_hold_expires_at: holdExpiresIso,
+        };
+        let ins = await sb.from('enrollments').insert(baseRow);
+        if (ins.error && isMissingStepUpHoldExpiresColumn(ins.error)) {
+          const retryRow = Object.assign({}, baseRow);
+          delete retryRow.step_up_hold_expires_at;
+          ins = await sb.from('enrollments').insert(retryRow);
+        }
+        if (ins.error) throw ins.error;
+        await syncConfirmedDayCounts(sb, [], dayIds);
+      } else {
+        const { error: insE } = await sb.from('enrollments').insert({
+          parent_id: user.id,
+          camper_id: camperId,
+          week_id: weekId,
+          day_ids: dayIds,
+          status: ENROLLMENT_STATUS.PENDING,
+          price_paid: 0,
+          registration_fee_paid: false,
+        });
+        if (insE) throw insE;
+      }
     }
 
     res.statusCode = 200;
-    return res.end(JSON.stringify({ ok: true }));
+    return res.end(JSON.stringify({ ok: true, netLedgerCreditCents }));
   } catch (e) {
     const code = e.statusCode || 500;
     res.statusCode = code;

@@ -340,7 +340,11 @@
             Authorization: 'Bearer ' + accessToken,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ selectedWeeks: selectedWeeks }),
+          body: JSON.stringify({
+            selectedWeeks: selectedWeeks,
+            paymentMethod: 'credit_card',
+            testPricing: pricing.test,
+          }),
         });
         var j = await res.json().catch(function () {
           return {};
