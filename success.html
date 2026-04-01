@@ -33,6 +33,25 @@
   <script>
     (function () {
       var p = new URLSearchParams(window.location.search);
+      if (p.get('step_up_hold') === '1') {
+        var FLAG = 'ima_post_checkout_clear_enroll';
+        try {
+          localStorage.setItem(FLAG, '1');
+          sessionStorage.setItem(FLAG, '1');
+        } catch (e) {}
+        var h = document.querySelector('h1');
+        var mainP = document.querySelector('body > div > p');
+        if (h) h.textContent = 'Spot held';
+        if (mainP) {
+          mainP.textContent =
+            'We saved your camp selections on hold for 24 hours. Check your email for instructions — you must allocate Step Up for Students funds to IMA before the hold expires. Staff will finalize your registration once funding is confirmed.';
+        }
+        var sub = document.querySelector('.sub');
+        if (sub) sub.hidden = true;
+        var el = document.getElementById('sync');
+        if (el) el.textContent = '';
+        return;
+      }
       if (p.get('prepaid') === '1') {
         var FLAG = 'ima_post_checkout_clear_enroll';
         try {
