@@ -853,10 +853,16 @@
   html.ima-checkout-embed #payment-method-chooser {
     display: none !important;
   }
-  html:not(.ima-checkout-embed) #checkout-btn {
+  /* Main site: checkout happens on split checkout-*.html pages — hide embedded CTA here. */
+  html:not(.ima-checkout-embed):not([data-payment-portal]) #checkout-btn {
     display: none !important;
   }
   html.ima-checkout-embed #checkout-btn {
+    display: block !important;
+  }
+  /* Step Up / card portal loads full index with data-payment-portal — must show Hold Spot / checkout. */
+  html[data-payment-portal="step_up"] #checkout-btn,
+  html[data-payment-portal="credit_card"] #checkout-btn {
     display: block !important;
   }
   html.ima-checkout-embed header {
@@ -7580,13 +7586,11 @@
       try {
         persistEnrollLocal();
       } catch (ePe) {}
-      if (urlPaymentPortalBoot) {
-        try {
-          document.documentElement.setAttribute('data-payment-portal', urlPaymentPortalBoot);
-        } catch (ePpb) {}
-      }
       var effPortalPm = urlPaymentPortalBoot || urlPortalPaymentBoot || '';
       if (effPortalPm) {
+        try {
+          document.documentElement.setAttribute('data-payment-portal', effPortalPm);
+        } catch (ePpb) {}
         try {
           armScheduleRailChosen();
         } catch (eArm2) {}
