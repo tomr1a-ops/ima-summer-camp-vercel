@@ -3254,6 +3254,36 @@
   /** After Save changes succeeds, hint shows “Changes saved.” until this time (ms). */
   var portalSaveSuccessFlashUntil = 0;
   var portalSaveHintFlashTimer = null;
+  /** Step Up portal: after successful save/hold, show “Saved.” and keep checkout disabled until draft changes. */
+  var stepUpPortalSavedButtonLatch = false;
+  var stepUpPortalSavedFingerprint = '';
+  function stepUpPortalPostSaveFingerprint() {
+    try {
+      return JSON.stringify({
+        pbs: portalBatchWeekNeedsSave(),
+        bl: collectBookings().length,
+        sh: hasShirtCheckoutSelection(),
+        reg: regFeeIncludeByCamper,
+        xsh: extraShirtByCamper,
+      });
+    } catch (eFp) {
+      return '';
+    }
+  }
+  function finalizeStepUpPortalSavedButton() {
+    if (getPaymentPortalMode() !== 'step_up' || !paymentPortalUsesBatchWeekSave()) return;
+    if (!stepUpPortalSavedButtonLatch) return;
+    if (portalBatchWeekSaveInFlight || checkoutSessionInFlight) return;
+    if (stepUpSaveInProgress) return;
+    if (stepUpPortalPostSaveFingerprint() !== stepUpPortalSavedFingerprint) return;
+    var msgEl = document.getElementById('msg');
+    if (msgEl && msgEl.classList.contains('error')) return;
+    var btnF = document.getElementById('checkout-btn');
+    if (!btnF) return;
+    var btnTx = btnF.querySelector('.btn-text');
+    if (btnTx) btnTx.textContent = 'Saved.';
+    btnF.disabled = true;
+  }
   var lastEnrollmentsFetchRows = null;
   var portalFullWeekServerBaseline = {};
   /** Split portal: last saved daily picks from server (weekId -> dayId -> camperId[]). */
@@ -7128,8 +7158,16 @@
       checkboxChecked: document.getElementById('camp-agreement-accept')?.checked,
       pmSelectValue: document.getElementById('payment-method-select')?.value,
     });
+    if (getPaymentPortalMode() === 'step_up' && paymentPortalUsesBatchWeekSave() && stepUpPortalSavedButtonLatch) {
+      try {
+        if (stepUpPortalPostSaveFingerprint() !== stepUpPortalSavedFingerprint) {
+          stepUpPortalSavedButtonLatch = false;
+        }
+      } catch (eLatchInv) {}
+    }
     if (stepUpSaveInProgress) return;
     if (ccPortalCheckboxOpLockActive()) return;
+    try {
     lastStepUpOwedDisplayDollars = null;
     lastCreditCardOwedDisplayDollars = null;
     syncEmbedPaymentSelect();
@@ -7908,6 +7946,9 @@
     }
     syncPortalWeekSaveBar();
     renderStepUpPendingBanner();
+    } finally {
+      finalizeStepUpPortalSavedButton();
+    }
   }
 
   function buildWeekCamperCheckboxes(weekId, mode) {
@@ -9572,6 +9613,10 @@
       if (msgOk) {
         msgOk.className = 'msg ok';
         msgOk.textContent = STEP_UP_HOLD_SUCCESS_MSG;
+      }
+      if (getPaymentPortalMode() === 'step_up' && paymentPortalUsesBatchWeekSave()) {
+        stepUpPortalSavedButtonLatch = true;
+        stepUpPortalSavedFingerprint = stepUpPortalPostSaveFingerprint();
       }
       try {
         persistEnrollLocal();
