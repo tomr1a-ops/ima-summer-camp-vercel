@@ -5513,15 +5513,6 @@
     return CAMP_PAYMENT_METHOD_SS + ':' + (uid || 'guest') + ':' + CAMP_AGREEMENT_VERSION;
   }
 
-  function readCampPaymentMethodOk() {
-    try {
-      var v = sessionStorage.getItem(campPaymentMethodSessionKey());
-      return v === 'step_up' || v === 'credit_card' ? v : '';
-    } catch (eP) {
-      return '';
-    }
-  }
-
   function writeCampPaymentMethodOk(val) {
     try {
       var k = campPaymentMethodSessionKey();
