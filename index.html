@@ -3403,6 +3403,10 @@
         });
         if (!Object.keys(pdd[wk]).length) delete pdd[wk];
       });
+      const xsPersist = {};
+      Object.keys(extraShirtByCamper || {}).forEach(function (k) {
+        if (extraShirtByCamper[k]) xsPersist[String(k)] = true;
+      });
       var enrollPayload = JSON.stringify({
         fw: fw,
         fwComplete: fwComplete,
@@ -3415,6 +3419,7 @@
         fullWeekQty: fullWeekQty,
         dailyKidsByWeek: dailyKidsByWeek,
         regFeeIncludeByCamper: regFeeIncludeByCamper,
+        extraShirtByCamper: xsPersist,
         enrollmentType: enrollmentType,
         updatedAt: Date.now(),
       });
@@ -3551,6 +3556,12 @@
           var kk = String(k);
           regFeeIncludeByCamper[kk] = o.regFeeIncludeByCamper[k];
           writeImaMemberPref(kk, !regFeeIncludeByCamper[kk]);
+        });
+      }
+      if (o.extraShirtByCamper && typeof o.extraShirtByCamper === 'object') {
+        Object.keys(o.extraShirtByCamper).forEach(function (k) {
+          var kk = String(k);
+          if (o.extraShirtByCamper[k]) extraShirtByCamper[kk] = true;
         });
       }
       Object.keys(fullWeekHydrateDismissed).forEach(function (k) {
