@@ -110,6 +110,9 @@
   function setSignedIn(uid) {
     if (out) out.hidden = true;
     if (inn) inn.hidden = false;
+    try {
+      sessionStorage.removeItem('ima_payment_portal_v1:' + String(uid));
+    } catch (eClrPm) {}
     var u = portalUrls(uid);
     if (linkSu) linkSu.href = u.stepUp;
     if (linkCc) linkCc.href = u.card;

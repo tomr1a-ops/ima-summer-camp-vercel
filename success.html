@@ -50,6 +50,8 @@
         if (sub) sub.hidden = true;
         var el = document.getElementById('sync');
         if (el) el.textContent = '';
+        var backSu = document.querySelector('a.back');
+        if (backSu) backSu.href = '/index.html?paymentPortal=step_up#schedule';
         return;
       }
       if (p.get('prepaid') === '1') {
@@ -67,12 +69,17 @@
         }
         var el = document.getElementById('sync');
         if (el) el.textContent = '';
+        var backPre = document.querySelector('a.back');
+        if (backPre) backPre.href = '/index.html?paymentPortal=credit_card#schedule';
         return;
       }
       var sid = p.get('session_id');
       var back = document.querySelector('a.back');
       if (back && sid) {
-        back.href = '/index.html?session_id=' + encodeURIComponent(sid) + '#schedule';
+        back.href =
+          '/index.html?session_id=' +
+          encodeURIComponent(sid) +
+          '&paymentPortal=credit_card#schedule';
       }
       if (!sid) return;
       var FLAG = 'ima_post_checkout_clear_enroll';

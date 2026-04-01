@@ -945,6 +945,10 @@
   html:not(.ima-checkout-embed) #payment-method-section:not([hidden]) #payment-method-chooser {
     display: flex;
   }
+  html[data-payment-portal="step_up"] #payment-method-chooser,
+  html[data-payment-portal="credit_card"] #payment-method-chooser {
+    display: none !important;
+  }
   html.ima-checkout-embed #payment-method-chooser {
     display: none !important;
   }
@@ -2446,6 +2450,31 @@
     } catch (eStrip) {}
   }
 
+  var IMA_PAYMENT_PORTAL_SS_PREFIX = 'ima_payment_portal_v1:';
+  function paymentPortalStorageKey(uid) {
+    return IMA_PAYMENT_PORTAL_SS_PREFIX + String(uid || '');
+  }
+  function readPersistedPaymentPortalForUser(uid) {
+    try {
+      var v = sessionStorage.getItem(paymentPortalStorageKey(uid)) || '';
+      return v === 'step_up' || v === 'credit_card' ? v : '';
+    } catch (eRpp) {
+      return '';
+    }
+  }
+  function persistPaymentPortalForUser(uid, pm) {
+    try {
+      if (pm === 'step_up' || pm === 'credit_card') {
+        sessionStorage.setItem(paymentPortalStorageKey(uid), pm);
+      }
+    } catch (eWpp) {}
+  }
+  function clearPersistedPaymentPortalForUser(uid) {
+    try {
+      sessionStorage.removeItem(paymentPortalStorageKey(uid));
+    } catch (eCpp) {}
+  }
+
   function getPaymentPortalMode() {
     try {
       var v = document.documentElement.getAttribute('data-payment-portal') || '';
@@ -2474,6 +2503,8 @@
     var pmLabel = document.getElementById('payment-method-label-main');
     var sn = document.getElementById('step-up-notice');
     var sel = document.getElementById('payment-method-select');
+    var pmsl = document.getElementById('payment-method-select-label');
+    if (pmsl) pmsl.hidden = true;
     if (m === 'step_up') {
       if (bcc) {
         bcc.hidden = true;
@@ -2510,6 +2541,20 @@
         document.documentElement.setAttribute('data-portal-payment', 'credit_card');
       } catch (eDp2) {}
       if (sn) sn.hidden = true;
+    } else {
+      if (bcc) {
+        bcc.hidden = false;
+        bcc.style.display = '';
+      }
+      if (bsu) {
+        bsu.hidden = false;
+        bsu.style.display = '';
+      }
+      if (pmLabel) pmLabel.textContent = 'Payment';
+      if (sn) sn.hidden = true;
+      try {
+        document.documentElement.removeAttribute('data-portal-payment');
+      } catch (eDppClr) {}
     }
     syncPortalRailBanner();
   }
@@ -6514,6 +6559,9 @@
         }
       }
     }
+    try {
+      applyPaymentPortalChrome();
+    } catch (eApcSum) {}
 
     var stepUpHeldAddon = pendingStepUpHoldAddonForBookings(bookings);
     let html = stepUpHeldAddon.html || '';
@@ -7831,6 +7879,14 @@
         try {
           armScheduleRailChosen();
         } catch (eSr) {}
+        try {
+          document.documentElement.setAttribute('data-payment-portal', 'credit_card');
+          document.documentElement.setAttribute('data-portal-payment', 'credit_card');
+          writeCampPaymentMethodOk('credit_card');
+          var pmStripe = document.getElementById('payment-method-select');
+          if (pmStripe) pmStripe.value = 'credit_card';
+          if (session.user && session.user.id) persistPaymentPortalForUser(session.user.id, 'credit_card');
+        } catch (eStripePm) {}
       }
       await loadParentCampers();
       await refreshParentProfileWaiverFromServer();
@@ -7859,6 +7915,9 @@
         persistEnrollLocal();
       } catch (ePe) {}
       var effPortalPm = urlPaymentPortalBoot || urlPortalPaymentBoot || '';
+      if (!effPortalPm && session && session.user && session.user.id) {
+        effPortalPm = readPersistedPaymentPortalForUser(session.user.id);
+      }
       if (effPortalPm) {
         try {
           document.documentElement.setAttribute('data-payment-portal', effPortalPm);
@@ -7872,6 +7931,9 @@
           var pmLanding = document.getElementById('payment-method-select');
           if (pmLanding) pmLanding.value = effPortalPm;
         } catch (ePl) {}
+        if (session && session.user && session.user.id) {
+          persistPaymentPortalForUser(session.user.id, effPortalPm);
+        }
       }
       try {
         applyPaymentPortalChrome();
@@ -7927,6 +7989,9 @@
       try {
         clearScheduleRailChosen();
       } catch (eClr) {}
+      try {
+        if (session && session.user && session.user.id) clearPersistedPaymentPortalForUser(session.user.id);
+      } catch (eCppLo) {}
       IMA.signOut();
     }
     document.getElementById('logout-link-top').addEventListener('click', onLogoutClick);
@@ -8529,6 +8594,10 @@
     if (isSchedule && !canUseCampScheduleTab()) {
       isSchedule = false;
     }
+    if (isSchedule && shouldForcePortalBeforeScheduleUrl() && !getPaymentPortalMode()) {
+      location.replace('/portal-landing.html');
+      return;
+    }
     if (which === 'account') {
       persistEnrollLocal();
     }
@@ -8588,14 +8657,6 @@
     } catch (e) {}
   }
 
-  function hasScheduleRailChosen() {
-    try {
-      return sessionStorage.getItem('ima_schedule_rail_chosen') === '1';
-    } catch (e) {
-      return false;
-    }
-  }
-
   /** Plain #schedule links skip portal unless test mode (Stripe test footer, etc.). */
   function shouldForcePortalBeforeScheduleUrl() {
     if (checkoutEmbedMode) return false;
@@ -8615,7 +8676,11 @@
       setRegTab('account');
       return;
     }
-    if (hasScheduleRailChosen() || !shouldForcePortalBeforeScheduleUrl()) {
+    if (!shouldForcePortalBeforeScheduleUrl()) {
+      setRegTab('schedule');
+      return;
+    }
+    if (getPaymentPortalMode()) {
       setRegTab('schedule');
       return;
     }

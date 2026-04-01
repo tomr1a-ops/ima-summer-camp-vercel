@@ -1433,7 +1433,7 @@
         return;
       }
       if (r.data && r.data.zeroDollarComplete) {
-        window.location.href = '/index.html#schedule';
+        window.location.href = '/index.html?paymentPortal=credit_card#schedule';
         return;
       }
       var stripePk = '';
