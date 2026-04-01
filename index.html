@@ -5818,8 +5818,29 @@
     }
     var remW = creditApplied ? creditApplied.remainingWeeks | 0 : 0;
     var remD = creditApplied ? creditApplied.remainingDays | 0 : 0;
-    el.hidden = false;
     var remCents = creditApplied ? Math.max(0, Math.round(Number(creditApplied.remainingPrepaidCents) || 0)) : 0;
+    var rwcPool = 0;
+    var rdcPool = 0;
+    if (creditApplied) {
+      if (creditApplied.remainingWeekCents != null) {
+        rwcPool = Math.max(0, Math.round(Number(creditApplied.remainingWeekCents)));
+      }
+      if (creditApplied.remainingDayCents != null) {
+        rdcPool = Math.max(0, Math.round(Number(creditApplied.remainingDayCents)));
+      }
+    }
+    var hasUnusedCredit =
+      remW > 0 ||
+      remD > 0 ||
+      remCents > 0 ||
+      (rwcPool > 0 && remW === 0) ||
+      (rdcPool > 0 && remD === 0);
+    if (!hasUnusedCredit) {
+      el.hidden = true;
+      el.innerHTML = '';
+      return;
+    }
+    el.hidden = false;
     var weekLine =
       remW > 0 ? remW + ' week' + (remW === 1 ? '' : 's') : '—';
     var dayLine = remD > 0 ? remD + ' day' + (remD === 1 ? '' : 's') : '—';
@@ -5842,9 +5863,6 @@
     if (remW === 0 && remD === 0 && remCents > 0) {
       weekLine = fmt(remCents / 100) + ' credit';
       dayLine = '—';
-    }
-    if (remW === 0 && remD === 0 && remCents <= 0) {
-      weekLine = 'None left — fully used by current checkout';
     }
     var balanceFootnote =
       'Full-week credit applies only to <strong>full week (Mon–Fri)</strong> checkout. Daily credit applies only to <strong>per-day</strong> checkout. They do not transfer or combine.';
