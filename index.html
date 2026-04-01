@@ -3270,6 +3270,17 @@
   /** @type {{ id: string, first_name: string, last_name: string }[]} */
   let parentCampers = [];
   let enrollmentType = 'full';
+  /**
+   * Step Up rail: full-week checkboxes behave like Daily tab day chips — always in play even when
+   * enrollmentType stayed "daily" in localStorage (capacity, cart, child context, active-camper set).
+   */
+  function fullWeekDraftCountsLikeActiveWeeklyTab() {
+    return (
+      enrollmentType === 'full' ||
+      getPaymentPortalMode() === 'step_up' ||
+      currentCheckoutPaymentMethod() === 'step_up'
+    );
+  }
   let session = null;
   /** Confirmed enrollments from GET /api/enrollments — shown after checkout clears local draft. */
   let confirmedEnrollmentsCache = [];
@@ -3565,7 +3576,7 @@
   function collectActiveCamperIds() {
     const ids = new Set();
     if (!session) return [];
-    if (enrollmentType === 'full') {
+    if (fullWeekDraftCountsLikeActiveWeeklyTab()) {
       weeksPayload.forEach(function (w) {
         const s = fullWeekCampersByWeek[String(w.id)];
         if (s) {
@@ -3574,7 +3585,8 @@
           });
         }
       });
-    } else {
+    }
+    if (enrollmentType === 'daily') {
       Object.keys(dailyPerDayCampers).forEach(function (wid) {
         const inner = dailyPerDayCampers[wid];
         if (!inner) return;
@@ -3594,7 +3606,7 @@
   function weekChildContextHtml(weekId) {
     if (!session) return '';
     const wk = String(weekId);
-    if (enrollmentType === 'full') {
+    if (fullWeekDraftCountsLikeActiveWeeklyTab()) {
       const s = fullWeekCampersByWeek[wk];
       if (!s || !s.size) return '';
       const names = Array.from(s)
@@ -4758,7 +4770,7 @@
     const dk = String(dayId);
     const adding = new Set();
     const fw = fullWeekCampersByWeek[wk];
-    if (enrollmentType === 'full' && fw && fw.size) {
+    if (fullWeekDraftCountsLikeActiveWeeklyTab() && fw && fw.size) {
       fw.forEach(function (cid) {
         const covered = daysCoveredByConfirmedForCamperWeek(weekId, cid);
         if (!covered.has(dk)) adding.add(String(cid));
@@ -5186,11 +5198,7 @@
         fullWeekKey.add(k);
         /* Match checkout-step-up.js / daily flow: Step Up rail always bills full-week checkboxes even if
            enrollmentType stayed "daily" in storage (fixes single-week hold with wrong tab flag). */
-        if (
-          enrollmentType === 'full' ||
-          getPaymentPortalMode() === 'step_up' ||
-          currentCheckoutPaymentMethod() === 'step_up'
-        ) {
+        if (fullWeekDraftCountsLikeActiveWeeklyTab()) {
           var lineFw = { weekId: w.id, dayIds: ids, pricingMode: 'full_week', camperId: cid };
           var wlIdFw = waitlistOfferIdForCheckout(cid, w.id);
           if (wlIdFw) lineFw.waitlistEntryId = wlIdFw;
@@ -7110,32 +7118,6 @@
     const totalRow = document.getElementById('total-row');
     const btn = document.getElementById('checkout-btn');
     const msg = document.getElementById('msg');
-    try {
-      queueMicrotask(function () {
-        var btnDbg = document.getElementById('checkout-btn');
-        var agreeChkDbg = document.getElementById('camp-agreement-accept');
-        var agreementOkDbg = !!(agreeChkDbg && agreeChkDbg.checked);
-        var pmPickDbg = document.getElementById('payment-method-select');
-        var pmValDbg =
-          getPaymentPortalMode() === 'step_up'
-            ? 'step_up'
-            : getPaymentPortalMode() === 'credit_card'
-              ? 'credit_card'
-              : pmPickDbg && pmPickDbg.value === 'step_up'
-                ? 'step_up'
-                : pmPickDbg && pmPickDbg.value === 'credit_card'
-                  ? 'credit_card'
-                  : '';
-        var paymentOkDbg = pmValDbg === 'credit_card' || pmValDbg === 'step_up';
-        console.log('[IMA updateSummaryImmediate]', {
-          'collectBookings().length': collectBookings().length,
-          paymentOk: paymentOkDbg,
-          agreementOk: agreementOkDbg,
-          'btn.disabled': !!(btnDbg && btnDbg.disabled),
-          paymentPortalMode: getPaymentPortalMode(),
-        });
-      });
-    } catch (eHoldDbg) {}
     var freezeStepUpHoldOkBanner =
       msg &&
       session &&
@@ -8011,21 +7993,6 @@
           if (mode === 'full') {
             clearDailyForCamperWeek(wk, cid);
             clearFullWeekHydrateDismiss(wk, cid);
-            if (!paidHere) {
-              try {
-                var fwDbg = {};
-                Object.keys(fullWeekCampersByWeek).forEach(function (k) {
-                  var stDbg = fullWeekCampersByWeek[k];
-                  fwDbg[k] = stDbg && stDbg.forEach ? Array.from(stDbg) : stDbg;
-                });
-                console.log('[IMA buildWeekCamperCheckboxes full-week check]', {
-                  fullWeekCampersByWeek: fwDbg,
-                  collectBookings: collectBookings(),
-                });
-              } catch (eFwCbLog) {
-                console.log('[IMA buildWeekCamperCheckboxes full-week check]', fullWeekCampersByWeek, collectBookings());
-              }
-            }
           }
         } else {
           s.delete(cid);
