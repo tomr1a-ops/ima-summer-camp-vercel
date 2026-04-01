@@ -100,8 +100,9 @@
   function portalUrls(parentId) {
     var id = encodeURIComponent(parentId);
     return {
-      stepUp: '/stepup-portal.html',
-      card: '/cc-portal.html',
+      /* One navigation straight to registration (avoids stepup/cc stub page flash). Stub pages remain for login return= URLs. */
+      stepUp: '/index.html?parent_id=' + id + '&paymentPortal=step_up#schedule',
+      card: '/index.html?parent_id=' + id + '&paymentPortal=credit_card#schedule',
       enrollments: '/view-all-enrollments.html?parent_id=' + id
     };
   }

@@ -7,6 +7,26 @@
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
 <title>IMA Summer Camp 2026 — Register Now</title>
+<script>
+(function () {
+  try {
+    var q = new URLSearchParams(window.location.search || '');
+    if (q.get('paymentPortal') || q.get('portalPayment') || q.get('parent_id')) {
+      document.documentElement.classList.add('ima-portal-entry');
+    }
+  } catch (e) {}
+})();
+</script>
+<style>
+  /* Hide layout flash until auth + tab + portal chrome are applied (portal deep-links only). */
+  html.ima-portal-entry:not(.ima-ui-ready) body {
+    opacity: 0 !important;
+  }
+  html.ima-portal-entry.ima-ui-ready body {
+    opacity: 1 !important;
+    transition: opacity 0.22s ease-out;
+  }
+</style>
 <script src="https://js.stripe.com/v3/" defer></script>
 <script src="/js/ima-core.js?v=20260409"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet" />
@@ -8505,6 +8525,11 @@
           errBanner.style.display = 'block';
         }
       } catch (e2) {}
+    })
+    .finally(function () {
+      try {
+        document.documentElement.classList.add('ima-ui-ready');
+      } catch (eF) {}
     });
   initTestBar();
 })();
