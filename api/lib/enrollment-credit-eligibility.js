@@ -14,13 +14,13 @@ function enrollmentHasVerifiedSettlement(row) {
 }
 
 function enrollmentQualifiesForCampCredit(row) {
-  if (!row || String(row.status) !== 'confirmed') return false;
+  if (!row || String(row.status || '').toLowerCase() !== 'confirmed') return false;
   return enrollmentHasVerifiedSettlement(row);
 }
 
 /** Cancelled row still carries settlement fields from when it was paid — justifies a non-zero ledger. */
 function enrollmentCancelledJustifiesLedger(row) {
-  if (!row || String(row.status) !== 'cancelled') return false;
+  if (!row || String(row.status || '').toLowerCase() !== 'cancelled') return false;
   return enrollmentHasVerifiedSettlement(row);
 }
 

@@ -334,21 +334,24 @@
         errEl.textContent = '';
       }
       try {
+        var commitBody = {
+          selectedWeeks: selectedWeeks,
+          paymentMethod: 'credit_card',
+          testPricing: pricing.test,
+        };
+        console.log('[IMA cc-portal] POST /api/cc-portal-commit-weeks', commitBody);
         var res = await noStoreFetch('/api/cc-portal-commit-weeks', {
           method: 'POST',
           headers: {
             Authorization: 'Bearer ' + accessToken,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            selectedWeeks: selectedWeeks,
-            paymentMethod: 'credit_card',
-            testPricing: pricing.test,
-          }),
+          body: JSON.stringify(commitBody),
         });
         var j = await res.json().catch(function () {
           return {};
         });
+        console.log('[IMA cc-portal] response', res.status, j);
         if (!res.ok) {
           if (errEl) {
             errEl.className = 'cc-msg cc-msg--err';

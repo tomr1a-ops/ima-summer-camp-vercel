@@ -32,7 +32,9 @@ async function campCreditBucketForConfirmedRow(sb, row) {
 /** Which ledger rail this enrollment's camp credits belong to. */
 function ledgerPaymentMethodForEnrollment(row) {
   if (!row) return 'credit_card';
-  const st = String(row.status || '');
+  const st = String(row.status || '')
+    .trim()
+    .toLowerCase();
   if (st === 'pending_step_up') return 'step_up';
   if (st === 'confirmed') {
     if (row.stripe_session_id != null && String(row.stripe_session_id).trim() !== '') return 'credit_card';

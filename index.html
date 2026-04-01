@@ -2864,21 +2864,28 @@
     portalBatchWeekSaveInFlight = true;
     syncPortalWeekSaveBar();
     try {
+      var saveBody = {
+        selectedWeeks: buildPortalBatchSelectedWeeksPayload(),
+        paymentMethod: getPaymentPortalMode(),
+        testPricing: !!testPriceMode,
+      };
+      try {
+        console.log('[IMA portal save] POST payload', JSON.parse(JSON.stringify(saveBody)));
+      } catch (eLog) {
+        console.log('[IMA portal save] POST payload (raw)', saveBody);
+      }
       var res = await imaNoStoreFetch('/api/cc-portal-commit-weeks', {
         method: 'POST',
         headers: {
           Authorization: 'Bearer ' + tok,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          selectedWeeks: buildPortalBatchSelectedWeeksPayload(),
-          paymentMethod: getPaymentPortalMode(),
-          testPricing: !!testPriceMode,
-        }),
+        body: JSON.stringify(saveBody),
       });
       var j = await res.json().catch(function () {
         return {};
       });
+      console.log('[IMA portal save] response', res.status, j);
       if (!res.ok) {
         if (msgEl) {
           msgEl.className = 'msg error';

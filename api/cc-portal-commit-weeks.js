@@ -56,10 +56,16 @@ function enrollmentRowPaidViaStripe(row) {
   return false;
 }
 
+function rowStatusNorm(row) {
+  return String(row && row.status != null ? row.status : '')
+    .trim()
+    .toLowerCase();
+}
+
 /** Full-week rows this portal rail may add/remove in one batch (credit card vs Step Up). */
 function isPortalBatchManageableRow(row, paymentMethod) {
   if (!row) return false;
-  const st = String(row.status || '');
+  const st = rowStatusNorm(row);
   if (st === 'cancelled') return false;
   const pm = paymentMethod === 'step_up' ? 'step_up' : 'credit_card';
   if (pm === 'credit_card') {
@@ -90,34 +96,59 @@ async function inferPricingModeForWeek(sb, weekId, dayIds) {
 }
 
 /** @returns {Promise<number>} family camp ledger credits added (cents) from this cancellation */
-async function cancelEnrollmentRow(sb, user, row) {
+async function cancelEnrollmentRow(sb, user, row, testPricing) {
   let ledgerCreditCents = 0;
-  if (row.status === ENROLLMENT_STATUS.CONFIRMED || row.status === ENROLLMENT_STATUS.PENDING_STEP_UP) {
+  const st = rowStatusNorm(row);
+  const tp = !!testPricing;
+  if (st === ENROLLMENT_STATUS.CONFIRMED || st === ENROLLMENT_STATUS.PENDING_STEP_UP) {
     await syncConfirmedDayCounts(sb, row.day_ids || [], []);
-    if (row.status === ENROLLMENT_STATUS.PENDING_STEP_UP) {
-      try {
-        const cents = await campCreditCentsForConfirmedRow(sb, row, false);
-        if (cents > 0) {
-          ledgerCreditCents += cents;
-          const bucket = await campCreditBucketForConfirmedRow(sb, row);
-          if (bucket === 'week') await addFamilyCampLedgerWeekCents(sb, user.id, cents, 'step_up');
-          else await addFamilyCampLedgerDayCents(sb, user.id, cents, 'step_up');
-        }
-      } catch (credErr) {
-        console.error('[portal-commit-weeks] step_up hold credit', credErr && credErr.message);
+    if (st === ENROLLMENT_STATUS.PENDING_STEP_UP) {
+      const cents = await campCreditCentsForConfirmedRow(sb, row, tp);
+      console.log('[portal-commit-weeks] cancel row step_up credit eval', {
+        enrollmentId: row.id,
+        cents,
+        testPricing: tp,
+        dayIdsLen: (row.day_ids || []).length,
+      });
+      if (cents > 0) {
+        ledgerCreditCents += cents;
+        const bucket = await campCreditBucketForConfirmedRow(sb, row);
+        if (bucket === 'week') await addFamilyCampLedgerWeekCents(sb, user.id, cents, 'step_up');
+        else await addFamilyCampLedgerDayCents(sb, user.id, cents, 'step_up');
+        console.log('[portal-commit-weeks] ledger add step_up ok', { enrollmentId: row.id, cents, bucket });
       }
-    } else if (enrollmentQualifiesForCampCredit(row)) {
-      try {
-        const cents = await campCreditCentsForConfirmedRow(sb, row, false);
-        if (cents > 0) {
-          ledgerCreditCents += cents;
-          const bucket = await campCreditBucketForConfirmedRow(sb, row);
-          const pm = ledgerPaymentMethodForEnrollment(row);
-          if (bucket === 'week') await addFamilyCampLedgerWeekCents(sb, user.id, cents, pm);
-          else await addFamilyCampLedgerDayCents(sb, user.id, cents, pm);
-        }
-      } catch (credErr) {
-        console.error('[portal-commit-weeks] ledger credit', credErr && credErr.message);
+    } else {
+      const qualifies = enrollmentQualifiesForCampCredit(row);
+      const cents = await campCreditCentsForConfirmedRow(sb, row, tp);
+      const bucket = await campCreditBucketForConfirmedRow(sb, row);
+      const pm = ledgerPaymentMethodForEnrollment(row);
+      console.log('[portal-commit-weeks] cancel row confirmed credit eval', {
+        enrollmentId: row.id,
+        rawStatus: row.status,
+        normalizedStatus: st,
+        qualifies,
+        stripe: enrollmentRowPaidViaStripe(row),
+        checkoutBatchId: row.checkout_batch_id,
+        pricePaid: row.price_paid,
+        cents,
+        bucket,
+        ledgerPm: pm,
+        testPricing: tp,
+      });
+      const allowCredit = qualifies || enrollmentRowPaidViaStripe(row);
+      if (cents > 0 && allowCredit) {
+        ledgerCreditCents += cents;
+        if (bucket === 'week') await addFamilyCampLedgerWeekCents(sb, user.id, cents, pm);
+        else await addFamilyCampLedgerDayCents(sb, user.id, cents, pm);
+        console.log('[portal-commit-weeks] ledger add confirmed ok', { enrollmentId: row.id, cents, bucket, pm });
+      } else {
+        console.log('[portal-commit-weeks] skip ledger confirmed', {
+          enrollmentId: row.id,
+          cents,
+          qualifies,
+          allowCredit,
+          paidViaStripe: enrollmentRowPaidViaStripe(row),
+        });
       }
     }
   }
@@ -128,9 +159,9 @@ async function cancelEnrollmentRow(sb, user, row) {
   if (ue) throw ue;
   if (
     row.week_id &&
-    (row.status === ENROLLMENT_STATUS.CONFIRMED ||
-      row.status === ENROLLMENT_STATUS.PENDING_STEP_UP ||
-      row.status === ENROLLMENT_STATUS.PENDING)
+    (st === ENROLLMENT_STATUS.CONFIRMED ||
+      st === ENROLLMENT_STATUS.PENDING_STEP_UP ||
+      st === ENROLLMENT_STATUS.PENDING)
   ) {
     try {
       const nid = await tryPromoteWaitlistAfterEnrollmentRemoved(sb, row.week_id);
@@ -239,9 +270,25 @@ module.exports = async (req, res) => {
       toAdd.push({ weekId, camperId });
     }
 
+    console.log('[portal-commit-weeks] batch plan', {
+      userId: user.id,
+      paymentMethod,
+      testPricing,
+      selectedWeeksKeyCount: Object.keys(selectedWeeks).length,
+      desiredPairs: desired.size,
+      manageableRows: manageableFullWeekRows.length,
+      toCancel: toCancel.map((r) => ({
+        id: r.id,
+        status: r.status,
+        week_id: r.week_id,
+        camper_id: r.camper_id,
+      })),
+      toAddCount: toAdd.length,
+    });
+
     let netLedgerCreditCents = 0;
     for (let i = 0; i < toCancel.length; i++) {
-      netLedgerCreditCents += await cancelEnrollmentRow(sb, user, toCancel[i]);
+      netLedgerCreditCents += await cancelEnrollmentRow(sb, user, toCancel[i], testPricing);
     }
 
     const wrVal = weekRate(testPricing);
@@ -296,8 +343,10 @@ module.exports = async (req, res) => {
       }
     }
 
+    const outBody = { ok: true, netLedgerCreditCents };
+    console.log('[portal-commit-weeks] batch done', outBody);
     res.statusCode = 200;
-    return res.end(JSON.stringify({ ok: true, netLedgerCreditCents }));
+    return res.end(JSON.stringify(outBody));
   } catch (e) {
     const code = e.statusCode || 500;
     res.statusCode = code;
