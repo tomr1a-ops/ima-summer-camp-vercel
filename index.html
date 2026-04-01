@@ -2826,7 +2826,16 @@
   }
 
   function portalSaveBlocksCheckout() {
+    if (getPaymentPortalMode() === 'step_up') return false;
     return paymentPortalUsesBatchWeekSave() && portalBatchWeekNeedsSave();
+  }
+
+  function stepUpHoldButtonLabel() {
+    return getPaymentPortalMode() === 'step_up' &&
+      paymentPortalUsesBatchWeekSave() &&
+      portalBatchWeekNeedsSave()
+      ? 'Save and Hold Spot'
+      : 'Hold Spot';
   }
 
   function syncPortalWeekSaveBar() {
@@ -2834,6 +2843,10 @@
     var b = document.getElementById('portal-save-week-selections');
     var hint = document.getElementById('portal-week-save-hint');
     if (!bar || !b) return;
+    if (getPaymentPortalMode() === 'step_up') {
+      bar.hidden = true;
+      return;
+    }
     var show = paymentPortalUsesBatchWeekSave() && session && parentCampers.length > 0;
     bar.hidden = !show;
     if (!show) return;
@@ -2851,7 +2864,12 @@
     }
   }
 
-  async function runPortalBatchWeekSave() {
+  /**
+   * @param {{ skipPostSaveUi?: boolean, suppressSuccessMsg?: boolean }} [opts]
+   * @returns {Promise<boolean>}
+   */
+  async function runPortalBatchWeekSave(opts) {
+    opts = opts || {};
     var msgEl = document.getElementById('msg');
     var tok = await freshAccessTokenForApi();
     if (!tok) {
@@ -2859,7 +2877,7 @@
         msgEl.className = 'msg error';
         msgEl.textContent = 'Sign in again to save week changes.';
       }
-      return;
+      return false;
     }
     portalBatchWeekSaveInFlight = true;
     syncPortalWeekSaveBar();
@@ -2873,6 +2891,11 @@
         console.log('[IMA portal save] POST payload', JSON.parse(JSON.stringify(saveBody)));
       } catch (eLog) {
         console.log('[IMA portal save] POST payload (raw)', saveBody);
+      }
+      if (saveBody.paymentMethod === 'step_up') {
+        console.log('[IMA portal save] Step Up rail — credits apply on server for cancelled holds / confirmed rows', {
+          weekKeys: Object.keys(saveBody.selectedWeeks || {}),
+        });
       }
       var res = await imaNoStoreFetch('/api/cc-portal-commit-weeks', {
         method: 'POST',
@@ -2891,9 +2914,9 @@
           msgEl.className = 'msg error';
           msgEl.textContent = j.error || 'Could not save week changes. Try again.';
         }
-        return;
+        return false;
       }
-      if (msgEl) {
+      if (msgEl && !opts.suppressSuccessMsg) {
         msgEl.className = 'msg ok';
         var nc = Number(j.netLedgerCreditCents);
         msgEl.textContent =
@@ -2907,15 +2930,19 @@
       try {
         persistEnrollLocal();
       } catch (ePl) {}
-      await refreshPricingPreview({ skipScheduleDom: false });
-      updateSummary();
+      await refreshPricingPreview({ skipScheduleDom: !!opts.skipPostSaveUi });
       renderFullWeeks();
       renderDailyWeeks();
+      if (!opts.skipPostSaveUi) {
+        updateSummary();
+      }
+      return true;
     } catch (eRun) {
       if (msgEl) {
         msgEl.className = 'msg error';
         msgEl.textContent = (eRun && eRun.message) || 'Could not save week changes.';
       }
+      return false;
     } finally {
       portalBatchWeekSaveInFlight = false;
       syncPortalWeekSaveBar();
@@ -6773,8 +6800,10 @@
           if (btnMainSU) {
             if (checkoutSessionInFlight && zeroDueSu && pmValSu === 'credit_card') {
               btnMainSU.textContent = 'Saving…';
+            } else if (portalBatchWeekSaveInFlight && pmValSu === 'step_up' && getPaymentPortalMode() === 'step_up') {
+              btnMainSU.textContent = 'Saving…';
             } else if (pmValSu === 'step_up') {
-              btnMainSU.textContent = 'Hold Spot';
+              btnMainSU.textContent = stepUpHoldButtonLabel();
             } else if (zeroDueSu) {
               btnMainSU.textContent = 'Confirm registration ($0)';
             } else {
@@ -6783,7 +6812,12 @@
           }
           if (secureNoteSU) {
             if (pmValSu === 'step_up') {
-              secureNoteSU.textContent = 'No card charge — 24-hour hold pending Step Up funding.';
+              secureNoteSU.textContent =
+                getPaymentPortalMode() === 'step_up' &&
+                paymentPortalUsesBatchWeekSave() &&
+                portalBatchWeekNeedsSave()
+                  ? 'Save and Hold Spot saves your week picks and places the 24-hour Step Up hold in one step. No card charge.'
+                  : 'No card charge — 24-hour hold pending Step Up funding.';
             } else if (zeroDueSu) {
               secureNoteSU.textContent = 'No payment due — we save automatically. Tap Confirm if it does not save.';
             } else {
@@ -7018,8 +7052,10 @@
     if (btnMain) {
       if (checkoutSessionInFlight && zeroDue && pmVal === 'credit_card') {
         btnMain.textContent = 'Saving…';
+      } else if (portalBatchWeekSaveInFlight && pmVal === 'step_up' && getPaymentPortalMode() === 'step_up') {
+        btnMain.textContent = 'Saving…';
       } else if (pmVal === 'step_up') {
-        btnMain.textContent = 'Hold Spot';
+        btnMain.textContent = stepUpHoldButtonLabel();
       } else if (zeroDue) {
         btnMain.textContent = 'Confirm registration ($0)';
       } else {
@@ -7028,7 +7064,12 @@
     }
     if (secureNote) {
       if (pmVal === 'step_up') {
-        secureNote.textContent = 'No card charge — 24-hour hold pending Step Up funding.';
+        secureNote.textContent =
+          getPaymentPortalMode() === 'step_up' &&
+          paymentPortalUsesBatchWeekSave() &&
+          portalBatchWeekNeedsSave()
+            ? 'Save and Hold Spot saves your week picks and places the 24-hour Step Up hold in one step. No card charge.'
+            : 'No card charge — 24-hour hold pending Step Up funding.';
       } else if (zeroDue) {
         secureNote.textContent = 'No payment due — we save automatically. Tap Confirm if it does not save.';
       } else {
@@ -8828,6 +8869,24 @@
       btn.disabled = true;
     }
     if (msg) msg.className = 'msg';
+
+    var stepUpPortalWeekSaveFirst =
+      getPaymentPortalMode() === 'step_up' &&
+      paymentPortalUsesBatchWeekSave() &&
+      portalBatchWeekNeedsSave();
+    if (stepUpPortalWeekSaveFirst) {
+      console.log('[IMA Step Up portal] Save and Hold Spot — committing weeks then create-checkout');
+      var weekSaveOk = await runPortalBatchWeekSave({
+        skipPostSaveUi: true,
+        suppressSuccessMsg: true,
+      });
+      if (!weekSaveOk) {
+        clearCheckoutButtonLoading();
+        return;
+      }
+      console.log('[IMA Step Up portal] week commit ok — proceeding to hold / checkout session');
+      updateSummary();
+    }
 
     checkoutSessionInFlight = true;
     const checkoutFetchMs = 120000;
