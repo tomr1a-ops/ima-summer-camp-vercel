@@ -151,7 +151,7 @@
     </div>
 
     <div class="panel">
-      <div class="panel-head">Step Up holds <span class="panel-hint">· pending_step_up; counts toward capacity until Mark as Paid, Release Hold, or 24h expiry (cron)</span></div>
+      <div class="panel-head">Step Up holds <span class="panel-hint">· only <code>pending_step_up</code> (credit-card checkouts never appear here); counts toward capacity until Mark as Paid, Release Hold, or 24h expiry (cron)</span></div>
       <div class="panel-body table-wrap">
         <table class="data" id="tbl-step-up-holds">
           <thead>
@@ -202,13 +202,14 @@
             <option value="">All weeks</option>
           </select>
           <select class="input input-inline" id="flt-status" style="min-width:150px;margin:0">
-            <option value="active" selected>Active only</option>
+            <option value="active" selected>Active (card + confirmed)</option>
             <option value="all">All statuses</option>
             <option value="cancelled">Cancelled only</option>
           </select>
           <button type="button" class="btn-ghost" id="btn-csv">Export CSV</button>
         </span>
       </div>
+      <p class="panel-hint" style="margin:0 0 10px 16px">Step Up holds are listed in the Step Up holds panel only — not in this table. Active = <code>pending</code> (in-flight card) or <code>confirmed</code>.</p>
       <div class="panel-body table-wrap">
         <table class="data" id="tbl">
           <thead>
@@ -354,13 +355,20 @@
         return out;
       }
 
+      var ADMIN_ENROLLMENT_STATUSES = ['pending', 'confirmed', 'cancelled', 'pending_step_up'];
+
       async function loadEnrollments(sb) {
         const { data, error } = await sb
           .from('enrollments')
           .select('id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at, campers(first_name,last_name,registration_fee_paid), weeks(label,week_number)')
+          .in('status', ADMIN_ENROLLMENT_STATUSES)
           .order('created_at', { ascending: false });
         if (error) {
-          const { data: d2, error: e2 } = await sb.from('enrollments').select('*').order('created_at', { ascending: false });
+          const { data: d2, error: e2 } = await sb
+            .from('enrollments')
+            .select('*')
+            .in('status', ADMIN_ENROLLMENT_STATUSES)
+            .order('created_at', { ascending: false });
           if (e2) throw e2;
           return d2 || [];
         }
@@ -681,7 +689,9 @@
       }
 
       function renderStepUpHolds(holds, parents) {
-        var list = holds || [];
+        var list = (holds || []).filter(function (e) {
+          return enrollmentStatusKey(e) === 'pending_step_up';
+        });
         var body = document.querySelector('#tbl-step-up-holds tbody');
         var empty = document.getElementById('step-up-holds-empty');
         var tbl = document.getElementById('tbl-step-up-holds');
@@ -832,9 +842,10 @@
         const flt = document.getElementById('flt-week').value;
         const st = document.getElementById('flt-status') && document.getElementById('flt-status').value;
         return enr.filter(function (e) {
-          if (flt && e.week_id !== flt) return false;
           var s = enrollmentStatusKey(e);
-          if (st === 'active') return s === 'confirmed' || s === 'pending' || s === 'pending_step_up';
+          if (s === 'pending_step_up') return false;
+          if (flt && e.week_id !== flt) return false;
+          if (st === 'active') return s === 'confirmed' || s === 'pending';
           if (st === 'cancelled') return s === 'cancelled';
           return true;
         });
@@ -937,7 +948,10 @@
           });
           if (!res.ok) return [];
           var j = await res.json();
-          return Array.isArray(j.holds) ? j.holds : [];
+          var arr = Array.isArray(j.holds) ? j.holds : [];
+          return arr.filter(function (h) {
+            return enrollmentStatusKey(h) === 'pending_step_up';
+          });
         } catch (e) {
           return [];
         }

@@ -102,7 +102,7 @@ module.exports = async (req, res) => {
         firstHoldRowIdByCamper.set(cid, { wn, id: String(r.id) });
       }
     });
-    const holds = listArr.map((r) => {
+    const holdsRaw = listArr.map((r) => {
       let camp = Number(r.price_paid);
       if (!Number.isFinite(camp) || camp < 0) camp = 0;
       const camper = r.campers || {};
@@ -140,6 +140,7 @@ module.exports = async (req, res) => {
         hold_addons_hint,
       };
     });
+    const holds = holdsRaw.filter((h) => h && h.status === ENROLLMENT_STATUS.PENDING_STEP_UP);
 
     return json(res, 200, { holds });
   } catch (e) {

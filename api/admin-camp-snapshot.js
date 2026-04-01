@@ -6,6 +6,15 @@
 const { serviceClient } = require('./lib/supabase');
 const { requireAdmin, logAdminAuthProbe } = require('./lib/auth');
 const { isMissingStepUpHoldExpiresColumn } = require('./lib/step-up-hold-column');
+const { ENROLLMENT_STATUS } = require('./lib/enrollment-status');
+
+/** Known camp enrollment rows only (card checkout + confirmed + Step Up holds + cancelled). */
+const ADMIN_SNAPSHOT_STATUSES = [
+  ENROLLMENT_STATUS.PENDING,
+  ENROLLMENT_STATUS.CONFIRMED,
+  ENROLLMENT_STATUS.CANCELLED,
+  ENROLLMENT_STATUS.PENDING_STEP_UP,
+];
 
 const ENR_SELECT_WITH_HOLD =
   'id,parent_id,camper_id,week_id,status,price_paid,registration_fee_paid,day_ids,guest_email,created_at,step_up_hold_expires_at, campers(first_name,last_name,registration_fee_paid), weeks(label,week_number)';
@@ -130,12 +139,17 @@ module.exports = async (req, res) => {
     let { data: enrRows, error: ee } = await sb
       .from('enrollments')
       .select(ENR_SELECT_WITH_HOLD)
+      .in('status', ADMIN_SNAPSHOT_STATUSES)
       .order('created_at', { ascending: false });
     const retryNoHold =
       (ee && isMissingStepUpHoldExpiresColumn(ee)) || (ee && String(ee.code || '') === 'PGRST205');
     if (ee && retryNoHold) {
       console.warn('[admin-camp-snapshot] retrying enrollments select without step_up_hold_expires_at', ee.code, ee.message);
-      const second = await sb.from('enrollments').select(ENR_SELECT_BASE).order('created_at', { ascending: false });
+      const second = await sb
+        .from('enrollments')
+        .select(ENR_SELECT_BASE)
+        .in('status', ADMIN_SNAPSHOT_STATUSES)
+        .order('created_at', { ascending: false });
       enrRows = second.data;
       ee = second.error;
     }
