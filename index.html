@@ -3660,7 +3660,13 @@
     const camperId = String(cid);
     const onFullWeek = !!(fullWeekCampersByWeek[wk] && fullWeekCampersByWeek[wk].has(camperId));
     if (enrollmentCoversFullWeek(row, w)) {
-      return onFullWeek;
+      if (onFullWeek) return true;
+      var wd = w.days || [];
+      if (wd.length !== 5) return false;
+      return wd.every(function (d) {
+        var s = getDayCamperSetMain(wk, String(d.id));
+        return s && s.has(camperId);
+      });
     }
     if (onFullWeek) return true;
     const dayIds = (row.day_ids || []).map(String).filter(Boolean);
@@ -4188,6 +4194,58 @@
     return out;
   }
 
+  /**
+   * Camper+week keys with any in-progress draft (full-week checkboxes and/or daily day chips),
+   * independent of Weekly vs Daily tab. Matches what parents see as “working on this week” so Step Up
+   * hold add-ons and totals stay aligned with the schedule overview (same enrollment intent).
+   */
+  function collectDraftCamperWeekKeysUnion() {
+    var keys = new Set();
+    if (!session) return keys;
+    var fullWeekKey = new Set();
+    weeksPayload.forEach(function (w) {
+      var ids = (w.days || []).map(function (d) {
+        return d.id;
+      });
+      if (ids.length !== 5) return;
+      var cset = fullWeekCampersByWeek[String(w.id)];
+      if (!cset || !cset.size) return;
+      cset.forEach(function (cid) {
+        if (camperWeekHasConfirmedFullWeek(w.id, cid)) return;
+        if (daysCoveredByConfirmedForCamperWeek(w.id, cid).size > 0) return;
+        var ck = String(cid) + ':' + String(w.id);
+        fullWeekKey.add(ck);
+        keys.add(String(cid) + '|' + String(w.id));
+      });
+    });
+    weeksPayload.forEach(function (w) {
+      var wk = String(w.id);
+      var inner = dailyPerDayCampers[wk];
+      if (!inner) return;
+      var camperIds = new Set();
+      Object.keys(inner).forEach(function (dk) {
+        var s = inner[dk];
+        if (!s || !s.size) return;
+        s.forEach(function (cid) {
+          camperIds.add(String(cid));
+        });
+      });
+      camperIds.forEach(function (cid) {
+        if (fullWeekKey.has(String(cid) + ':' + wk)) return;
+        var covered = daysCoveredByConfirmedForCamperWeek(w.id, cid);
+        var hasNew = false;
+        Object.keys(inner).forEach(function (dk) {
+          var s = inner[dk];
+          if (!s || !s.has(cid)) return;
+          if (covered.has(String(dk))) return;
+          hasNew = true;
+        });
+        if (hasNew) keys.add(String(cid) + '|' + wk);
+      });
+    });
+    return keys;
+  }
+
   /** Same camper + week + same days can exist as multiple DB rows from past checkouts; show one line (newest). */
   function dedupeConfirmedEnrollmentsForDisplay(rows) {
     const map = {};
@@ -4668,7 +4726,7 @@
       return { sum: 0, html: '' };
     }
     var coalesced = coalesceEnrollmentRowsForSidebar(raw);
-    var inCart = new Set();
+    var inCart = collectDraftCamperWeekKeysUnion();
     (bookings || []).forEach(function (b) {
       if (!b) return;
       var cid = b.camperId != null ? String(b.camperId) : '';
