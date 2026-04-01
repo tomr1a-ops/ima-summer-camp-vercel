@@ -819,6 +819,93 @@
     cursor: not-allowed;
   }
 
+  .payment-chooser-btn {
+    width: 100%;
+    margin-top: 0;
+    padding: 16px;
+    background: linear-gradient(135deg, var(--cyan) 0%, var(--blue) 100%);
+    color: #000;
+    border: none;
+    border-radius: 7px;
+    font-family: var(--font-display);
+    font-size: 17px;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .payment-chooser-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0,229,204,0.35), 0 4px 12px rgba(51,68,255,0.25);
+  }
+  .payment-chooser-btn:focus-visible {
+    outline: 2px solid var(--cyan);
+    outline-offset: 2px;
+  }
+  #payment-method-chooser {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 8px;
+  }
+  html:not(.ima-checkout-embed) #payment-method-section:not([hidden]) #payment-method-chooser {
+    display: flex;
+  }
+  html.ima-checkout-embed #payment-method-chooser {
+    display: none !important;
+  }
+  html:not(.ima-checkout-embed) #checkout-btn {
+    display: none !important;
+  }
+  html.ima-checkout-embed #checkout-btn {
+    display: block !important;
+  }
+  html.ima-checkout-embed header {
+    padding: 16px 20px 12px;
+  }
+  html.ima-checkout-embed .pricing-hero-box,
+  html.ima-checkout-embed .pricing-step-up-badge,
+  html.ima-checkout-embed .reg-tabs,
+  html.ima-checkout-embed #panel-account,
+  html.ima-checkout-embed #card-checkout-pricing,
+  html.ima-checkout-embed #card-weeks-enroll,
+  html.ima-checkout-embed #test-price-bar {
+    display: none !important;
+  }
+  html.ima-checkout-embed #panel-schedule {
+    display: block !important;
+  }
+  html.ima-checkout-embed #panel-schedule[hidden] {
+    display: block !important;
+  }
+  html.ima-checkout-embed .reg-main {
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 12px 16px 32px;
+  }
+  html.ima-checkout-embed .reg-main .page {
+    grid-template-columns: 1fr !important;
+    max-width: 520px;
+    padding: 16px 12px 40px;
+  }
+  html.ima-checkout-embed .reg-main .order-summary {
+    grid-row: auto !important;
+    grid-column: 1 !important;
+  }
+  html.ima-checkout-embed footer {
+    display: none;
+  }
+  #payment-method-select {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+  }
+
   .payment-method-section {
     margin: 14px 0 10px;
     padding-top: 12px;
@@ -2141,8 +2228,13 @@
         </label>
       </div>
       <div id="payment-method-section" class="payment-method-section" hidden>
-        <label class="payment-method-label" for="payment-method-select">Payment Method</label>
-        <select id="payment-method-select" autocomplete="off">
+        <div class="payment-method-label" id="payment-method-label-main">Payment</div>
+        <div id="payment-method-chooser">
+          <button type="button" id="btn-pay-credit-card" class="payment-chooser-btn">Pay with Credit Card</button>
+          <button type="button" id="btn-pay-step-up" class="payment-chooser-btn">Pay with Step Up</button>
+        </div>
+        <label class="payment-method-label" for="payment-method-select" id="payment-method-select-label" hidden>Payment Method</label>
+        <select id="payment-method-select" autocomplete="off" aria-hidden="true" tabindex="-1">
           <option value="" selected disabled>— Select —</option>
           <option value="credit_card">Credit Card</option>
           <option value="step_up">Step Up for Students Scholarship</option>
@@ -2202,6 +2294,15 @@
 
   const LS_STRIPE_TEST_UI = 'ima_stripe_test_ui';
   const qsBoot = new URLSearchParams(window.location.search);
+  var checkoutEmbedMode = qsBoot.get('checkoutEmbed') === '1';
+  var embedPaymentMethod = '';
+  if (checkoutEmbedMode) {
+    var _epm = qsBoot.get('paymentMethod');
+    if (_epm === 'credit_card' || _epm === 'step_up') embedPaymentMethod = _epm;
+  }
+  try {
+    if (checkoutEmbedMode) document.documentElement.classList.add('ima-checkout-embed');
+  } catch (eEmbCls) {}
   const host = typeof location !== 'undefined' ? String(location.hostname || '') : '';
   const isLocalHost =
     host === 'localhost' ||
@@ -3136,6 +3237,95 @@
     var id = u.id != null && String(u.id).trim() !== '' ? String(u.id).trim() : '';
     if (!id && u.sub != null) id = String(u.sub).trim();
     return id || null;
+  }
+
+  function syncEmbedPaymentSelect() {
+    if (checkoutEmbedMode && embedPaymentMethod) {
+      var el = document.getElementById('payment-method-select');
+      if (el) el.value = embedPaymentMethod;
+    }
+  }
+
+  function redirectCheckoutEmbedParent(url) {
+    try {
+      if (window.self !== window.top && window.top) window.top.location.replace(url);
+      else window.location.replace(url);
+    } catch (eR) {
+      try {
+        window.location.replace(url);
+      } catch (e2) {}
+    }
+  }
+
+  /** Build query string for /checkout-credit-card.html and /checkout-step-up.html (parent, weeks, children). */
+  function buildCheckoutHandoffQuery() {
+    var uid = enrollUserId();
+    if (!uid) return '';
+    var bookings = collectBookings();
+    if (!bookings.length && !hasShirtCheckoutSelection()) return '';
+    var weekSet = {};
+    var childSet = {};
+    bookings.forEach(function (b) {
+      if (b.weekId != null) weekSet[String(b.weekId)] = true;
+      if (b.camperId != null) childSet[String(b.camperId)] = true;
+    });
+    if (session && parentCampers.length) {
+      parentCampers.forEach(function (c) {
+        if (extraShirtChargesThisCheckout(c.id)) childSet[String(c.id)] = true;
+      });
+    }
+    var qs = new URLSearchParams();
+    qs.set('parent', uid);
+    qs.set('weeks', Object.keys(weekSet).sort().join(','));
+    qs.set('children', Object.keys(childSet).sort().join(','));
+    if (urlTest) qs.set('test', 'true');
+    if (qsBoot.get('stripe_test') === '1') qs.set('stripe_test', '1');
+    return qs.toString();
+  }
+
+  function validateCheckoutEmbedParamsOrBail() {
+    if (!checkoutEmbedMode) return true;
+    if (!embedPaymentMethod) {
+      redirectCheckoutEmbedParent('/index.html#schedule');
+      return false;
+    }
+    var parentQ = (qsBoot.get('parent') || '').trim();
+    var uid = enrollUserId();
+    if (!parentQ || !uid || parentQ !== uid) {
+      redirectCheckoutEmbedParent('/index.html#schedule');
+      return false;
+    }
+    syncEmbedPaymentSelect();
+    var weeksQ = (qsBoot.get('weeks') || '').trim();
+    var childQ = (qsBoot.get('children') || '').trim();
+    var expectedWeeks = weeksQ ? weeksQ.split(',').map(function (s) { return s.trim(); }).filter(Boolean) : [];
+    var expectedChildren = childQ ? childQ.split(',').map(function (s) { return s.trim(); }).filter(Boolean) : [];
+    var bookings = collectBookings();
+    var weekSet = {};
+    var childSet = {};
+    bookings.forEach(function (b) {
+      if (b.weekId != null) weekSet[String(b.weekId)] = true;
+      if (b.camperId != null) childSet[String(b.camperId)] = true;
+    });
+    if (session && parentCampers.length) {
+      parentCampers.forEach(function (c) {
+        if (extraShirtChargesThisCheckout(c.id)) childSet[String(c.id)] = true;
+      });
+    }
+    var weekArr = Object.keys(weekSet).sort();
+    var childArr = Object.keys(childSet).sort();
+    function sameSorted(a, b) {
+      if (a.length !== b.length) return false;
+      for (var i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+      }
+      return true;
+    }
+    if (!sameSorted(weekArr, expectedWeeks.slice().sort()) || !sameSorted(childArr, expectedChildren.slice().sort())) {
+      redirectCheckoutEmbedParent('/index.html#schedule');
+      return false;
+    }
+    return true;
   }
 
   function enrollStorageKey() {
@@ -5380,7 +5570,10 @@
     var pmSec = document.getElementById('payment-method-section');
     if (pmSec) pmSec.hidden = true;
     var pmSel = document.getElementById('payment-method-select');
-    if (pmSel) pmSel.selectedIndex = 0;
+    if (pmSel) {
+      if (checkoutEmbedMode && embedPaymentMethod) pmSel.value = embedPaymentMethod;
+      else pmSel.selectedIndex = 0;
+    }
     var stepN = document.getElementById('step-up-notice');
     if (stepN) stepN.hidden = true;
     var bmH = document.querySelector('#checkout-btn .btn-text');
@@ -5472,6 +5665,7 @@
 
   function updateSummaryImmediate() {
     if (stepUpSaveInProgress) return;
+    syncEmbedPaymentSelect();
     updateEnrollmentGate();
     renderScheduleOverview();
     renderStepUpPendingBanner();
@@ -5797,7 +5991,7 @@
     var paySection = document.getElementById('payment-method-section');
     if (paySection) paySection.hidden = false;
     var pmSelRestore = document.getElementById('payment-method-select');
-    if (pmSelRestore) {
+    if (pmSelRestore && !checkoutEmbedMode) {
       var pmSav = readCampPaymentMethodOk();
       if (pmSav === 'step_up' || pmSav === 'credit_card') {
         pmSelRestore.value = pmSav;
@@ -7052,6 +7246,10 @@
           e.message || 'Could not load sign-in. Check your connection and refresh the page.';
         errBanner.style.display = 'block';
       }
+      if (checkoutEmbedMode) {
+        redirectCheckoutEmbedParent('/login.html?return=/index.html#schedule');
+        return;
+      }
       showAuthPanels();
       voidRefreshPricingPreviewMaybeSummary();
       applyScheduleTabFromUrl();
@@ -7096,6 +7294,10 @@
       await refreshPricingPreview();
       void subscribeParentEnrollmentsRealtime();
     } else {
+      if (checkoutEmbedMode) {
+        redirectCheckoutEmbedParent('/login.html?return=/index.html#schedule');
+        return;
+      }
       parentProfileWaiverSigned = false;
       confirmedEnrollmentsCache = [];
       confirmedEnrollmentsRaw = [];
@@ -7108,6 +7310,13 @@
       wipeRegEnrollStorage();
       showAuthPanels();
       setEnrollmentType('full');
+    }
+    if (checkoutEmbedMode && session) {
+      if (!validateCheckoutEmbedParamsOrBail()) {
+        showAuthPanels();
+        updateRegFlowClasses();
+        return;
+      }
     }
     function onLogoutClick(ev) {
       ev.preventDefault();
@@ -7285,6 +7494,7 @@
 
   async function runCreateCheckoutSessionRequest(signal) {
     try {
+      syncEmbedPaymentSelect();
       if (session) {
         pruneConflictingFullWeekSelections();
         pruneFullWeekCampersUnknownToParent();
@@ -7391,6 +7601,7 @@
 
   async function attemptZeroBalanceAutoSave() {
     if (!session || checkoutSessionInFlight) return;
+    syncEmbedPaymentSelect();
     if (lastSummaryGrandDollars >= 0.01) return;
     var agreeAuto = document.getElementById('camp-agreement-accept');
     if (!parentProfileWaiverSigned && (!agreeAuto || !agreeAuto.checked)) return;
@@ -7452,6 +7663,7 @@
   }
 
   async function startCheckout() {
+    syncEmbedPaymentSelect();
     const btn = document.getElementById('checkout-btn');
     const msg = document.getElementById('msg');
 
@@ -7541,7 +7753,13 @@
         }
         return;
       }
-      if (typeof window.Stripe !== 'function') {
+      var StripeRoot =
+        typeof window.Stripe === 'function'
+          ? window
+          : checkoutEmbedMode && window.top && window.top !== window && typeof window.top.Stripe === 'function'
+            ? window.top
+            : null;
+      if (!StripeRoot || typeof StripeRoot.Stripe !== 'function') {
         showCheckoutErr(
           'Stripe could not load (js.stripe.com blocked or failed). Turn off ad blockers for this page, check your network, refresh, and try again.'
         );
@@ -7550,7 +7768,7 @@
 
       let stripe;
       try {
-        stripe = window.Stripe(stripePk);
+        stripe = StripeRoot.Stripe(stripePk);
       } catch (e) {
         showCheckoutErr(e.message);
         return;
@@ -7580,6 +7798,12 @@
       const hosted = data.checkoutUrl && /^https:\/\//i.test(String(data.checkoutUrl));
       if (hosted) {
         suppressCheckoutFinallySummary = true;
+        try {
+          if (checkoutEmbedMode && window.top && window.top !== window) {
+            window.top.location.assign(String(data.checkoutUrl));
+            return;
+          }
+        } catch (eHost) {}
         window.location.assign(String(data.checkoutUrl));
         return;
       }
@@ -7659,6 +7883,26 @@
       });
     }
   })();
+  (function initPaymentChooserNav() {
+    function go(pm) {
+      var qs = buildCheckoutHandoffQuery();
+      if (!qs) {
+        var m = document.getElementById('msg');
+        if (m) {
+          m.className = 'msg error';
+          m.textContent = 'Sign in and select camp weeks (or a billable add-on) before continuing.';
+        }
+        return;
+      }
+      writeCampPaymentMethodOk(pm);
+      var path = pm === 'step_up' ? '/checkout-step-up.html' : '/checkout-credit-card.html';
+      window.location.href = path + '?' + qs;
+    }
+    var bcc = document.getElementById('btn-pay-credit-card');
+    var bsu = document.getElementById('btn-pay-step-up');
+    if (bcc) bcc.addEventListener('click', function () { go('credit_card'); });
+    if (bsu) bsu.addEventListener('click', function () { go('step_up'); });
+  })();
 
   /** Camp registration tab / #schedule only after sign-in + ≥1 child. */
   function canUseCampScheduleTab() {
@@ -7727,6 +7971,11 @@
    * Signed-in parents with no children stay on My kids until they add a camper.
    */
   function applyScheduleTabFromUrl() {
+    if (checkoutEmbedMode) {
+      if (canUseCampScheduleTab()) setRegTab('schedule');
+      else setRegTab('account');
+      return;
+    }
     if (location.hash === '#schedule') {
       if (!canUseCampScheduleTab()) {
         setRegTab('account');

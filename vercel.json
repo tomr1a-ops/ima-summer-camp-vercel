@@ -34,6 +34,22 @@
       ]
     },
     {
+      "source": "/checkout-credit-card.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "private, no-store, no-cache, must-revalidate, max-age=0" },
+        { "key": "Pragma", "value": "no-cache" },
+        { "key": "Surrogate-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/checkout-step-up.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "private, no-store, no-cache, must-revalidate, max-age=0" },
+        { "key": "Pragma", "value": "no-cache" },
+        { "key": "Surrogate-Control", "value": "no-store" }
+      ]
+    },
+    {
       "source": "/login.html",
       "headers": [
         { "key": "Cache-Control", "value": "private, no-store, no-cache, must-revalidate, max-age=0" },
