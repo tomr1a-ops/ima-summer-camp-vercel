@@ -4,6 +4,7 @@ const { dayRate, weekRate, registrationFee } = require('./pricing');
 const { subtractFamilyCampLedgerSplit } = require('./family-camp-ledger');
 const { markWaitlistConverted } = require('./waitlist-service');
 const { markProfileWaiverSigned } = require('./profile-waiver');
+const { removeStalePendingForBatchSlots } = require('./supersede-stale-pending-enrollments');
 
 /**
  * Set campers.extra_shirt_addon_paid from Stripe session metadata (same as finalize-batch-enrollments).
@@ -88,6 +89,11 @@ async function confirmStripeSession(stripe, session) {
   if (
     enrollmentRows.every((r) => r.status === ENROLLMENT_STATUS.CONFIRMED && r.stripe_session_id === session.id)
   ) {
+    try {
+      await removeStalePendingForBatchSlots(sb, enrollmentRows, batchId);
+    } catch (supErr) {
+      console.error('[confirm-stripe-session] supersede stale pending (already)', supErr && supErr.message);
+    }
     return { ok: true, already: true, count: enrollmentRows.length, email: customerEmail };
   }
 
@@ -179,6 +185,30 @@ async function confirmStripeSession(stripe, session) {
     }
   }
 
+  if (didConfirmAny && enrollmentRows[0] && enrollmentRows[0].parent_id) {
+    const parentIdW = enrollmentRows[0].parent_id;
+    const waivedRaw = String((session.metadata && session.metadata.registration_waived_camper_ids) || '').trim();
+    if (waivedRaw) {
+      const waivedList = waivedRaw.split(',').map((s) => s.trim()).filter(Boolean);
+      if (waivedList.length) {
+        const { data: ownedW, error: owErr } = await sb
+          .from('campers')
+          .select('id')
+          .eq('parent_id', parentIdW)
+          .in('id', waivedList);
+        if (owErr) throw owErr;
+        if (ownedW && ownedW.length) {
+          const safeW = ownedW.map((r) => r.id);
+          const { error: wuErr } = await sb
+            .from('campers')
+            .update({ registration_fee_waived_ima_member: true })
+            .in('id', safeW);
+          if (wuErr) throw wuErr;
+        }
+      }
+    }
+  }
+
   if (didConfirmAny) {
     const wlRaw = session.metadata && session.metadata.waitlist_ids;
     if (wlRaw && String(wlRaw).trim()) {
@@ -202,6 +232,14 @@ async function confirmStripeSession(stripe, session) {
       await markProfileWaiverSigned(sb, enrollmentRows[0].parent_id);
     } catch (wErr) {
       console.error('[confirm-stripe-session] waiver flag', wErr && wErr.message);
+    }
+  }
+
+  if (didConfirmAny) {
+    try {
+      await removeStalePendingForBatchSlots(sb, enrollmentRows, batchId);
+    } catch (supErr) {
+      console.error('[confirm-stripe-session] supersede stale pending', supErr && supErr.message);
     }
   }
 

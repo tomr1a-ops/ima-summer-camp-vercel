@@ -13,6 +13,7 @@ const {
 const { finalizePendingEnrollmentBatch, finalizeStepUpReservationBatch } = require('./lib/finalize-batch-enrollments');
 const { verifyWaitlistOfferForCheckout } = require('./lib/waitlist-service');
 const { normCamperKey, normalizeIncomingBookings } = require('./lib/normalize-checkout-bookings');
+const { deleteStaleCardPendingForConfirmedSlot, dayIdsKey } = require('./lib/supersede-stale-pending-enrollments');
 const { isCampRegistrationFeePaid } = require('./lib/camper-registration-fee');
 const {
   AGREEMENT_VERSION,
@@ -21,6 +22,7 @@ const {
   sendAgreementAcknowledgmentEmailOnce,
 } = require('./lib/agreement-record');
 const { ENROLLMENT_STATUS } = require('./lib/enrollment-status');
+const { markProfileWaiverSigned } = require('./lib/profile-waiver');
 
 function json(res, code, obj) {
   res.statusCode = code;
@@ -388,31 +390,99 @@ module.exports = async (req, res) => {
   let ledgerConsumedWeekCents = 0;
   let ledgerConsumedDayCents = 0;
   if (bookingsArray.length) {
-    try {
-      const prepaidCoverageKeys = Array.isArray(body.prepaidCoverageKeys) ? body.prepaidCoverageKeys : [];
-      const { poolW, poolD, weekMetaMap, ledgerWeekCents, ledgerDayCents } = await loadFloatingPrepaidPool(
-        sb,
-        parentId,
-        bookingsArray,
-        normCamperKey,
-        prepaidCoverageKeys,
-        paymentMethod === 'step_up' ? 'step_up' : 'credit_card'
-      );
+    if (paymentMethod === 'step_up') {
+      /**
+       * Step Up “Save and Hold” only reserves spots — full list tuition owed per line until staff funds.
+       * Do not apply floating confirmed-week pool or family_camp_credit_ledger (would e.g. halve a 2-week cart when one floating week exists).
+       */
+      const uids = [...new Set(bookingsArray.map((b) => String(b.weekId)))];
+      const weekMetaMap = new Map();
+      if (uids.length) {
+        const { data: wkRows, error: wme } = await sb.from('weeks').select('id,week_number').in('id', uids);
+        if (wme) {
+          logFullError('step_up week meta', wme);
+          return failCheckout(res, 500, 'WEEK_META', wme.message || 'Could not load week metadata', wme);
+        }
+        for (const w of wkRows || []) weekMetaMap.set(String(w.id), { week_number: w.week_number });
+      }
       bookingsArray = sortBookingsForCreditApply(bookingsArray, weekMetaMap);
-      const applied = applyPoolToBookings(bookingsArray, poolW, poolD, wr, dr, ledgerWeekCents, ledgerDayCents);
-      campLineCents = applied.campLineCents;
-      ledgerConsumedWeekCents = applied.ledgerWeekConsumedCents || 0;
-      ledgerConsumedDayCents = applied.ledgerDayConsumedCents || 0;
-      ledgerConsumedCents = ledgerConsumedWeekCents + ledgerConsumedDayCents;
-    } catch (poolErr) {
-      logFullError('prepaid pool', poolErr);
-      return failCheckout(
-        res,
-        500,
-        'PREPAID_POOL',
-        'Could not apply prepaid credits. Try again or contact IMA.',
-        poolErr
-      );
+      campLineCents = bookingsArray.map((b) => {
+        const mode = b.pricingMode === 'full_week' ? 'full_week' : 'daily';
+        const n = (b.dayIds || []).length;
+        return mode === 'full_week' ? Math.round(wr * 100) : Math.round(n * dr * 100);
+      });
+      ledgerConsumedWeekCents = 0;
+      ledgerConsumedDayCents = 0;
+      ledgerConsumedCents = 0;
+      try {
+        const centsSum = campLineCents.reduce((acc, c) => acc + (Number(c) || 0), 0);
+        console.log(
+          '[create-checkout-session][step_up full tuition, no prepaid]',
+          JSON.stringify({
+            normalizedCount: bookingsArray.length,
+            campLineCentsSumCents: centsSum,
+            campLineCents,
+            rows: bookingsArray.map((b, i) => ({
+              i,
+              weekId: b.weekId,
+              camperId: b.camperId,
+              pricingMode: b.pricingMode,
+              dayCount: (b.dayIds || []).length,
+              lineCents: campLineCents[i],
+            })),
+          })
+        );
+      } catch (eLogSu) {}
+    } else {
+      try {
+        const prepaidCoverageKeys = Array.isArray(body.prepaidCoverageKeys) ? body.prepaidCoverageKeys : [];
+        const { poolW, poolD, weekMetaMap, ledgerWeekCents, ledgerDayCents } = await loadFloatingPrepaidPool(
+          sb,
+          parentId,
+          bookingsArray,
+          normCamperKey,
+          prepaidCoverageKeys,
+          'credit_card'
+        );
+        bookingsArray = sortBookingsForCreditApply(bookingsArray, weekMetaMap);
+        const applied = applyPoolToBookings(bookingsArray, poolW, poolD, wr, dr, ledgerWeekCents, ledgerDayCents);
+        campLineCents = applied.campLineCents;
+        ledgerConsumedWeekCents = applied.ledgerWeekConsumedCents || 0;
+        ledgerConsumedDayCents = applied.ledgerDayConsumedCents || 0;
+        ledgerConsumedCents = ledgerConsumedWeekCents + ledgerConsumedDayCents;
+        try {
+          const centsSum = campLineCents.reduce((acc, c) => acc + (Number(c) || 0), 0);
+          console.log(
+            '[create-checkout-session][bookings trace]',
+            JSON.stringify({
+              paymentMethod,
+              normalizedCount: bookingsArray.length,
+              campLineCentsLength: campLineCents.length,
+              campLineCentsSumCents: centsSum,
+              campLineCents,
+              rows: bookingsArray.map((b, i) => ({
+                i,
+                weekId: b.weekId,
+                camperId: b.camperId,
+                pricingMode: b.pricingMode,
+                dayCount: (b.dayIds || []).length,
+                lineCents: campLineCents[i],
+              })),
+            })
+          );
+        } catch (trErr) {
+          console.warn('[create-checkout-session][bookings trace] log failed', trErr && trErr.message);
+        }
+      } catch (poolErr) {
+        logFullError('prepaid pool', poolErr);
+        return failCheckout(
+          res,
+          500,
+          'PREPAID_POOL',
+          'Could not apply prepaid credits. Try again or contact IMA.',
+          poolErr
+        );
+      }
     }
   }
 
@@ -428,6 +498,39 @@ module.exports = async (req, res) => {
         'Duplicate waitlist offer in checkout. Refresh and try again.',
         {}
       );
+    }
+    /* Abandoned Stripe sessions leave `pending` rows. Cross-portal validation treats same-rail
+       pending as blocking; clear those slots before validate so a fresh checkout can proceed. */
+    if (paymentMethod === 'credit_card') {
+      const seenSlot = new Set();
+      for (const b of bookingsArray) {
+        const dk = dayIdsKey(Array.isArray(b.dayIds) ? b.dayIds : []);
+        if (!dk) continue;
+        const key = `${parentId}|${String(b.camperId)}|${String(b.weekId)}|${dk}`;
+        if (seenSlot.has(key)) continue;
+        seenSlot.add(key);
+        try {
+          const n = await deleteStaleCardPendingForConfirmedSlot(sb, {
+            parentId,
+            camperId: b.camperId,
+            weekId: b.weekId,
+            dayIds: b.dayIds,
+            excludeBatchId: null,
+          });
+          if (n > 0) {
+            console.log('[create-checkout-session] cleared stale card pending before validate', { key, n });
+          }
+        } catch (eDel) {
+          logFullError('stale pending cleanup', eDel);
+          return failCheckout(
+            res,
+            500,
+            'STALE_PENDING_CLEANUP',
+            eDel.message || 'Could not prepare checkout',
+            eDel
+          );
+        }
+      }
     }
     try {
       await Promise.all(
@@ -457,6 +560,7 @@ module.exports = async (req, res) => {
             excludeEnrollmentId: null,
             pricingMode: bookingModes[i],
             skipCapacityChecks,
+            requestingPaymentMethod: paymentMethod,
           });
         })
       );
@@ -502,6 +606,10 @@ module.exports = async (req, res) => {
       return { cid, waived: false, paid };
     })
   );
+
+  const registrationWaivedCamperIds = uniqueCampers
+    .filter((cid) => regFeeWaivedByParentChoice(regFeeChoice, cid))
+    .map((cid) => String(cid));
 
   const regLineItems = [];
   /** Campers who are paying registration in this session — stored on Stripe session for confirm → DB. */
@@ -805,6 +913,11 @@ module.exports = async (req, res) => {
           console.error('[create-checkout-session] agreement ack email (step-up shirt)', ackE && ackE.message);
         }
       }
+      try {
+        await markProfileWaiverSigned(sb, parentId);
+      } catch (wShirt) {
+        console.error('[create-checkout-session] waiver flag (step-up shirt-only)', wShirt && wShirt.message);
+      }
       return json(res, 200, {
         sessionId: null,
         checkoutUrl: null,
@@ -846,24 +959,32 @@ module.exports = async (req, res) => {
       return failCheckout(res, 500, 'STEP_UP_FINALIZE', fz.message || 'Could not reserve spot', fz);
     }
     const parentMail = (profile && profile.email) || user.email || '';
-    try {
-      await sendStepUpReservationEmails(sb, {
-        batchId,
-        parentEmail: parentMail,
-        parentName: parentDisplayName,
-        testPricing: tp,
-      });
-    } catch (emErr) {
+    const stepUpMailP = sendStepUpReservationEmails(sb, {
+      batchId,
+      parentEmail: parentMail,
+      parentName: parentDisplayName,
+      testPricing: tp,
+    }).catch((emErr) => {
       console.error('[create-checkout-session] step-up email', emErr && emErr.message);
-    }
-    if (agreementRecordId) {
-      try {
-        await sendAgreementAcknowledgmentEmailOnce(sb, agreementRecordId, parentMail);
-      } catch (ackE) {
-        console.error('[create-checkout-session] agreement ack email (step-up)', ackE && ackE.message);
-      }
-    }
+    });
+    const ackMailP = agreementRecordId
+      ? sendAgreementAcknowledgmentEmailOnce(sb, agreementRecordId, parentMail).catch((ackE) => {
+          console.error('[create-checkout-session] agreement ack email (step-up)', ackE && ackE.message);
+        })
+      : Promise.resolve();
+    await Promise.all([stepUpMailP, ackMailP]);
     const totalDueCents = campCentsTotal + regCentsTotal + shirtCentsTotal;
+    try {
+      console.log('[create-checkout-session][step-up response]', {
+        batchId,
+        bookings: bookingsArray.length,
+        campCentsTotal,
+        regCentsTotal,
+        shirtCentsTotal,
+        totalDueCents,
+        campLineCents,
+      });
+    } catch (eRsp) {}
     return json(res, 200, {
       sessionId: null,
       checkoutUrl: null,
@@ -891,6 +1012,7 @@ module.exports = async (req, res) => {
           bookingModes,
           registrationFeeCents: String(regCentsTotal),
           registrationCamperIds,
+          registrationWaivedCamperIds,
           extraShirtCents: String(shirtCentsTotal),
           extraShirtCamperIds: shirtCamperIds,
           ledgerConsumeCents: ledgerConsumedCents,
@@ -960,6 +1082,9 @@ module.exports = async (req, res) => {
     };
     if (registrationCamperIds.length) {
       stripeMetadata.registration_camper_ids = registrationCamperIds.join(',');
+    }
+    if (registrationWaivedCamperIds.length) {
+      stripeMetadata.registration_waived_camper_ids = registrationWaivedCamperIds.join(',');
     }
     if (campLineCents.length) {
       stripeMetadata.camp_line_cents = campLineCents.join(',');

@@ -4,6 +4,7 @@ const { ENROLLMENT_STATUS } = require('./enrollment-status');
 const { isMissingStepUpHoldExpiresColumn } = require('./step-up-hold-column');
 const { markWaitlistConverted } = require('./waitlist-service');
 const { markProfileWaiverSigned } = require('./profile-waiver');
+const { removeStalePendingForBatchSlots } = require('./supersede-stale-pending-enrollments');
 
 /**
  * After payment (Stripe) or $0 prepaid checkout: confirm pending rows, bump day counts,
@@ -25,6 +26,7 @@ async function finalizePendingEnrollmentBatch(sb, batchId, options) {
     ledgerConsumeDayCents,
     ledgerParentId,
     waitlistIds,
+    registrationWaivedCamperIds,
   } = options;
 
   const { data: rows, error: qe } = await sb
@@ -88,6 +90,25 @@ async function finalizePendingEnrollmentBatch(sb, batchId, options) {
     }
   }
 
+  const waivedIds = (registrationWaivedCamperIds || []).map(String).filter(Boolean);
+  if (didConfirmAny && rows[0] && rows[0].parent_id && waivedIds.length) {
+    const pid = rows[0].parent_id;
+    const { data: ownedW, error: owErr } = await sb
+      .from('campers')
+      .select('id')
+      .eq('parent_id', pid)
+      .in('id', waivedIds);
+    if (owErr) throw owErr;
+    if (ownedW && ownedW.length) {
+      const safeW = ownedW.map((r) => r.id);
+      const { error: wvErr } = await sb
+        .from('campers')
+        .update({ registration_fee_waived_ima_member: true })
+        .in('id', safeW);
+      if (wvErr) throw wvErr;
+    }
+  }
+
   if (paidReg) {
     let regCampers = [];
     if (registrationCamperIds != null && registrationCamperIds.length) {
@@ -148,6 +169,14 @@ async function finalizePendingEnrollmentBatch(sb, batchId, options) {
       await markProfileWaiverSigned(sb, rows[0].parent_id);
     } catch (wErr) {
       console.error('[finalizePendingEnrollmentBatch] waiver flag', wErr && wErr.message);
+    }
+  }
+
+  if (didConfirmAny) {
+    try {
+      await removeStalePendingForBatchSlots(sb, rows, batchId);
+    } catch (supErr) {
+      console.error('[finalizePendingEnrollmentBatch] supersede stale pending', supErr && supErr.message);
     }
   }
 
@@ -340,6 +369,32 @@ async function finalizeStepUpReservationBatch(sb, batchId, options) {
     } catch (wErr) {
       console.error('[finalizeStepUpReservationBatch] waiver flag', wErr && wErr.message);
     }
+  }
+
+  try {
+    const { data: finRows, error: fre } = await sb
+      .from('enrollments')
+      .select('id, week_id, camper_id, price_paid, status')
+      .eq('checkout_batch_id', batchId)
+      .eq('status', ENROLLMENT_STATUS.PENDING_STEP_UP);
+    if (!fre && finRows && finRows.length) {
+      const sumPaid = finRows.reduce((s, r) => s + (Number(r.price_paid) || 0), 0);
+      console.log(
+        '[finalizeStepUpReservationBatch] persisted pending_step_up',
+        batchId,
+        JSON.stringify({
+          rowCount: finRows.length,
+          sumPricePaidDollars: sumPaid,
+          lines: finRows.map((r) => ({
+            week_id: r.week_id,
+            camper_id: r.camper_id,
+            price_paid: r.price_paid,
+          })),
+        })
+      );
+    }
+  } catch (logE) {
+    console.warn('[finalizeStepUpReservationBatch] trace', logE && logE.message);
   }
 
   return { ok: true, count: rows.length, didAny };

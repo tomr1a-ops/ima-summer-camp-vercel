@@ -107,6 +107,8 @@
       font-weight: 600;
     }
     tr:last-child td { border-bottom: none; }
+    td.va-amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    tr.va-addon td:nth-child(2) { color: #d8d8d8; font-size: 12px; }
     .badge {
       display: inline-block;
       padding: 3px 10px;
@@ -154,9 +156,10 @@
         <thead>
           <tr>
             <th>Child</th>
-            <th>Week</th>
+            <th>Camp week / item</th>
             <th>Payment</th>
             <th>Status</th>
+            <th>Amount</th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
@@ -178,7 +181,7 @@
   var idleChildren = document.getElementById('idle-children');
   var qs = new URLSearchParams(window.location.search);
   var wantParent = (qs.get('parent_id') || '').trim();
-  var STEP_UP_REG = 65;
+  var testPricing = qs.get('test') === 'true';
 
   function showMsg(text, kind) {
     if (!msgEl) return;
@@ -218,6 +221,48 @@
     return !!(row && row.stripe_session_id != null && String(row.stripe_session_id).trim() !== '');
   }
 
+  function dayIdsKeyForDedupe(dayIds) {
+    if (!Array.isArray(dayIds) || !dayIds.length) return '';
+    return dayIds
+      .map(function (x) {
+        return String(x);
+      })
+      .sort()
+      .join(',');
+  }
+
+  /** Same camper + week + days: keep paid/confirmed over abandoned `pending` (stale checkout rows). */
+  function dedupeEnrollmentRowsForParentView(rows) {
+    var rank = function (st) {
+      st = String(st || '')
+        .trim()
+        .toLowerCase();
+      if (st === 'confirmed') return 4;
+      if (st === 'pending_step_up') return 3;
+      if (st === 'pending') return 2;
+      if (st === 'cancelled') return 1;
+      return 0;
+    };
+    var better = function (a, b) {
+      var ra = rank(a.status);
+      var rb = rank(b.status);
+      if (rb !== ra) return rb > ra ? b : a;
+      var ta = new Date(a.created_at || 0).getTime();
+      var tb = new Date(b.created_at || 0).getTime();
+      return tb >= ta ? b : a;
+    };
+    var m = {};
+    (rows || []).forEach(function (r) {
+      if (!r || r.camper_id == null || r.week_id == null) return;
+      var k = String(r.camper_id) + '|' + String(r.week_id) + '|' + dayIdsKeyForDedupe(r.day_ids);
+      if (!m[k]) m[k] = r;
+      else m[k] = better(m[k], r);
+    });
+    return Object.keys(m).map(function (k) {
+      return m[k];
+    });
+  }
+
   /** 'step_up' | 'credit_card' for display and totals (cancelled rows still classified for the table). */
   function paymentRail(row) {
     var st = String((row && row.status) || '').trim();
@@ -236,19 +281,93 @@
     return '<span class="badge badge-su">Step Up</span>';
   }
 
-  function rowAmountForTotals(row, camperById) {
-    var st = String((row && row.status) || '').trim();
-    if (st === 'cancelled') return 0;
-    var camp = Number(row.price_paid);
-    if (!Number.isFinite(camp) || camp < 0) camp = 0;
-    if (st === 'pending_step_up') {
-      var c = camperById[String(row.camper_id)];
-      var regPaidCamper = !!(c && c.registration_fee_paid === true);
-      if (regPaidCamper) return camp;
-      if (!row.registration_fee_paid) return camp;
-      return camp + STEP_UP_REG;
+  function enrollmentCoversFullWeekInMap(row, w) {
+    if (!w || !(w.days && w.days.length === 5)) return false;
+    var ids = new Set((row.day_ids || []).map(function (x) {
+      return String(x);
+    }));
+    return w.days.every(function (d) {
+      return ids.has(String(d.id));
+    });
+  }
+
+  /** Camp tuition only (no reg/shirt) from row + catalog. */
+  function estimateCampTuitionDollars(row, weeksMap, weekRate, dayRate) {
+    if (!row || !row.week_id) return 0;
+    var w = weeksMap[String(row.week_id)];
+    var wr = Number(weekRate);
+    var dr = Number(dayRate);
+    if (!Number.isFinite(wr) || wr < 0) wr = 375;
+    if (!Number.isFinite(dr) || dr < 0) dr = 85;
+    if (enrollmentCoversFullWeekInMap(row, w)) return wr;
+    var n = (row.day_ids || []).length;
+    return Math.max(0, n) * dr;
+  }
+
+  function camperHasActiveEnrollment(rows, cid) {
+    return (rows || []).some(function (r) {
+      return r && String(r.camper_id) === String(cid) && String(r.status || '').trim() !== 'cancelled';
+    });
+  }
+
+  /** True when profile still needs the one-time registration fee (server preview + rows). */
+  function camperOwesRegistrationLine(rows, cid, camper, mergedNeedsReg) {
+    if (!mergedNeedsReg[String(cid)]) return false;
+    if (camper && camper.registration_fee_paid === true) return false;
+    if (camper && camper.registration_fee_waived_ima_member === true) return false;
+    if (!camperHasActiveEnrollment(rows, cid)) return false;
+    return !(rows || []).some(function (r) {
+      return (
+        String(r.camper_id) === String(cid) &&
+        String(r.status || '').trim() !== 'cancelled' &&
+        r.registration_fee_paid === true
+      );
+    });
+  }
+
+  /** Prefer card if open Stripe checkout; else Step Up if hold; else card. */
+  function primaryRailForAddon(rows, cid) {
+    var su = false;
+    var cc = false;
+    (rows || []).forEach(function (r) {
+      if (!r || String(r.camper_id) !== String(cid)) return;
+      if (String(r.status || '').trim() === 'cancelled') return;
+      var rail = paymentRail(r);
+      if (rail === 'credit_card') cc = true;
+      if (rail === 'step_up') su = true;
+    });
+    if (cc) return 'credit_card';
+    if (su) return 'step_up';
+    return 'step_up';
+  }
+
+  function badgeForRail(rail) {
+    if (rail === 'credit_card') {
+      return '<span class="badge badge-cc">Credit card</span>';
     }
-    return camp;
+    return '<span class="badge badge-su">Step Up</span>';
+  }
+
+  /** Extra shirt $ included in Step Up hold price_paid (not yet marked paid on camper). */
+  function impliedExtraShirtDollarsForCamper(rows, cid, camper, weeksMap, weekRate, dayRate, regFee, shirtDollars) {
+    if (camper && camper.extra_shirt_addon_paid === true) return 0;
+    var shirt = Number(shirtDollars);
+    if (!Number.isFinite(shirt) || shirt <= 0) shirt = 20;
+    var rf = Number(regFee);
+    if (!Number.isFinite(rf) || rf < 0) rf = 65;
+    var best = 0;
+    (rows || []).forEach(function (r) {
+      if (!r || String(r.camper_id) !== String(cid)) return;
+      if (String(r.status || '').trim() !== 'pending_step_up') return;
+      var camp = estimateCampTuitionDollars(r, weeksMap, weekRate, dayRate);
+      var reg = 0;
+      if (r.registration_fee_paid === true && camper && camper.registration_fee_paid !== true) reg = rf;
+      var pp = Number(r.price_paid);
+      if (!Number.isFinite(pp) || pp < 0) pp = camp + reg;
+      var residual = pp - camp - reg;
+      if (residual >= shirt * 0.85) best = Math.max(best, shirt);
+    });
+    return best;
   }
 
   async function boot() {
@@ -302,30 +421,91 @@
         throw new Error(ej.error || 'Could not load enrollments.');
       }
       var data = await enrRes.json();
-      var rows = data.enrollments || [];
+      var rows = dedupeEnrollmentRowsForParentView(data.enrollments || []);
 
+      var rateUrl = '/api/preview-pricing?test=' + (testPricing ? 'true' : 'false');
+      var rateRes = await imaNoStoreFetch(rateUrl);
+      var rateJson = rateRes.ok ? await rateRes.json().catch(function () { return {}; }) : {};
+      var regFeeDollars = Number(rateJson.registrationFee);
+      var shirtDollars = Number(rateJson.extraCampShirt);
+      var weekRateDollars = Number(rateJson.weekRate);
+      var dayRateDollars = Number(rateJson.dayRate);
+      if (!Number.isFinite(regFeeDollars) || regFeeDollars < 0) regFeeDollars = 65;
+      if (!Number.isFinite(shirtDollars) || shirtDollars < 0) shirtDollars = 20;
+      if (!Number.isFinite(weekRateDollars) || weekRateDollars < 0) weekRateDollars = 375;
+      if (!Number.isFinite(dayRateDollars) || dayRateDollars < 0) dayRateDollars = 85;
+
+      var camperIdList = [];
       var sb = await IMA.getSupabase();
       var cr = await sb
         .from('campers')
-        .select('id,first_name,last_name,registration_fee_paid')
+        .select('id,first_name,last_name,registration_fee_paid,registration_fee_waived_ima_member,extra_shirt_addon_paid')
         .eq('parent_id', uid);
       var camperById = {};
       if (!cr.error && Array.isArray(cr.data)) {
         cr.data.forEach(function (c) {
           camperById[String(c.id)] = c;
+          camperIdList.push(String(c.id));
         });
       }
 
+      var mergedNeedsReg = {};
+      if (camperIdList.length && tok) {
+        var q = encodeURIComponent(camperIdList.join(','));
+        var psu = await imaNoStoreFetch(
+          '/api/preview-pricing?test=' + (testPricing ? 'true' : 'false') + '&paymentMethod=step_up&camperIds=' + q,
+          { headers: { Authorization: 'Bearer ' + tok } }
+        );
+        var pcc = await imaNoStoreFetch(
+          '/api/preview-pricing?test=' + (testPricing ? 'true' : 'false') + '&paymentMethod=credit_card&camperIds=' + q,
+          { headers: { Authorization: 'Bearer ' + tok } }
+        );
+        var jsu = psu.ok ? await psu.json().catch(function () { return {}; }) : {};
+        var jcc = pcc.ok ? await pcc.json().catch(function () { return {}; }) : {};
+        camperIdList.forEach(function (cid) {
+          var su = !!(jsu.perCamperNeedsReg && jsu.perCamperNeedsReg[cid]);
+          var cc = !!(jcc.perCamperNeedsReg && jcc.perCamperNeedsReg[cid]);
+          mergedNeedsReg[cid] = su || cc;
+        });
+      }
+      camperIdList.forEach(function (cid) {
+        if (mergedNeedsReg[cid] !== undefined) return;
+        var c = camperById[cid];
+        mergedNeedsReg[cid] = !(
+          c &&
+          (c.registration_fee_paid === true || c.registration_fee_waived_ima_member === true)
+        );
+      });
+
       if (loading) loading.hidden = true;
 
-      var totalSu = 0;
-      var totalCc = 0;
+      function rowDisplayTuitionAmount(r) {
+        var st = String((r && r.status) || '').trim();
+        if (st === 'cancelled') return 0;
+        var pp = Number(r.price_paid);
+        if (Number.isFinite(pp) && pp > 0) return pp;
+        return estimateCampTuitionDollars(r, weeksMap, weekRateDollars, dayRateDollars);
+      }
+
+      var baseSu = 0;
+      var baseCc = 0;
       rows.forEach(function (r) {
         if (String(r.status || '').trim() === 'cancelled') return;
-        var amt = rowAmountForTotals(r, camperById);
-        if (paymentRail(r) === 'credit_card') totalCc += amt;
-        else totalSu += amt;
+        var amt = rowDisplayTuitionAmount(r);
+        if (paymentRail(r) === 'credit_card') baseCc += amt;
+        else baseSu += amt;
       });
+
+      var addRegSu = 0;
+      var addRegCc = 0;
+      camperIdList.forEach(function (cid) {
+        if (!camperOwesRegistrationLine(rows, cid, camperById[cid], mergedNeedsReg)) return;
+        if (primaryRailForAddon(rows, cid) === 'credit_card') addRegCc += regFeeDollars;
+        else addRegSu += regFeeDollars;
+      });
+
+      var totalSu = baseSu + addRegSu;
+      var totalCc = baseCc + addRegCc;
       var grand = totalSu + totalCc;
 
       if (totalsHost) {
@@ -338,7 +518,11 @@
           '</div></div>' +
           '<div class="va-total-card grand"><h2>Grand total</h2><div class="amt">' +
           escapeHtml(fmtMoney(grand)) +
-          '</div></div>';
+          '</div></div>' +
+          '<p class="muted" style="grid-column:1/-1;font-size:12px;line-height:1.45;margin:4px 0 0">' +
+          'Amounts use camp tuition from each enrollment row (or catalog rates if the row has no price). ' +
+          'One-time registration fees not yet paid on your child’s profile are added to the rail total above. ' +
+          'Extra T-shirt lines appear when an optional shirt is part of a Step Up hold (same dollar amount as the camp row total).</p>';
         totalsHost.hidden = false;
       }
 
@@ -378,6 +562,7 @@
           ? ((c.first_name || '') + ' ' + (c.last_name || '')).trim()
           : 'Camper ' + r.camper_id;
         var st = (r.status || '').toString();
+        var lineAmt = rowDisplayTuitionAmount(r);
         tr.innerHTML =
           '<td>' +
           escapeHtml(camperName) +
@@ -390,8 +575,65 @@
           '</td>' +
           '<td><span class="status-pill">' +
           escapeHtml(st) +
-          '</span></td>';
+          '</span></td>' +
+          '<td class="va-amt">' +
+          escapeHtml(fmtMoney(lineAmt)) +
+          '</td>';
         tbody.appendChild(tr);
+      });
+
+      var seenRegLine = {};
+      var seenShirtLine = {};
+      camperIdList.forEach(function (cid) {
+        var c = camperById[cid];
+        var name = c ? ((c.first_name || '') + ' ' + (c.last_name || '')).trim() : 'Camper ' + cid;
+        if (camperOwesRegistrationLine(rows, cid, c, mergedNeedsReg) && !seenRegLine[cid]) {
+          seenRegLine[cid] = true;
+          var rail = primaryRailForAddon(rows, cid);
+          var tr = document.createElement('tr');
+          tr.className = 'va-addon';
+          tr.innerHTML =
+            '<td>' +
+            escapeHtml(name) +
+            '</td>' +
+            '<td>One-time registration fee <span class="muted">(shirt + gloves bundle · not paid yet)</span></td>' +
+            '<td>' +
+            badgeForRail(rail) +
+            '</td>' +
+            '<td><span class="status-pill">Owed</span></td>' +
+            '<td class="va-amt">' +
+            escapeHtml(fmtMoney(regFeeDollars)) +
+            '</td>';
+          tbody.appendChild(tr);
+        }
+        var shirtImp = impliedExtraShirtDollarsForCamper(
+          rows,
+          cid,
+          c,
+          weeksMap,
+          weekRateDollars,
+          dayRateDollars,
+          regFeeDollars,
+          shirtDollars
+        );
+        if (shirtImp > 0 && !seenShirtLine[cid]) {
+          seenShirtLine[cid] = true;
+          var tr2 = document.createElement('tr');
+          tr2.className = 'va-addon';
+          tr2.innerHTML =
+            '<td>' +
+            escapeHtml(name) +
+            '</td>' +
+            '<td>Extra camp T-shirt <span class="muted">(optional add-on · included in Step Up hold total above)</span></td>' +
+            '<td>' +
+            badgeForRail('step_up') +
+            '</td>' +
+            '<td><span class="status-pill">In hold</span></td>' +
+            '<td class="va-amt">' +
+            escapeHtml(fmtMoney(shirtImp)) +
+            '</td>';
+          tbody.appendChild(tr2);
+        }
       });
     } catch (e) {
       if (loading) loading.hidden = true;

@@ -241,6 +241,7 @@
       return String(x.id) === k || x.id === cid;
     });
     if (c && c.registration_fee_paid === true) return false;
+    if (c && c.registration_fee_waived_ima_member === true) return false;
     return true;
   }
 
@@ -251,7 +252,10 @@
     var c = parentCampers.find(function (x) {
       return String(x.id) === k || x.id === cid;
     });
-    return !!(c && c.registration_fee_paid === true);
+    return !!(
+      c &&
+      (c.registration_fee_paid === true || c.registration_fee_waived_ima_member === true)
+    );
   }
 
   function getRegFeeInclude(cid) {
@@ -1588,7 +1592,7 @@
     var sb = await IMA.getSupabase();
     var r = await sb
       .from('campers')
-      .select('id,first_name,last_name,registration_fee_paid,extra_shirt_addon_paid')
+      .select('id,first_name,last_name,registration_fee_paid,registration_fee_waived_ima_member,extra_shirt_addon_paid')
       .eq('parent_id', session.user.id);
     parentCampers = !r.error && Array.isArray(r.data) ? r.data : [];
     try {

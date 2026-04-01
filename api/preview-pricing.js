@@ -2,7 +2,10 @@ const { serviceClient } = require('./lib/supabase');
 const { getUserFromRequest, getProfileForUser } = require('./lib/auth');
 const { setNoStoreJsonHeaders } = require('./lib/http-no-store');
 const { dayRate, weekRate, registrationFee, extraCampShirt } = require('./lib/pricing');
-const { getReconciledFamilyCampLedgerBalances } = require('./lib/family-camp-ledger');
+const {
+  getReconciledFamilyCampLedgerBalances,
+  ledgerPaymentMethodForEnrollment,
+} = require('./lib/family-camp-ledger');
 
 function uniqueCamperIdsFromQuery(url) {
   const raw = url.searchParams.get('camperIds') || url.searchParams.get('camperId') || '';
@@ -65,7 +68,7 @@ module.exports = async (req, res) => {
         for (const camperId of camperIds) {
           const { data: camper, error: ce } = await sb
             .from('campers')
-            .select('parent_id, extra_shirt_addon_paid, registration_fee_paid')
+            .select('parent_id, extra_shirt_addon_paid, registration_fee_paid, registration_fee_waived_ima_member')
             .eq('id', camperId)
             .single();
           if (ce || !camper || String(camper.parent_id) !== String(user.id)) {
@@ -74,19 +77,30 @@ module.exports = async (req, res) => {
           }
           perCamperExtraShirtPaid[String(camperId)] = !!camper.extra_shirt_addon_paid;
           try {
-            let regPaid = camper.registration_fee_paid === true;
+            let regPaid =
+              camper.registration_fee_paid === true || camper.registration_fee_waived_ima_member === true;
             if (!regPaid) {
               const { data: paidRows, error } = await sb
                 .from('enrollments')
-                .select('id')
+                .select('id,status,stripe_session_id,checkout_batch_id,price_paid')
                 .eq('camper_id', String(camperId))
-                .in('status', ['confirmed', 'pending_step_up'])
+                .in('status', ['confirmed', 'pending', 'pending_step_up'])
                 .eq('registration_fee_paid', true)
-                .limit(1);
+                .limit(80);
               if (error) throw error;
-              regPaid = !!(paidRows && paidRows.length);
+              const rows = paidRows || [];
+              if (ledgerPaymentMethod === 'credit_card') {
+                /* Credit card portal: only card-rail rows (not Step Up holds / Step Up–confirmed). */
+                regPaid = rows.some((row) => ledgerPaymentMethodForEnrollment(row) === 'credit_card');
+              } else {
+                /* Step Up portal: Step Up rail + card-confirmed (one-time reg already paid on card). */
+                regPaid = rows.some((row) => {
+                  const rail = ledgerPaymentMethodForEnrollment(row);
+                  return rail === 'step_up' || rail === 'credit_card';
+                });
+              }
             }
-            /* Do not treat any pending_step_up as “reg paid” unless that row has registration_fee_paid (reg was in that hold). */
+            /* pending_step_up only counts when registration_fee_paid on that row (query filter). */
             perCamperNeedsReg[String(camperId)] = !regPaid;
           } catch (cntErr) {
             console.warn('[preview-pricing] reg fee check:', cntErr.message);
