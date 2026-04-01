@@ -102,7 +102,7 @@
     return {
       /* One navigation straight to registration (avoids stepup/cc stub page flash). Stub pages remain for login return= URLs. */
       stepUp: '/index.html?parent_id=' + id + '&paymentPortal=step_up#schedule',
-      card: '/cc-portal.html',
+      card: '/index.html?parent_id=' + id + '&paymentPortal=credit_card#schedule',
       enrollments: '/view-all-enrollments.html?parent_id=' + id
     };
   }
