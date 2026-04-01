@@ -7116,6 +7116,18 @@
   }
 
   function updateSummaryImmediate() {
+    console.log('BTN DEBUG', {
+      agreementOk: !!(parentProfileWaiverSigned || document.getElementById('camp-agreement-accept')?.checked),
+      paymentOk:
+        getPaymentPortalMode() === 'step_up' ||
+        document.getElementById('payment-method-select')?.value === 'step_up',
+      bookingsLen: collectBookings().length,
+      portalNeedsSave: portalBatchWeekNeedsSave(),
+      portalMode: getPaymentPortalMode(),
+      waiverSigned: parentProfileWaiverSigned,
+      checkboxChecked: document.getElementById('camp-agreement-accept')?.checked,
+      pmSelectValue: document.getElementById('payment-method-select')?.value,
+    });
     if (stepUpSaveInProgress) return;
     if (ccPortalCheckboxOpLockActive()) return;
     lastStepUpOwedDisplayDollars = null;
