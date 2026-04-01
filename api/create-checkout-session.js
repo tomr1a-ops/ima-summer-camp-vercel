@@ -385,10 +385,12 @@ module.exports = async (req, res) => {
   let campLineCents = [];
   /** Cents drawn from family_camp_credit_ledger (cancelled-enrollment credits) this checkout. */
   let ledgerConsumedCents = 0;
+  let ledgerConsumedWeekCents = 0;
+  let ledgerConsumedDayCents = 0;
   if (bookingsArray.length) {
     try {
       const prepaidCoverageKeys = Array.isArray(body.prepaidCoverageKeys) ? body.prepaidCoverageKeys : [];
-      const { poolW, poolD, weekMetaMap, ledgerCents } = await loadFloatingPrepaidPool(
+      const { poolW, poolD, weekMetaMap, ledgerWeekCents, ledgerDayCents } = await loadFloatingPrepaidPool(
         sb,
         parentId,
         bookingsArray,
@@ -396,9 +398,11 @@ module.exports = async (req, res) => {
         prepaidCoverageKeys
       );
       bookingsArray = sortBookingsForCreditApply(bookingsArray, weekMetaMap);
-      const applied = applyPoolToBookings(bookingsArray, poolW, poolD, wr, dr, ledgerCents);
+      const applied = applyPoolToBookings(bookingsArray, poolW, poolD, wr, dr, ledgerWeekCents, ledgerDayCents);
       campLineCents = applied.campLineCents;
-      ledgerConsumedCents = applied.ledgerConsumedCents || 0;
+      ledgerConsumedWeekCents = applied.ledgerWeekConsumedCents || 0;
+      ledgerConsumedDayCents = applied.ledgerDayConsumedCents || 0;
+      ledgerConsumedCents = ledgerConsumedWeekCents + ledgerConsumedDayCents;
     } catch (poolErr) {
       logFullError('prepaid pool', poolErr);
       return failCheckout(
@@ -821,6 +825,8 @@ module.exports = async (req, res) => {
         campLineCents,
         bookingModes,
         ledgerConsumeCents: ledgerConsumedCents,
+        ledgerConsumeWeekCents: ledgerConsumedWeekCents,
+        ledgerConsumeDayCents: ledgerConsumedDayCents,
         ledgerParentId: parentId,
         waitlistIds: waitlistIdsFromBookings.length ? waitlistIdsFromBookings : undefined,
         registrationFeeCents: String(regCentsTotal),
@@ -887,6 +893,8 @@ module.exports = async (req, res) => {
           extraShirtCents: String(shirtCentsTotal),
           extraShirtCamperIds: shirtCamperIds,
           ledgerConsumeCents: ledgerConsumedCents,
+          ledgerConsumeWeekCents: ledgerConsumedWeekCents,
+          ledgerConsumeDayCents: ledgerConsumedDayCents,
           ledgerParentId: parentId,
           waitlistIds: waitlistIdsFromBookings.length ? waitlistIdsFromBookings : undefined,
         });
@@ -946,6 +954,8 @@ module.exports = async (req, res) => {
       ima_member: imaMember ? 'true' : 'false',
       extra_shirt_cents: String(shirtCentsTotal),
       ledger_consume_cents: String(ledgerConsumedCents || 0),
+      ledger_consume_week_cents: String(ledgerConsumedWeekCents || 0),
+      ledger_consume_day_cents: String(ledgerConsumedDayCents || 0),
     };
     if (registrationCamperIds.length) {
       stripeMetadata.registration_camper_ids = registrationCamperIds.join(',');

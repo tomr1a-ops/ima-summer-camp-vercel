@@ -1,7 +1,7 @@
 const { serviceClient } = require('./supabase');
 const { ENROLLMENT_STATUS } = require('./enrollment-status');
 const { dayRate, weekRate, registrationFee } = require('./pricing');
-const { subtractFamilyCampLedgerCents } = require('./family-camp-ledger');
+const { subtractFamilyCampLedgerSplit } = require('./family-camp-ledger');
 const { markWaitlistConverted } = require('./waitlist-service');
 const { markProfileWaiverSigned } = require('./profile-waiver');
 
@@ -146,9 +146,15 @@ async function confirmStripeSession(stripe, session) {
     }
   }
 
-  const lc = Math.max(0, Math.round(Number(session.metadata && session.metadata.ledger_consume_cents) || 0));
-  if (didConfirmAny && lc > 0 && enrollmentRows[0].parent_id) {
-    await subtractFamilyCampLedgerCents(sb, enrollmentRows[0].parent_id, lc);
+  const meta = session.metadata || {};
+  const lc = Math.max(0, Math.round(Number(meta.ledger_consume_cents) || 0));
+  let lw = Math.max(0, Math.round(Number(meta.ledger_consume_week_cents) || 0));
+  let ld = Math.max(0, Math.round(Number(meta.ledger_consume_day_cents) || 0));
+  if (lw === 0 && ld === 0 && lc > 0) {
+    lw = lc;
+  }
+  if (didConfirmAny && (lw > 0 || ld > 0) && enrollmentRows[0].parent_id) {
+    await subtractFamilyCampLedgerSplit(sb, enrollmentRows[0].parent_id, lw, ld);
   }
 
   if (paidReg && didConfirmAny && enrollmentRows[0] && enrollmentRows[0].parent_id) {

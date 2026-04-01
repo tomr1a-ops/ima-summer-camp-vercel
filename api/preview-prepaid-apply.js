@@ -7,7 +7,6 @@ const {
   loadFloatingPrepaidPool,
   sortBookingsForCreditApply,
   applyPoolToBookings,
-  decomposeRemainingPrepaidCents,
 } = require('./lib/family-prepaid-credits');
 
 async function readJsonBody(req) {
@@ -80,9 +79,13 @@ module.exports = async (req, res) => {
     return res.end(
       JSON.stringify({
         prepaidGrossCents: 0,
+        ledgerWeekCents: 0,
+        ledgerDayCents: 0,
         ledgerCents: 0,
         encPoolCents: 0,
         remainingPrepaidCents: 0,
+        remainingWeekCents: 0,
+        remainingDayCents: 0,
         remainingWeeks: 0,
         remainingDays: 0,
         lines: [],
@@ -106,7 +109,7 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const { poolW, poolD, weekMetaMap, ledgerCents } = await loadFloatingPrepaidPool(
+    const { poolW, poolD, weekMetaMap, ledgerWeekCents, ledgerDayCents } = await loadFloatingPrepaidPool(
       sb,
       user.id,
       bookingsArray,
@@ -114,10 +117,10 @@ module.exports = async (req, res) => {
       prepaidCoverageKeys
     );
     const sorted = sortBookingsForCreditApply(bookingsArray, weekMetaMap);
-    const applied = applyPoolToBookings(sorted, poolW, poolD, wr, dr, ledgerCents);
+    const applied = applyPoolToBookings(sorted, poolW, poolD, wr, dr, ledgerWeekCents, ledgerDayCents);
     const encPoolCents = Math.max(0, (Number(poolW) || 0) * wrC + (Number(poolD) || 0) * drC);
-    const prepaidGrossCents = encPoolCents + Math.max(0, Math.round(Number(ledgerCents) || 0));
-    const rem = decomposeRemainingPrepaidCents(applied.remainingPrepaidCents || 0, wrC, drC);
+    const ledSum = Math.max(0, Math.round(Number(ledgerWeekCents) || 0) + Math.round(Number(ledgerDayCents) || 0));
+    const prepaidGrossCents = encPoolCents + ledSum;
 
     const lines = sorted.map((b, i) => {
       const mode = b.pricingMode === 'full_week' ? 'full_week' : 'daily';
@@ -141,11 +144,17 @@ module.exports = async (req, res) => {
     return res.end(
       JSON.stringify({
         prepaidGrossCents,
-        ledgerCents: Math.max(0, Math.round(Number(ledgerCents) || 0)),
+        ledgerWeekCents: Math.max(0, Math.round(Number(ledgerWeekCents) || 0)),
+        ledgerDayCents: Math.max(0, Math.round(Number(ledgerDayCents) || 0)),
+        ledgerCents: ledSum,
         encPoolCents,
         remainingPrepaidCents: Math.max(0, Math.round(Number(applied.remainingPrepaidCents) || 0)),
-        remainingWeeks: rem.weeks,
-        remainingDays: rem.days,
+        remainingWeekCents: Math.max(0, Math.round(Number(applied.remainingWeekCents) || 0)),
+        remainingDayCents: Math.max(0, Math.round(Number(applied.remainingDayCents) || 0)),
+        remainingWeeks: applied.remainingWeeks | 0,
+        remainingDays: applied.remainingDays | 0,
+        ledgerWeekConsumedCents: Math.max(0, Math.round(Number(applied.ledgerWeekConsumedCents) || 0)),
+        ledgerDayConsumedCents: Math.max(0, Math.round(Number(applied.ledgerDayConsumedCents) || 0)),
         lines,
       })
     );

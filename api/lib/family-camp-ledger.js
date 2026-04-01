@@ -22,15 +22,25 @@ async function campCreditCentsForConfirmedRow(sb, row, testPricing = false) {
   return Math.max(0, n * drC);
 }
 
-async function getFamilyCampLedgerCents(sb, parentId) {
-  if (!parentId) return 0;
+/** @returns {Promise<'week'|'day'>} */
+async function campCreditBucketForConfirmedRow(sb, row) {
+  if (!row || !row.week_id) return 'day';
+  const days = await loadOrderedDaysForWeek(sb, row.week_id);
+  return enrollmentCoversFullWeek(row.day_ids || [], days) ? 'week' : 'day';
+}
+
+async function getFamilyCampLedgerBalances(sb, parentId) {
+  if (!parentId) return { weekCents: 0, dayCents: 0 };
   const { data, error } = await sb
     .from('family_camp_credit_ledger')
-    .select('balance_cents')
+    .select('balance_week_cents, balance_day_cents')
     .eq('parent_id', parentId)
     .maybeSingle();
   if (error) throw error;
-  return Math.max(0, Math.round(Number(data && data.balance_cents) || 0));
+  return {
+    weekCents: Math.max(0, Math.round(Number(data && data.balance_week_cents) || 0)),
+    dayCents: Math.max(0, Math.round(Number(data && data.balance_day_cents) || 0)),
+  };
 }
 
 /**
@@ -49,39 +59,73 @@ async function parentHasLedgerJustifyingCancelledEnrollment(sb, parentId) {
   return (data || []).some((r) => enrollmentCancelledJustifiesLedger(r));
 }
 
-async function getReconciledFamilyCampLedgerCents(sb, parentId) {
-  const raw = await getFamilyCampLedgerCents(sb, parentId);
-  if (raw <= 0) return 0;
+async function getReconciledFamilyCampLedgerBalances(sb, parentId) {
+  const { weekCents, dayCents } = await getFamilyCampLedgerBalances(sb, parentId);
+  const total = weekCents + dayCents;
+  if (total <= 0) return { weekCents: 0, dayCents: 0 };
   const justified = await parentHasLedgerJustifyingCancelledEnrollment(sb, parentId);
-  if (justified) return raw;
+  if (justified) return { weekCents, dayCents };
   try {
-    await subtractFamilyCampLedgerCents(sb, parentId, raw);
-    console.warn('[family-camp-ledger] cleared orphan balance_cents', { parentId, raw });
+    await subtractFamilyCampLedgerSplit(sb, parentId, weekCents, dayCents);
+    console.warn('[family-camp-ledger] cleared orphan week/day balances', { parentId, weekCents, dayCents });
   } catch (e) {
     console.error('[family-camp-ledger] orphan ledger clear failed', e && e.message);
   }
-  return 0;
+  return { weekCents: 0, dayCents: 0 };
 }
 
-async function addFamilyCampLedgerCents(sb, parentId, cents) {
+/** @deprecated use getReconciledFamilyCampLedgerBalances */
+async function getReconciledFamilyCampLedgerCents(sb, parentId) {
+  const b = await getReconciledFamilyCampLedgerBalances(sb, parentId);
+  return b.weekCents + b.dayCents;
+}
+
+async function addFamilyCampLedgerWeekCents(sb, parentId, cents) {
   const c = Math.max(0, Math.round(Number(cents) || 0));
   if (!parentId || c <= 0) return;
-  const { error } = await sb.rpc('family_camp_ledger_add', { p_parent: parentId, p_cents: c });
+  const { error } = await sb.rpc('family_camp_ledger_add_week', { p_parent: parentId, p_cents: c });
   if (error) throw error;
 }
 
+async function addFamilyCampLedgerDayCents(sb, parentId, cents) {
+  const c = Math.max(0, Math.round(Number(cents) || 0));
+  if (!parentId || c <= 0) return;
+  const { error } = await sb.rpc('family_camp_ledger_add_day', { p_parent: parentId, p_cents: c });
+  if (error) throw error;
+}
+
+async function subtractFamilyCampLedgerSplit(sb, parentId, weekCents, dayCents) {
+  const w = Math.max(0, Math.round(Number(weekCents) || 0));
+  const d = Math.max(0, Math.round(Number(dayCents) || 0));
+  if (!parentId || (w <= 0 && d <= 0)) return;
+  const { error } = await sb.rpc('family_camp_ledger_subtract_split', {
+    p_parent: parentId,
+    p_week_cents: w,
+    p_day_cents: d,
+  });
+  if (error) throw error;
+}
+
+/** @deprecated use subtractFamilyCampLedgerSplit */
 async function subtractFamilyCampLedgerCents(sb, parentId, cents) {
   const c = Math.max(0, Math.round(Number(cents) || 0));
   if (!parentId || c <= 0) return;
-  const { error } = await sb.rpc('family_camp_ledger_subtract', { p_parent: parentId, p_cents: c });
-  if (error) throw error;
+  const { weekCents, dayCents } = await getFamilyCampLedgerBalances(sb, parentId);
+  const fromWeek = Math.min(weekCents, c);
+  let rest = c - fromWeek;
+  const fromDay = Math.min(dayCents, rest);
+  await subtractFamilyCampLedgerSplit(sb, parentId, fromWeek, fromDay);
 }
 
 module.exports = {
   campCreditCentsForConfirmedRow,
-  getFamilyCampLedgerCents,
+  campCreditBucketForConfirmedRow,
+  getFamilyCampLedgerBalances,
+  getReconciledFamilyCampLedgerBalances,
   getReconciledFamilyCampLedgerCents,
-  addFamilyCampLedgerCents,
+  addFamilyCampLedgerWeekCents,
+  addFamilyCampLedgerDayCents,
+  subtractFamilyCampLedgerSplit,
   subtractFamilyCampLedgerCents,
   enrollmentCoversFullWeek,
 };

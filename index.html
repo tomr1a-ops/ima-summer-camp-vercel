@@ -2417,7 +2417,10 @@
     needsRegistration: true,
     perCamperNeedsReg: {},
     perCamperExtraShirtPaid: {},
-    /** Cents from cancelled paid enrollments (family_camp_credit_ledger). */
+    /** Ledger: week credits apply only to full-week checkout; day credits only to daily (mutually exclusive). */
+    prepaidCampBalanceWeekCents: 0,
+    prepaidCampBalanceDayCents: 0,
+    /** Sum of week + day ledger cents (compat). */
     prepaidCampBalanceCents: 0,
   };
   /** include registration line item / total for each camper id */
@@ -2736,6 +2739,15 @@
         pes[String(k)] = !!j.perCamperExtraShirtPaid[k];
       });
     }
+    var pw =
+      j && j.prepaidCampBalanceWeekCents != null ? Math.max(0, Math.round(Number(j.prepaidCampBalanceWeekCents))) : 0;
+    var pd =
+      j && j.prepaidCampBalanceDayCents != null ? Math.max(0, Math.round(Number(j.prepaidCampBalanceDayCents))) : 0;
+    if (j && (j.prepaidCampBalanceWeekCents == null || j.prepaidCampBalanceDayCents == null) && j.prepaidCampBalanceCents != null) {
+      var leg = Math.max(0, Math.round(Number(j.prepaidCampBalanceCents)));
+      pw = leg;
+      pd = 0;
+    }
     pricingPreview = {
       dayRate: dr,
       weekRate: wr,
@@ -2744,8 +2756,9 @@
       needsRegistration: nr,
       perCamperNeedsReg: pcr,
       perCamperExtraShirtPaid: pes,
-      prepaidCampBalanceCents:
-        j && j.prepaidCampBalanceCents != null ? Math.max(0, Math.round(Number(j.prepaidCampBalanceCents))) : 0,
+      prepaidCampBalanceWeekCents: pw,
+      prepaidCampBalanceDayCents: pd,
+      prepaidCampBalanceCents: pw + pd,
     };
     if (j && j.perCamperNeedsReg && typeof j.perCamperNeedsReg === 'object') {
       Object.keys(pcr).forEach(function (rk) {
@@ -4805,7 +4818,7 @@
     return true;
   }
 
-  /** Match server `applyPoolToBookings`: prepaid pool valued in cents so week credits apply to daily lines. */
+  /** Legacy: merged cents → week+day counts (greedy weeks). Prefer server remainingWeeks/remainingDays from split buckets. */
   function decomposeRemainingPrepaidCentsClient(cents, wrC, drC) {
     var c = Math.max(0, Math.round(Number(cents) || 0));
     var w = 0;
@@ -4862,37 +4875,40 @@
         srv.remainingWeeks != null || srv.remainingDays != null
           ? { weeks: srv.remainingWeeks | 0, days: srv.remainingDays | 0 }
           : decomposeRemainingPrepaidCentsClient(pc, wrC, drC);
+      var rwc =
+        srv.remainingWeekCents != null ? Math.max(0, Math.round(Number(srv.remainingWeekCents))) : null;
+      var rdc = srv.remainingDayCents != null ? Math.max(0, Math.round(Number(srv.remainingDayCents))) : null;
       return {
         campTotal: campTotalCents / 100,
         campTotalCents: campTotalCents,
         lines: lines,
         remainingWeeks: remSrv.weeks,
         remainingDays: remSrv.days,
+        remainingWeekCents: rwc,
+        remainingDayCents: rdc,
         remainingPrepaidCents: pc,
       };
     }
-    var ledPool = Math.max(0, Math.round(Number(pricingPreview.prepaidCampBalanceCents) || 0));
-    var encPool = 0;
+    var ledW = Math.max(0, Math.round(Number(pricingPreview.prepaidCampBalanceWeekCents) || 0));
+    var ledD = Math.max(0, Math.round(Number(pricingPreview.prepaidCampBalanceDayCents) || 0));
+    var encWCents = 0;
+    var encDCents = 0;
     var campTotalCents2 = 0;
     var lines2 = [];
-    var pcEnc = encPool;
-    var pcLed = ledPool;
     sorted.forEach(function (b) {
       var needCents;
+      var applyCents;
+      var chargeCents;
       if (b.pricingMode === 'full_week') {
         needCents = wrC;
-      } else {
-        needCents = (b.dayIds || []).length * drC;
-      }
-      var fromEnc = Math.min(pcEnc, needCents);
-      pcEnc -= fromEnc;
-      var remainder = needCents - fromEnc;
-      var fromLed = Math.min(pcLed, remainder);
-      pcLed -= fromLed;
-      var applyCents = fromEnc + fromLed;
-      var chargeCents = needCents - applyCents;
-      campTotalCents2 += chargeCents;
-      if (b.pricingMode === 'full_week') {
+        var fromEnc = Math.min(encWCents, needCents);
+        encWCents -= fromEnc;
+        var rem = needCents - fromEnc;
+        var fromLed = Math.min(ledW, rem);
+        ledW -= fromLed;
+        applyCents = fromEnc + fromLed;
+        chargeCents = needCents - applyCents;
+        campTotalCents2 += chargeCents;
         lines2.push({
           b: b,
           chargeCents: chargeCents,
@@ -4902,6 +4918,15 @@
           needCents: needCents,
         });
       } else {
+        needCents = (b.dayIds || []).length * drC;
+        var fromEncD = Math.min(encDCents, needCents);
+        encDCents -= fromEncD;
+        var remD = needCents - fromEncD;
+        var fromLedD = Math.min(ledD, remD);
+        ledD -= fromLedD;
+        applyCents = fromEncD + fromLedD;
+        chargeCents = needCents - applyCents;
+        campTotalCents2 += chargeCents;
         var n2 = (b.dayIds || []).length;
         var creditDays2 = drC > 0 ? Math.min(n2, Math.floor(applyCents / drC + 1e-9)) : 0;
         lines2.push({
@@ -4915,14 +4940,21 @@
         });
       }
     });
-    var pc2 = pcEnc + pcLed;
-    var rem2 = decomposeRemainingPrepaidCentsClient(pc2, wrC, drC);
+    var remWCents = encWCents + ledW;
+    var remDCents = encDCents + ledD;
+    var pc2 = remWCents + remDCents;
+    var rem2 = {
+      weeks: wrC > 0 ? Math.floor(remWCents / wrC) : 0,
+      days: drC > 0 ? Math.floor(remDCents / drC) : 0,
+    };
     return {
       campTotal: campTotalCents2 / 100,
       campTotalCents: campTotalCents2,
       lines: lines2,
       remainingWeeks: rem2.weeks,
       remainingDays: rem2.days,
+      remainingWeekCents: remWCents,
+      remainingDayCents: remDCents,
       remainingPrepaidCents: pc2,
     };
   }
@@ -5262,7 +5294,9 @@
     if (srv && srv.prepaidGrossCents != null) {
       grossCents = Math.max(0, Math.round(Number(srv.prepaidGrossCents)));
     } else if (!bookings.length) {
-      grossCents = Math.max(0, Math.round(Number(pricingPreview.prepaidCampBalanceCents) || 0));
+      grossCents =
+        Math.max(0, Math.round(Number(pricingPreview.prepaidCampBalanceWeekCents) || 0)) +
+        Math.max(0, Math.round(Number(pricingPreview.prepaidCampBalanceDayCents) || 0));
     }
     if (bookings.length && !srv) {
       el.hidden = true;
@@ -5277,31 +5311,47 @@
     var remW = creditApplied ? creditApplied.remainingWeeks | 0 : 0;
     var remD = creditApplied ? creditApplied.remainingDays | 0 : 0;
     el.hidden = false;
-    var balLabel = formatWeekDayCreditLabel(remW, remD);
     var remCents = creditApplied ? Math.max(0, Math.round(Number(creditApplied.remainingPrepaidCents) || 0)) : 0;
-    if (!balLabel && remCents > 0) {
-      balLabel = fmt(remCents / 100) + ' credit';
+    var weekLine =
+      remW > 0 ? remW + ' week' + (remW === 1 ? '' : 's') : '—';
+    var dayLine = remD > 0 ? remD + ' day' + (remD === 1 ? '' : 's') : '—';
+    if (
+      creditApplied &&
+      creditApplied.remainingWeekCents != null &&
+      Number(creditApplied.remainingWeekCents) > 0 &&
+      remW === 0
+    ) {
+      weekLine = fmt(Number(creditApplied.remainingWeekCents) / 100) + ' (week pool)';
     }
-    if (!balLabel) balLabel = 'None left — fully used by current checkout';
-    var balanceFootnote = '';
-    if (remW > 0 || remD > 0) {
-      if (remW > 0 && remD > 0) {
-        balanceFootnote = 'This shows how many weeks and days you still have left.';
-      } else if (remW > 0) {
-        balanceFootnote = 'This shows how many weeks you still have left.';
-      } else {
-        balanceFootnote = 'This shows how many days you still have left.';
-      }
+    if (
+      creditApplied &&
+      creditApplied.remainingDayCents != null &&
+      Number(creditApplied.remainingDayCents) > 0 &&
+      remD === 0
+    ) {
+      dayLine = fmt(Number(creditApplied.remainingDayCents) / 100) + ' (day pool)';
     }
+    if (remW === 0 && remD === 0 && remCents > 0) {
+      weekLine = fmt(remCents / 100) + ' credit';
+      dayLine = '—';
+    }
+    if (remW === 0 && remD === 0 && remCents <= 0) {
+      weekLine = 'None left — fully used by current checkout';
+    }
+    var balanceFootnote =
+      'Full-week credit applies only to <strong>full week (Mon–Fri)</strong> checkout. Daily credit applies only to <strong>per-day</strong> checkout. They do not transfer or combine.';
     el.innerHTML =
       '<div class="credit-by-camper-title">Unused Credit (Your Family)</div>' +
-      '<p class="credit-by-camper-hint">Credits include other paid weeks you are not checking out again, and account balance from camp weeks you cancelled after paying.</p>' +
-      '<div class="credit-by-camper-row"><span>Remaining Balance</span><span>' +
-      escapeHtml(balLabel) +
+      '<p class="credit-by-camper-hint">Credits include other paid time you are not checking out again, and account balance from camp registrations you cancelled after paying.</p>' +
+      '<div class="credit-by-camper-row"><span>Full-week credit</span><span>' +
+      escapeHtml(weekLine) +
       '</span></div>' +
-      (balanceFootnote
-        ? '<p class="credit-by-camper-balance-footnote">' + balanceFootnote + '</p>'
-        : '');
+      '<div class="credit-by-camper-row"><span>Daily credit</span><span>' +
+      escapeHtml(dayLine) +
+      '</span></div>' +
+      '<p class="credit-by-camper-balance-footnote">' +
+      balanceFootnote +
+      '</p>';
   }
 
   /**
@@ -5348,6 +5398,8 @@
         pricingPreview.weekRate = 1;
         pricingPreview.registrationFee = 1;
         pricingPreview.extraCampShirt = 1;
+        pricingPreview.prepaidCampBalanceWeekCents = 0;
+        pricingPreview.prepaidCampBalanceDayCents = 0;
         pricingPreview.prepaidCampBalanceCents = 0;
       }
       updatePriceBanner();

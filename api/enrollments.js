@@ -7,7 +7,12 @@ const {
   syncConfirmedDayCounts,
   loadOrderedDaysForWeek,
 } = require('./lib/capacity');
-const { campCreditCentsForConfirmedRow, addFamilyCampLedgerCents } = require('./lib/family-camp-ledger');
+const {
+  campCreditCentsForConfirmedRow,
+  campCreditBucketForConfirmedRow,
+  addFamilyCampLedgerWeekCents,
+  addFamilyCampLedgerDayCents,
+} = require('./lib/family-camp-ledger');
 const { enrollmentQualifiesForCampCredit } = require('./lib/enrollment-credit-eligibility');
 const { ENROLLMENT_STATUS } = require('./lib/enrollment-status');
 const { tryPromoteWaitlistAfterEnrollmentRemoved, notifyWaitlistOffer } = require('./lib/waitlist-service');
@@ -248,7 +253,11 @@ module.exports = async (req, res) => {
         if (enrollmentQualifiesForCampCredit(row)) {
           try {
             const cents = await campCreditCentsForConfirmedRow(sb, row, false);
-            if (cents > 0) await addFamilyCampLedgerCents(sb, user.id, cents);
+            if (cents > 0) {
+              const bucket = await campCreditBucketForConfirmedRow(sb, row);
+              if (bucket === 'week') await addFamilyCampLedgerWeekCents(sb, user.id, cents);
+              else await addFamilyCampLedgerDayCents(sb, user.id, cents);
+            }
           } catch (credErr) {
             console.error('[enrollments DELETE] family_camp_credit_ledger', credErr && credErr.message);
           }

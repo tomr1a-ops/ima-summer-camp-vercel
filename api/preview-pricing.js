@@ -2,7 +2,7 @@ const { serviceClient } = require('./lib/supabase');
 const { getUserFromRequest, getProfileForUser } = require('./lib/auth');
 const { setNoStoreJsonHeaders } = require('./lib/http-no-store');
 const { dayRate, weekRate, registrationFee, extraCampShirt } = require('./lib/pricing');
-const { getReconciledFamilyCampLedgerCents } = require('./lib/family-camp-ledger');
+const { getReconciledFamilyCampLedgerBalances } = require('./lib/family-camp-ledger');
 
 function uniqueCamperIdsFromQuery(url) {
   const raw = url.searchParams.get('camperIds') || url.searchParams.get('camperId') || '';
@@ -31,7 +31,8 @@ module.exports = async (req, res) => {
     /** True when this camper already paid the optional extra T-shirt add-on (no repeat charge). */
     const perCamperExtraShirtPaid = {};
     let profile = null;
-    let prepaidCampBalanceCents = 0;
+    let prepaidCampBalanceWeekCents = 0;
+    let prepaidCampBalanceDayCents = 0;
 
     if (user && token && camperIds.length) {
       let sb;
@@ -50,10 +51,13 @@ module.exports = async (req, res) => {
 
       if (profile && sb) {
         try {
-          prepaidCampBalanceCents = await getReconciledFamilyCampLedgerCents(sb, user.id);
+          const lb = await getReconciledFamilyCampLedgerBalances(sb, user.id);
+          prepaidCampBalanceWeekCents = lb.weekCents;
+          prepaidCampBalanceDayCents = lb.dayCents;
         } catch (le) {
           console.warn('[preview-pricing] ledger balance:', le.message);
-          prepaidCampBalanceCents = 0;
+          prepaidCampBalanceWeekCents = 0;
+          prepaidCampBalanceDayCents = 0;
         }
         for (const camperId of camperIds) {
           const { data: camper, error: ce } = await sb
@@ -102,7 +106,9 @@ module.exports = async (req, res) => {
         needsRegistration,
         perCamperNeedsReg,
         perCamperExtraShirtPaid,
-        prepaidCampBalanceCents,
+        prepaidCampBalanceWeekCents,
+        prepaidCampBalanceDayCents,
+        prepaidCampBalanceCents: prepaidCampBalanceWeekCents + prepaidCampBalanceDayCents,
       })
     );
   } catch (e) {

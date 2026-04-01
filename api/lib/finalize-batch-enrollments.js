@@ -1,5 +1,5 @@
 const { dayRate, weekRate, registrationFee } = require('./pricing');
-const { subtractFamilyCampLedgerCents } = require('./family-camp-ledger');
+const { subtractFamilyCampLedgerSplit } = require('./family-camp-ledger');
 const { ENROLLMENT_STATUS } = require('./enrollment-status');
 const { isMissingStepUpHoldExpiresColumn } = require('./step-up-hold-column');
 const { markWaitlistConverted } = require('./waitlist-service');
@@ -21,6 +21,8 @@ async function finalizePendingEnrollmentBatch(sb, batchId, options) {
     extraShirtCents,
     extraShirtCamperIds,
     ledgerConsumeCents,
+    ledgerConsumeWeekCents,
+    ledgerConsumeDayCents,
     ledgerParentId,
     waitlistIds,
   } = options;
@@ -123,9 +125,14 @@ async function finalizePendingEnrollmentBatch(sb, batchId, options) {
   }
 
   const lc = Math.max(0, Math.round(Number(ledgerConsumeCents) || 0));
+  let lw = Math.max(0, Math.round(Number(ledgerConsumeWeekCents) || 0));
+  let ld = Math.max(0, Math.round(Number(ledgerConsumeDayCents) || 0));
+  if (lw === 0 && ld === 0 && lc > 0) {
+    lw = lc;
+  }
   const lid = ledgerParentId || (rows[0] && rows[0].parent_id);
-  if (didConfirmAny && lc > 0 && lid) {
-    await subtractFamilyCampLedgerCents(sb, lid, lc);
+  if (didConfirmAny && (lw > 0 || ld > 0) && lid) {
+    await subtractFamilyCampLedgerSplit(sb, lid, lw, ld);
   }
 
   if (didConfirmAny && waitlistIds && waitlistIds.length && lid) {
@@ -158,6 +165,8 @@ async function finalizeStepUpReservationBatch(sb, batchId, options) {
     campLineCents,
     bookingModes,
     ledgerConsumeCents,
+    ledgerConsumeWeekCents,
+    ledgerConsumeDayCents,
     ledgerParentId,
     waitlistIds,
     registrationFeeCents,
@@ -307,9 +316,14 @@ async function finalizeStepUpReservationBatch(sb, batchId, options) {
   }
 
   const lc = Math.max(0, Math.round(Number(ledgerConsumeCents) || 0));
+  let lw = Math.max(0, Math.round(Number(ledgerConsumeWeekCents) || 0));
+  let ld = Math.max(0, Math.round(Number(ledgerConsumeDayCents) || 0));
+  if (lw === 0 && ld === 0 && lc > 0) {
+    lw = lc;
+  }
   const lid = ledgerParentId || (rows[0] && rows[0].parent_id);
-  if (didAny && lc > 0 && lid) {
-    await subtractFamilyCampLedgerCents(sb, lid, lc);
+  if (didAny && (lw > 0 || ld > 0) && lid) {
+    await subtractFamilyCampLedgerSplit(sb, lid, lw, ld);
   }
 
   if (didAny && waitlistIds && waitlistIds.length && lid) {

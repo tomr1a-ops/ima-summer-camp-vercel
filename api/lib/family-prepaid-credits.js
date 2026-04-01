@@ -3,10 +3,10 @@
  * that are NOT part of the current checkout request consume pool (week or day units)
  * applied to new booking lines in stable sort order.
  *
- * Plus optional `family_camp_credit_ledger` balance (cents) from cancelled paid enrollments.
+ * Plus optional `family_camp_credit_ledger` week/day balances (cents) from cancelled paid enrollments.
  */
 
-const { getReconciledFamilyCampLedgerCents } = require('./family-camp-ledger');
+const { getReconciledFamilyCampLedgerBalances } = require('./family-camp-ledger');
 const { enrollmentQualifiesForCampCredit } = require('./enrollment-credit-eligibility');
 
 function normUuid(v) {
@@ -104,46 +104,64 @@ function decomposeRemainingPrepaidCents(cents, wrC, drC) {
 
 /**
  * Apply floating prepaid to camp line items in sort order.
- * Pool is valued in cents: each week credit = full week rate, each day credit = day rate.
- * Enrollment float (poolW/poolD) is applied first; then ledgerCents (cancelled-enrollment account credit).
+ * Week credits (enrollment full-week float + ledger week bucket) apply only to full_week lines.
+ * Day credits apply only to daily lines. Buckets do not cross-apply.
  */
-function applyPoolToBookings(sortedBookings, poolW, poolD, wr, dr, ledgerCents = 0) {
+function applyPoolToBookings(sortedBookings, poolW, poolD, wr, dr, ledgerWeekCents = 0, ledgerDayCents = 0) {
   const wrC = Math.round(Number(wr) * 100);
   const drC = Math.round(Number(dr) * 100);
-  let encPool = Math.max(0, (Number(poolW) || 0) * wrC + (Number(poolD) || 0) * drC);
-  let ledPool = Math.max(0, Math.round(Number(ledgerCents) || 0));
+  let encWCents = Math.max(0, (Number(poolW) || 0) * wrC);
+  let encDCents = Math.max(0, (Number(poolD) || 0) * drC);
+  let ledW = Math.max(0, Math.round(Number(ledgerWeekCents) || 0));
+  let ledD = Math.max(0, Math.round(Number(ledgerDayCents) || 0));
   const campLineCents = [];
   let campCentsTotal = 0;
-  let ledgerConsumedCents = 0;
+  let ledgerWeekConsumedCents = 0;
+  let ledgerDayConsumedCents = 0;
   for (const b of sortedBookings) {
     const mode = b.pricingMode === 'full_week' ? 'full_week' : 'daily';
     let needCents;
     if (mode === 'full_week') {
       needCents = wrC;
+      const fromEnc = Math.min(encWCents, needCents);
+      encWCents -= fromEnc;
+      const remainder = needCents - fromEnc;
+      const fromLed = Math.min(ledW, remainder);
+      ledW -= fromLed;
+      ledgerWeekConsumedCents += fromLed;
+      const chargeCents = needCents - fromEnc - fromLed;
+      campLineCents.push(chargeCents);
+      campCentsTotal += chargeCents;
     } else {
       const n = (b.dayIds || []).length;
       needCents = n * drC;
+      const fromEnc = Math.min(encDCents, needCents);
+      encDCents -= fromEnc;
+      const remainder = needCents - fromEnc;
+      const fromLed = Math.min(ledD, remainder);
+      ledD -= fromLed;
+      ledgerDayConsumedCents += fromLed;
+      const chargeCents = needCents - fromEnc - fromLed;
+      campLineCents.push(chargeCents);
+      campCentsTotal += chargeCents;
     }
-    const fromEnc = Math.min(encPool, needCents);
-    encPool -= fromEnc;
-    const remainder = needCents - fromEnc;
-    const fromLed = Math.min(ledPool, remainder);
-    ledPool -= fromLed;
-    ledgerConsumedCents += fromLed;
-    const applyCents = fromEnc + fromLed;
-    const chargeCents = needCents - applyCents;
-    campLineCents.push(chargeCents);
-    campCentsTotal += chargeCents;
   }
-  const poolCents = encPool + ledPool;
-  const { weeks: remainingWeeks, days: remainingDays } = decomposeRemainingPrepaidCents(poolCents, wrC, drC);
+  const remainingWeekCents = encWCents + ledW;
+  const remainingDayCents = encDCents + ledD;
+  const remainingWeeks = wrC > 0 ? Math.floor(remainingWeekCents / wrC) : 0;
+  const remainingDays = drC > 0 ? Math.floor(remainingDayCents / drC) : 0;
+  const remainingPrepaidCents = remainingWeekCents + remainingDayCents;
   return {
     campLineCents,
     campCentsTotal,
     remainingWeeks,
     remainingDays,
-    remainingPrepaidCents: poolCents,
-    ledgerConsumedCents,
+    remainingWeekCents,
+    remainingDayCents,
+    remainingPrepaidCents,
+    ledgerWeekConsumedCents,
+    ledgerDayConsumedCents,
+    ledgerConsumedCents: ledgerWeekConsumedCents + ledgerDayConsumedCents,
   };
 }
 
@@ -154,9 +172,12 @@ async function loadFloatingPrepaidPool(sb, parentId, bookingsArray, normCamperKe
   const { data: campers, error: ce } = await sb.from('campers').select('id').eq('parent_id', parentId);
   if (ce) throw ce;
   const camperIds = (campers || []).map((c) => String(c.id));
-  const ledgerCents = await getReconciledFamilyCampLedgerCents(sb, parentId);
+  const { weekCents: ledgerWeekCents, dayCents: ledgerDayCents } = await getReconciledFamilyCampLedgerBalances(
+    sb,
+    parentId
+  );
   if (!camperIds.length) {
-    return { poolW: 0, poolD: 0, weekMetaMap: new Map(), ledgerCents };
+    return { poolW: 0, poolD: 0, weekMetaMap: new Map(), ledgerWeekCents, ledgerDayCents };
   }
 
   const { data: enrollRowsRaw, error: ee } = await sb
@@ -204,7 +225,7 @@ async function loadFloatingPrepaidPool(sb, parentId, bookingsArray, normCamperKe
     normCamperKeyFn,
     prepaidUiCoverageKeys
   );
-  return { poolW, poolD, weekMetaMap, ledgerCents };
+  return { poolW, poolD, weekMetaMap, ledgerWeekCents, ledgerDayCents };
 }
 
 module.exports = {
