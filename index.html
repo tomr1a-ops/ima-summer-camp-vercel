@@ -6934,6 +6934,16 @@
     return false;
   }
 
+  /** Match runPortalBatchWeekSave / API: waiver on file or prior accept counts; not checkbox-only. */
+  function campAgreementOkForCheckout() {
+    var agreeChk = document.getElementById('camp-agreement-accept');
+    return !!(
+      parentProfileWaiverSigned ||
+      readCampAgreementAcceptOk() ||
+      (agreeChk && agreeChk.checked)
+    );
+  }
+
   function writeCampAgreementAcceptOk(on) {
     try {
       var k = campAgreementLegacyAcceptedSessionKey();
@@ -7363,8 +7373,7 @@
                     : '';
           var stepUpNoticeSu = document.getElementById('step-up-notice');
           if (stepUpNoticeSu) stepUpNoticeSu.hidden = pmValSu !== 'step_up';
-          var agreeChkSu = document.getElementById('camp-agreement-accept');
-          var agreementOkSu = !!(agreeChkSu && agreeChkSu.checked);
+          var agreementOkSu = campAgreementOkForCheckout();
           var paymentOkSu = pmValSu === 'credit_card' || pmValSu === 'step_up';
           var zeroDueSu = displayGrandSU < 0.01 && shirtTotal > 0;
           if (btnMainSU) {
@@ -7399,9 +7408,37 @@
             msg.textContent = fwConflictMsgs[0];
             btn.disabled = true;
           } else if (zeroDueSu) {
+            if (getPaymentPortalMode() === 'step_up') {
+              {
+                const agreementOk = agreementOkSu;
+                const paymentOk = paymentOkSu;
+                const pmVal = pmValSu;
+                console.log('STEPUP DEBUG', {
+                  bookings: collectBookings().length,
+                  agreementOk,
+                  paymentOk,
+                  pmVal,
+                  parentProfileWaiverSigned,
+                });
+              }
+            }
             btn.disabled =
               !!checkoutSessionInFlight || !agreementOkSu || !paymentOkSu || portalSaveBlocksCheckout();
           } else {
+            if (getPaymentPortalMode() === 'step_up') {
+              {
+                const agreementOk = agreementOkSu;
+                const paymentOk = paymentOkSu;
+                const pmVal = pmValSu;
+                console.log('STEPUP DEBUG', {
+                  bookings: collectBookings().length,
+                  agreementOk,
+                  paymentOk,
+                  pmVal,
+                  parentProfileWaiverSigned,
+                });
+              }
+            }
             btn.disabled = !agreementOkSu || !paymentOkSu || portalSaveBlocksCheckout();
           }
         } else {
@@ -7435,8 +7472,7 @@
                     : pmPickSave && pmPickSave.value === 'credit_card'
                       ? 'credit_card'
                       : '';
-            var agreeChkSave = document.getElementById('camp-agreement-accept');
-            var agreementOkSave = !!(agreeChkSave && agreeChkSave.checked);
+            var agreementOkSave = campAgreementOkForCheckout();
             var paymentOkSave = pmValSave === 'credit_card' || pmValSave === 'step_up';
             var stepUpNoticeSave = document.getElementById('step-up-notice');
             if (stepUpNoticeSave) stepUpNoticeSave.hidden = pmValSave !== 'step_up';
@@ -7450,29 +7486,126 @@
               msg.textContent = fwConflictMsgs[0];
               btn.disabled = true;
             } else {
+              if (getPaymentPortalMode() === 'step_up') {
+                {
+                  const agreementOk = agreementOkSave;
+                  const paymentOk = paymentOkSave;
+                  const pmVal = pmValSave;
+                  console.log('STEPUP DEBUG', {
+                    bookings: collectBookings().length,
+                    agreementOk,
+                    paymentOk,
+                    pmVal,
+                    parentProfileWaiverSigned,
+                  });
+                }
+              }
               btn.disabled = !agreementOkSave || !paymentOkSave || portalSaveBlocksCheckout();
             }
           } else {
-            if (paySU) paySU.hidden = true;
-            if (agreeSU) {
-              agreeSU.hidden = false;
-              if (readCampAgreementAcceptOk()) writeCampAgreementScrollOk(true);
-              ensureCampAgreementTextLoaded();
-              try {
-                requestAnimationFrame(function () {
+            try {
+              applyPaymentPortalChrome();
+            } catch (eApcHeld) {}
+            var pmPickHeld = document.getElementById('payment-method-select');
+            var pmValHeld =
+              getPaymentPortalMode() === 'step_up'
+                ? 'step_up'
+                : getPaymentPortalMode() === 'credit_card'
+                  ? 'credit_card'
+                  : pmPickHeld && pmPickHeld.value === 'step_up'
+                    ? 'step_up'
+                    : pmPickHeld && pmPickHeld.value === 'credit_card'
+                      ? 'credit_card'
+                      : '';
+            var paymentOkHeld = pmValHeld === 'credit_card' || pmValHeld === 'step_up';
+            var agreementOkHeld = campAgreementOkForCheckout();
+            var draftUnionHeld = collectDraftCamperWeekKeysUnion();
+            var hasNewDraftStepUp =
+              getPaymentPortalMode() === 'step_up' &&
+              (collectBookings().length > 0 ||
+                (draftUnionHeld && typeof draftUnionHeld.size === 'number' && draftUnionHeld.size > 0));
+            if (hasNewDraftStepUp) {
+              if (paySU) paySU.hidden = false;
+              if (agreeSU) {
+                agreeSU.hidden = false;
+                if (readCampAgreementAcceptOk()) writeCampAgreementScrollOk(true);
+                ensureCampAgreementTextLoaded();
+                try {
+                  requestAnimationFrame(function () {
+                    updateCampAgreementScrollGate();
+                  });
+                } catch (eRafSuHeld2) {
                   updateCampAgreementScrollGate();
-                });
-              } catch (eRafSuHeld) {
-                updateCampAgreementScrollGate();
+                }
+                initCampAgreementScrollUnlock();
               }
-              initCampAgreementScrollUnlock();
+              var stepUpNoticeHeld = document.getElementById('step-up-notice');
+              if (stepUpNoticeHeld) stepUpNoticeHeld.hidden = pmValHeld !== 'step_up';
+              if (btnMainSU) btnMainSU.textContent = stepUpHoldButtonLabel();
+              if (secureNoteSU) {
+                secureNoteSU.textContent =
+                  getPaymentPortalMode() === 'step_up' &&
+                  paymentPortalUsesBatchWeekSave() &&
+                  portalBatchWeekNeedsSave()
+                    ? 'Save and Hold Spot saves your week picks and places the 24-hour Step Up hold in one step. No card charge.'
+                    : 'No card charge — 24-hour hold pending Step Up funding.';
+              }
+              if (fwConflictMsgs.length) {
+                msg.className = 'msg error';
+                msg.textContent = fwConflictMsgs[0];
+                btn.disabled = true;
+              } else {
+                {
+                  const agreementOk = agreementOkHeld;
+                  const paymentOk = paymentOkHeld;
+                  const pmVal = pmValHeld;
+                  console.log('STEPUP DEBUG', {
+                    bookings: collectBookings().length,
+                    agreementOk,
+                    paymentOk,
+                    pmVal,
+                    parentProfileWaiverSigned,
+                  });
+                }
+                btn.disabled =
+                  !agreementOkHeld || !paymentOkHeld || portalSaveBlocksCheckout();
+              }
+            } else {
+              if (paySU) paySU.hidden = true;
+              if (agreeSU) {
+                agreeSU.hidden = false;
+                if (readCampAgreementAcceptOk()) writeCampAgreementScrollOk(true);
+                ensureCampAgreementTextLoaded();
+                try {
+                  requestAnimationFrame(function () {
+                    updateCampAgreementScrollGate();
+                  });
+                } catch (eRafSuHeld) {
+                  updateCampAgreementScrollGate();
+                }
+                initCampAgreementScrollUnlock();
+              }
+              if (btnMainSU) btnMainSU.textContent = 'Hold active — not a card checkout';
+              if (secureNoteSU) {
+                secureNoteSU.textContent =
+                  'No card charge here. Balance above is owed through Step Up until IMA staff confirms payment.';
+              }
+              if (getPaymentPortalMode() === 'step_up') {
+                {
+                  const agreementOk = agreementOkHeld;
+                  const paymentOk = paymentOkHeld;
+                  const pmVal = pmValHeld;
+                  console.log('STEPUP DEBUG', {
+                    bookings: collectBookings().length,
+                    agreementOk,
+                    paymentOk,
+                    pmVal,
+                    parentProfileWaiverSigned,
+                  });
+                }
+              }
+              btn.disabled = true;
             }
-            if (btnMainSU) btnMainSU.textContent = 'Hold active — not a card checkout';
-            if (secureNoteSU) {
-              secureNoteSU.textContent =
-                'No card charge here. Balance above is owed through Step Up until IMA staff confirms payment.';
-            }
-            btn.disabled = true;
           }
         }
         btn.classList.remove('loading');
@@ -7727,17 +7860,34 @@
         secureNote.textContent = '🔒 Powered by Stripe · Card data stays safe';
       }
     }
-    var agreeChk = document.getElementById('camp-agreement-accept');
-    var agreementOk = !!(agreeChk && agreeChk.checked);
+    var agreementOk = campAgreementOkForCheckout();
     var paymentOk = pmVal === 'credit_card' || pmVal === 'step_up';
     if (fwConflictMsgs.length) {
       msg.className = 'msg error';
       msg.textContent = fwConflictMsgs[0];
       btn.disabled = true;
     } else if (zeroDue) {
+      if (getPaymentPortalMode() === 'step_up') {
+        console.log('STEPUP DEBUG', {
+          bookings: collectBookings().length,
+          agreementOk,
+          paymentOk,
+          pmVal,
+          parentProfileWaiverSigned,
+        });
+      }
       btn.disabled =
         !!checkoutSessionInFlight || !agreementOk || !paymentOk || portalSaveBlocksCheckout();
     } else {
+      if (getPaymentPortalMode() === 'step_up') {
+        console.log('STEPUP DEBUG', {
+          bookings: collectBookings().length,
+          agreementOk,
+          paymentOk,
+          pmVal,
+          parentProfileWaiverSigned,
+        });
+      }
       btn.disabled = !agreementOk || !paymentOk || portalSaveBlocksCheckout();
     }
     persistEnrollLocal();
