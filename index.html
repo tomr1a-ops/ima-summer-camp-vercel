@@ -11,7 +11,12 @@
 (function () {
   try {
     var q = new URLSearchParams(window.location.search || '');
-    if (q.get('paymentPortal') || q.get('portalPayment') || q.get('parent_id')) {
+    if (
+      q.get('paymentPortal') ||
+      q.get('portalPayment') ||
+      q.get('parent_id') ||
+      q.get('session_id')
+    ) {
       document.documentElement.classList.add('ima-portal-entry');
     }
   } catch (e) {}
@@ -19,12 +24,13 @@
 </script>
 <style>
   /* Hide layout flash until auth + tab + portal chrome are applied (portal deep-links only). */
+  /* Avoid long blank screen: keep page barely visible so users see layout loading (Stripe return, etc.). */
   html.ima-portal-entry:not(.ima-ui-ready) body {
-    opacity: 0 !important;
+    opacity: 0.08 !important;
   }
   html.ima-portal-entry.ima-ui-ready body {
     opacity: 1 !important;
-    transition: opacity 0.22s ease-out;
+    transition: opacity 0.16s ease-out;
   }
 </style>
 <script src="https://js.stripe.com/v3/" defer></script>
@@ -2585,8 +2591,12 @@
     }
   }
 
+  /** Card / Stripe rail: session id and/or checkout batch (rows may omit session id after some paths). */
   function enrollmentRowPaidViaStripe(row) {
-    return !!(row && row.stripe_session_id != null && String(row.stripe_session_id).trim() !== '');
+    if (!row) return false;
+    if (row.stripe_session_id != null && String(row.stripe_session_id).trim() !== '') return true;
+    if (row.checkout_batch_id != null && String(row.checkout_batch_id).trim() !== '') return true;
+    return false;
   }
 
   function enrollmentRowIsActiveReservation(row) {
@@ -4810,7 +4820,7 @@
         r &&
         String(r.week_id) === wk &&
         String(r.camper_id) === cid &&
-        (r.status === 'confirmed' || r.status === 'pending_step_up')
+        (r.status === 'confirmed' || r.status === 'pending_step_up' || r.status === 'pending')
       );
     });
     if (!toRemove.length) return;
@@ -7890,6 +7900,11 @@
       }
       await loadParentCampers();
       await refreshParentProfileWaiverFromServer();
+      showAuthPanels();
+      updateRegFlowClasses();
+      try {
+        document.documentElement.classList.add('ima-ui-ready');
+      } catch (eUirEarly) {}
       if (stripeReturnSid) {
         await confirmCheckoutFromStripeReturn(stripeReturnSid);
         await refreshConfirmedEnrollmentsAfterStripeReturn();
@@ -8829,6 +8844,9 @@
       return bootAuth();
     })
     .then(function () {
+      try {
+        document.documentElement.classList.add('ima-ui-ready');
+      } catch (eUirChain) {}
       return refreshPricingPreview();
     })
     .catch(function (e) {

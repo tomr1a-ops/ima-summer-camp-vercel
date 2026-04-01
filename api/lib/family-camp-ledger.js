@@ -36,6 +36,7 @@ function ledgerPaymentMethodForEnrollment(row) {
   if (st === 'pending_step_up') return 'step_up';
   if (st === 'confirmed') {
     if (row.stripe_session_id != null && String(row.stripe_session_id).trim() !== '') return 'credit_card';
+    if (row.checkout_batch_id != null && String(row.checkout_batch_id).trim() !== '') return 'credit_card';
     return 'step_up';
   }
   return 'credit_card';
