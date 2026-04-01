@@ -755,6 +755,53 @@
     return out;
   }
 
+  function collectDraftCamperWeekKeysUnion() {
+    var keys = new Set();
+    if (!session) return keys;
+    var fullWeekKey = new Set();
+    weeksPayload.forEach(function (w) {
+      var ids = (w.days || []).map(function (d) {
+        return d.id;
+      });
+      if (ids.length !== 5) return;
+      var cset = fullWeekCampersByWeek[String(w.id)];
+      if (!cset || !cset.size) return;
+      cset.forEach(function (cid) {
+        if (camperWeekHasConfirmedFullWeek(w.id, cid)) return;
+        if (daysCoveredByConfirmedForCamperWeek(w.id, cid).size > 0) return;
+        var ck = String(cid) + ':' + String(w.id);
+        fullWeekKey.add(ck);
+        keys.add(String(cid) + '|' + String(w.id));
+      });
+    });
+    weeksPayload.forEach(function (w) {
+      var wk = String(w.id);
+      var inner = dailyPerDayCampers[wk];
+      if (!inner) return;
+      var camperIds = new Set();
+      Object.keys(inner).forEach(function (dk) {
+        var s = inner[dk];
+        if (!s || !s.size) return;
+        s.forEach(function (cid) {
+          camperIds.add(String(cid));
+        });
+      });
+      camperIds.forEach(function (cid) {
+        if (fullWeekKey.has(String(cid) + ':' + wk)) return;
+        var covered = daysCoveredByConfirmedForCamperWeek(w.id, cid);
+        var hasNew = false;
+        Object.keys(inner).forEach(function (dk) {
+          var s = inner[dk];
+          if (!s || !s.has(cid)) return;
+          if (covered.has(String(dk))) return;
+          hasNew = true;
+        });
+        if (hasNew) keys.add(String(cid) + '|' + wk);
+      });
+    });
+    return keys;
+  }
+
   function hasShirtCheckoutSelection() {
     return (
       session &&
@@ -900,6 +947,17 @@
       if (b.weekId != null) weekSet[String(b.weekId)] = true;
       if (b.camperId != null) childSet[String(b.camperId)] = true;
     });
+    try {
+      collectDraftCamperWeekKeysUnion().forEach(function (key) {
+        var parts = String(key).split('|');
+        if (parts.length >= 2) {
+          var cid = String(parts[0]).trim();
+          var wk = String(parts[1]).trim();
+          if (cid) childSet[cid] = true;
+          if (wk) weekSet[wk] = true;
+        }
+      });
+    } catch (eHu) {}
     if (parentCampers.length) {
       parentCampers.forEach(function (c) {
         if (extraShirtChargesThisCheckout(c.id)) childSet[String(c.id)] = true;
@@ -917,7 +975,15 @@
       var as = actual.slice().sort();
       if (sameSorted(as, es)) return true;
       if (!es.length && as.length) return true;
-      return false;
+      if (!as.length) return false;
+      var expSet = {};
+      es.forEach(function (w) {
+        expSet[w] = true;
+      });
+      for (var i = 0; i < as.length; i++) {
+        if (!expSet[as[i]]) return false;
+      }
+      return true;
     }
     function childrenHandoffMatches(actual, expected) {
       var es = expected.slice().sort();
@@ -935,7 +1001,7 @@
     }
     var wa = Object.keys(weekSet).sort();
     var ca = Object.keys(childSet).sort();
-    if (!bookings.length && !hasShirtCheckoutSelection()) return false;
+    if (!bookings.length && !hasShirtCheckoutSelection() && Object.keys(weekSet).length === 0) return false;
     return weeksHandoffMatches(wa, expectedWeeks) && childrenHandoffMatches(ca, expectedChildren);
   }
 
