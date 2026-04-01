@@ -61,6 +61,81 @@
     overflow-x: hidden;
   }
 
+  /* Sticky split-portal banner (Step Up vs card) */
+  .portal-rail-banner {
+    position: sticky;
+    top: 0;
+    z-index: 10050;
+    display: none;
+    width: 100%;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(17, 17, 17, 0.98) 0%, rgba(13, 13, 13, 0.97) 100%);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .portal-rail-banner[hidden] {
+    display: none !important;
+  }
+  .portal-rail-banner:not([hidden]) {
+    display: block;
+  }
+  .portal-rail-banner--step-up {
+    box-shadow: inset 0 -1px 0 rgba(0, 229, 204, 0.35);
+  }
+  .portal-rail-banner--credit-card {
+    box-shadow: inset 0 -1px 0 rgba(99, 102, 241, 0.45);
+  }
+  .portal-rail-banner-inner {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 10px 18px 11px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--muted);
+  }
+  .portal-rail-banner-label {
+    font-family: var(--font-cond);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 11px;
+    color: var(--cyan);
+  }
+  .portal-rail-banner--credit-card .portal-rail-banner-label {
+    color: #a5b4fc;
+  }
+  .portal-rail-banner-hint {
+    flex: 1 1 220px;
+    min-width: 0;
+  }
+  .portal-rail-banner-switch {
+    flex-shrink: 0;
+    font-family: var(--font-cond);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--cyan);
+    text-decoration: none;
+    padding: 6px 10px;
+    border: 1px solid rgba(0, 229, 204, 0.4);
+    border-radius: 6px;
+    background: rgba(0, 229, 204, 0.08);
+  }
+  .portal-rail-banner-switch:hover {
+    background: rgba(0, 229, 204, 0.14);
+  }
+  .week-kid-cb--portal-readonly {
+    opacity: 0.88;
+  }
+  .week-kid-cb--portal-readonly .week-kid-cb-inner {
+    cursor: not-allowed;
+  }
+
   body::before {
     content: '';
     position: fixed; inset: 0;
@@ -2073,6 +2148,14 @@
 </head>
 <body>
 
+<div id="portal-rail-banner" class="portal-rail-banner" hidden role="region" aria-label="Payment portal">
+  <div class="portal-rail-banner-inner">
+    <span class="portal-rail-banner-label" id="portal-rail-banner-label"></span>
+    <span class="portal-rail-banner-hint" id="portal-rail-banner-hint"></span>
+    <a href="/portal-landing.html" class="portal-rail-banner-switch">Switch portal</a>
+  </div>
+</div>
+
 <header>
   <div id="header-auth-bar" class="header-auth-bar" hidden>
     <a href="/portal-landing.html" class="header-logout-btn" style="margin-right:8px">Portal</a>
@@ -2428,10 +2511,136 @@
       } catch (eDp2) {}
       if (sn) sn.hidden = true;
     }
+    syncPortalRailBanner();
+  }
+
+  /** Sticky banner: which payment portal the parent is in (Step Up vs card). */
+  function syncPortalRailBanner() {
+    var bar = document.getElementById('portal-rail-banner');
+    if (!bar) return;
+    var pm = getPaymentPortalMode();
+    if (pm !== 'step_up' && pm !== 'credit_card') {
+      bar.hidden = true;
+      return;
+    }
+    bar.hidden = false;
+    bar.classList.toggle('portal-rail-banner--step-up', pm === 'step_up');
+    bar.classList.toggle('portal-rail-banner--credit-card', pm === 'credit_card');
+    var lab = document.getElementById('portal-rail-banner-label');
+    var hint = document.getElementById('portal-rail-banner-hint');
+    if (lab) {
+      lab.textContent =
+        pm === 'step_up' ? 'Step Up for Students portal' : 'Credit card (Stripe) portal';
+    }
+    if (hint) {
+      hint.textContent =
+        pm === 'step_up'
+          ? 'Step Up holds and staff-confirmed Step Up registrations are managed here. Card-paid spots are view-only below.'
+          : 'Card checkouts and Stripe-paid registrations are managed here. Step Up holds are view-only below.';
+    }
   }
 
   function enrollmentRowPaidViaStripe(row) {
     return !!(row && row.stripe_session_id != null && String(row.stripe_session_id).trim() !== '');
+  }
+
+  function enrollmentRowIsActiveReservation(row) {
+    if (!row) return false;
+    var st = String(row.status || '');
+    return st === 'confirmed' || st === 'pending_step_up' || st === 'pending';
+  }
+
+  /** Ledger / UI rail for an enrollment row (split portals). */
+  function paymentRailForEnrollmentRow(row) {
+    if (!row) return 'credit_card';
+    var st = String(row.status || '');
+    if (st === 'pending_step_up') return 'step_up';
+    if (st === 'pending') return 'credit_card';
+    if (st === 'confirmed') {
+      return enrollmentRowPaidViaStripe(row) ? 'credit_card' : 'step_up';
+    }
+    return 'credit_card';
+  }
+
+  function isSplitPaymentPortal() {
+    var p = getPaymentPortalMode();
+    return p === 'step_up' || p === 'credit_card';
+  }
+
+  function activeEnrollmentRowsForCamperWeek(weekId, camperId) {
+    return (confirmedEnrollmentsCache || []).filter(function (row) {
+      if (!row || String(row.camper_id) !== String(camperId) || String(row.week_id) !== String(weekId)) {
+        return false;
+      }
+      return enrollmentRowIsActiveReservation(row);
+    });
+  }
+
+  function daySetForEnrollmentRow(row, weekObj) {
+    var set = new Set();
+    if (!row || !weekObj) return set;
+    if (enrollmentCoversFullWeek(row, weekObj)) {
+      (weekObj.days || []).forEach(function (d) {
+        set.add(String(d.id));
+      });
+    } else {
+      (row.day_ids || []).forEach(function (id) {
+        set.add(String(id));
+      });
+    }
+    return set;
+  }
+
+  function otherRailFullWeekEnrollment(weekId, camperId) {
+    if (!isSplitPaymentPortal()) return false;
+    var pm = getPaymentPortalMode();
+    var w = weeksPayload.find(function (x) {
+      return String(x.id) === String(weekId);
+    });
+    if (!w) return false;
+    return activeEnrollmentRowsForCamperWeek(weekId, camperId).some(function (row) {
+      if (paymentRailForEnrollmentRow(row) === pm) return false;
+      return enrollmentCoversFullWeek(row, w);
+    });
+  }
+
+  function otherRailCoversDay(weekId, camperId, dayId) {
+    if (!isSplitPaymentPortal()) return false;
+    var pm = getPaymentPortalMode();
+    var w = weeksPayload.find(function (x) {
+      return String(x.id) === String(weekId);
+    });
+    if (!w) return false;
+    var dk = String(dayId);
+    return activeEnrollmentRowsForCamperWeek(weekId, camperId).some(function (row) {
+      if (paymentRailForEnrollmentRow(row) === pm) return false;
+      return daySetForEnrollmentRow(row, w).has(dk);
+    });
+  }
+
+  function sameRailCoversDay(weekId, camperId, dayId) {
+    if (!isSplitPaymentPortal()) {
+      return daysCoveredByConfirmedForCamperWeek(weekId, camperId).has(String(dayId));
+    }
+    var pm = getPaymentPortalMode();
+    var w = weeksPayload.find(function (x) {
+      return String(x.id) === String(weekId);
+    });
+    if (!w) return false;
+    var dk = String(dayId);
+    return activeEnrollmentRowsForCamperWeek(weekId, camperId).some(function (row) {
+      if (paymentRailForEnrollmentRow(row) !== pm) return false;
+      return daySetForEnrollmentRow(row, w).has(dk);
+    });
+  }
+
+  /** Same-rail paid/hold rows only (split portal); otherwise same as any confirmed/hold coverage. */
+  function camperHasSameRailEnrollmentInWeek(weekId, camperId) {
+    if (!isSplitPaymentPortal()) return camperHasConfirmedEnrollmentInWeek(weekId, camperId);
+    var pm = getPaymentPortalMode();
+    return activeEnrollmentRowsForCamperWeek(weekId, camperId).some(function (row) {
+      return paymentRailForEnrollmentRow(row) === pm;
+    });
   }
 
   /** Parent portal / registration: never use cached API responses (CDN or browser HTTP cache). */
@@ -4621,14 +4830,15 @@
     }
   }
 
-  /** All confirmed enrollment row ids for this camper+week (full or daily; sold-out Remove cancels every row). */
+  /** Active enrollment row ids for this camper+week (split portal: only rows for the current portal rail). */
   function confirmedEnrollmentIdsForCamperWeek(weekId, camperId) {
     const idSet = new Set();
     function considerRow(r) {
       if (!r || r.id == null) return;
-      if (r.status !== 'confirmed' && r.status !== 'pending_step_up') return;
+      if (r.status !== 'confirmed' && r.status !== 'pending_step_up' && r.status !== 'pending') return;
       if (String(r.camper_id) !== String(camperId)) return;
       if (String(r.week_id) !== String(weekId)) return;
+      if (isSplitPaymentPortal() && paymentRailForEnrollmentRow(r) !== getPaymentPortalMode()) return;
       idSet.add(String(r.id));
     }
     (confirmedEnrollmentsRaw || []).forEach(considerRow);
@@ -4644,9 +4854,10 @@
     const rows = (confirmedEnrollmentsRaw || []).filter(function (r) {
       return (
         r &&
-        (r.status === 'confirmed' || r.status === 'pending_step_up') &&
+        (r.status === 'confirmed' || r.status === 'pending_step_up' || r.status === 'pending') &&
         String(r.camper_id) === String(camperId) &&
         String(r.week_id) === String(weekId) &&
+        (!isSplitPaymentPortal() || paymentRailForEnrollmentRow(r) === getPaymentPortalMode()) &&
         (r.day_ids || []).some(function (id) {
           return String(id) === dk;
         })
@@ -6497,11 +6708,31 @@
       let st = map[wk];
       const conflictMsg = mode === 'full' ? fullWeekPaidDayConflictMessage(weekId, cid) : '';
       const paidWeekOwnChild =
-        mode === 'full' && weekBlocked && camperHasConfirmedEnrollmentInWeek(weekId, cid);
+        mode === 'full' && weekBlocked && camperHasSameRailEnrollmentInWeek(weekId, cid);
       const localInWeek = !!(st && st.has(cid));
       const soldOutOwnPick =
         mode === 'full' && weekBlocked && (paidWeekOwnChild || localInWeek);
       const offeredWaitlist = waitlistOfferActiveForCamperWeek(cid, weekId);
+      if (mode === 'full' && otherRailFullWeekEnrollment(weekId, cid)) {
+        cb.checked = true;
+        cb.disabled = true;
+        row.classList.add('week-kid-cb--portal-readonly');
+        row.title =
+          getPaymentPortalMode() === 'credit_card'
+            ? 'Step Up reservation — view only here. Use “Switch portal” for Step Up.'
+            : 'Credit card reservation — view only here. Use “Switch portal” for card checkout.';
+        inner.appendChild(cb);
+        const nameStackOw = document.createElement('div');
+        nameStackOw.className = 'week-kid-cb-namestack';
+        const spOw = document.createElement('span');
+        spOw.className = 'week-kid-cb-nameline';
+        spOw.textContent = c.first_name + ' ' + c.last_name;
+        nameStackOw.appendChild(spOw);
+        inner.appendChild(nameStackOw);
+        row.appendChild(inner);
+        wrap.appendChild(row);
+        return;
+      }
       if (mode === 'full' && conflictMsg && !paidWeekOwnChild) {
         if (st && st.has(cid)) {
           st.delete(cid);
@@ -6531,7 +6762,7 @@
       cb.addEventListener('change', function () {
         if (enrollDomApplyLock) return;
         const paidHere =
-          mode === 'full' && camperHasConfirmedEnrollmentInWeek(weekId, cid);
+          mode === 'full' && camperHasSameRailEnrollmentInWeek(weekId, cid);
         const inMapBefore = !!(map[wk] && map[wk].has(cid));
         const offerHere = waitlistOfferActiveForCamperWeek(cid, weekId);
         if (weekBlocked && mode === 'full' && cb.checked && !paidHere && !inMapBefore && !offerHere) {
@@ -7151,7 +7382,11 @@
           const dayBlocked = weekFull || atCap;
           function parentHasPaidOnThisDay() {
             return parentCampers.some(function (pc) {
-              return daysCoveredByConfirmedForCamperWeek(w.id, pc.id).has(String(d.id));
+              var didP = String(d.id);
+              if (isSplitPaymentPortal()) {
+                return sameRailCoversDay(w.id, pc.id, didP) || otherRailCoversDay(w.id, pc.id, didP);
+              }
+              return daysCoveredByConfirmedForCamperWeek(w.id, pc.id).has(didP);
             });
           }
           function parentHasDraftOnThisDay() {
@@ -7192,8 +7427,13 @@
               onDay.add(String(id));
             });
             parentCampers.forEach(function (pc) {
-              if (daysCoveredByConfirmedForCamperWeek(w.id, pc.id).has(did)) {
-                onDay.add(String(pc.id));
+              var pid = String(pc.id);
+              if (isSplitPaymentPortal()) {
+                if (sameRailCoversDay(w.id, pid, did) || otherRailCoversDay(w.id, pid, did)) {
+                  onDay.add(pid);
+                }
+              } else if (daysCoveredByConfirmedForCamperWeek(w.id, pid).has(did)) {
+                onDay.add(pid);
               }
             });
             const n = onDay.size;
@@ -7230,32 +7470,44 @@
           });
           parentCampers.forEach(function (c) {
             const cid = String(c.id);
-            const covered = daysCoveredByConfirmedForCamperWeek(w.id, cid);
-            const paidDayHere = covered.has(String(d.id));
+            const dkRow = String(d.id);
+            const sameRailPaidDay = sameRailCoversDay(w.id, cid, dkRow);
+            const otherRailViewDay = otherRailCoversDay(w.id, cid, dkRow);
+            const paidDayHere = sameRailPaidDay || otherRailViewDay;
             const st0 = getDayCamperSetMain(wk, d.id);
             const inDraft = !!(st0 && st0.has(cid));
             const offerB = waitlistOfferActiveForCamperWeek(cid, w.id);
             const row = document.createElement('div');
-            row.className = 'week-kid-cb' + (paidDayHere ? ' week-kid-cb--enrolled-day' : '');
+            row.className =
+              'week-kid-cb' +
+              (paidDayHere ? ' week-kid-cb--enrolled-day' : '') +
+              (otherRailViewDay ? ' week-kid-cb--portal-readonly' : '');
             const inner = document.createElement('label');
             inner.className = 'week-kid-cb-inner';
             const cb = document.createElement('input');
             cb.type = 'checkbox';
             cb.checked = paidDayHere || inDraft;
-            cb.disabled = paidDayHere || (dayBlocked && !inDraft && !offerB);
-            row.title = paidDayHere
-              ? 'Already registered or on Step Up hold this day — tap × to remove this day.'
-              : dayBlocked && !offerB
-                ? 'Sold out — cannot add children here.'
-                : offerB
-                  ? 'Waitlist spot — select days and checkout within 24 hours.'
-                  : '';
+            cb.disabled =
+              otherRailViewDay ||
+              sameRailPaidDay ||
+              (dayBlocked && !inDraft && !offerB);
+            row.title = otherRailViewDay
+              ? getPaymentPortalMode() === 'credit_card'
+                ? 'Step Up — view only in this portal. Use “Switch portal”.'
+                : 'Paid by card — view only in this portal. Use “Switch portal”.'
+              : sameRailPaidDay
+                ? 'Already registered or on hold this day — tap × to remove this day.'
+                : dayBlocked && !offerB
+                  ? 'Sold out — cannot add children here.'
+                  : offerB
+                    ? 'Waitlist spot — select days and checkout within 24 hours.'
+                    : '';
             cb.addEventListener('click', function (ev) {
               ev.stopPropagation();
             });
             cb.addEventListener('change', function () {
               if (enrollDomApplyLock) return;
-              if (paidDayHere) return;
+              if (otherRailViewDay || sameRailPaidDay) return;
               if (dayBlocked && !inDraft && !offerB) return;
               const set = ensureDayCamperSetMain(wk, d.id);
               const dk = String(d.id);
@@ -7289,7 +7541,7 @@
             inner.appendChild(cb);
             inner.appendChild(sp);
             row.appendChild(inner);
-            if (paidDayHere) {
+            if (sameRailPaidDay) {
               const rm = document.createElement('button');
               rm.type = 'button';
               rm.className = 'week-kid-remove';
