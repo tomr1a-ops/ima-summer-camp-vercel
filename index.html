@@ -7110,6 +7110,32 @@
     const totalRow = document.getElementById('total-row');
     const btn = document.getElementById('checkout-btn');
     const msg = document.getElementById('msg');
+    try {
+      queueMicrotask(function () {
+        var btnDbg = document.getElementById('checkout-btn');
+        var agreeChkDbg = document.getElementById('camp-agreement-accept');
+        var agreementOkDbg = !!(agreeChkDbg && agreeChkDbg.checked);
+        var pmPickDbg = document.getElementById('payment-method-select');
+        var pmValDbg =
+          getPaymentPortalMode() === 'step_up'
+            ? 'step_up'
+            : getPaymentPortalMode() === 'credit_card'
+              ? 'credit_card'
+              : pmPickDbg && pmPickDbg.value === 'step_up'
+                ? 'step_up'
+                : pmPickDbg && pmPickDbg.value === 'credit_card'
+                  ? 'credit_card'
+                  : '';
+        var paymentOkDbg = pmValDbg === 'credit_card' || pmValDbg === 'step_up';
+        console.log('[IMA updateSummaryImmediate]', {
+          'collectBookings().length': collectBookings().length,
+          paymentOk: paymentOkDbg,
+          agreementOk: agreementOkDbg,
+          'btn.disabled': !!(btnDbg && btnDbg.disabled),
+          paymentPortalMode: getPaymentPortalMode(),
+        });
+      });
+    } catch (eHoldDbg) {}
     var freezeStepUpHoldOkBanner =
       msg &&
       session &&
