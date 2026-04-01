@@ -1,0 +1,261 @@
+const { serviceClient } = require('./lib/supabase');
+const { getUserFromRequest } = require('./lib/auth');
+const { setNoStoreJsonHeaders } = require('./lib/http-no-store');
+const {
+  validateBooking,
+  syncConfirmedDayCounts,
+  loadOrderedDaysForWeek,
+  camperHasEnrollmentInWeek,
+} = require('./lib/capacity');
+const {
+  campCreditCentsForConfirmedRow,
+  campCreditBucketForConfirmedRow,
+  addFamilyCampLedgerWeekCents,
+  addFamilyCampLedgerDayCents,
+  ledgerPaymentMethodForEnrollment,
+} = require('./lib/family-camp-ledger');
+const { enrollmentQualifiesForCampCredit } = require('./lib/enrollment-credit-eligibility');
+const { ENROLLMENT_STATUS } = require('./lib/enrollment-status');
+const { tryPromoteWaitlistAfterEnrollmentRemoved, notifyWaitlistOffer } = require('./lib/waitlist-service');
+
+async function readJsonBody(req) {
+  if (req.body !== undefined && req.body !== null) {
+    if (Buffer.isBuffer(req.body)) {
+      try {
+        return JSON.parse(req.body.toString('utf8') || '{}');
+      } catch {
+        return {};
+      }
+    }
+    if (typeof req.body === 'string') {
+      try {
+        return JSON.parse(req.body || '{}');
+      } catch {
+        return {};
+      }
+    }
+    if (typeof req.body === 'object') return req.body;
+  }
+  const chunks = [];
+  try {
+    for await (const chunk of req) chunks.push(chunk);
+  } catch {
+    return {};
+  }
+  const raw = Buffer.concat(chunks).toString('utf8');
+  if (!raw) return {};
+  return JSON.parse(raw);
+}
+
+function enrollmentRowPaidViaStripe(row) {
+  if (!row) return false;
+  if (row.stripe_session_id != null && String(row.stripe_session_id).trim() !== '') return true;
+  if (row.checkout_batch_id != null && String(row.checkout_batch_id).trim() !== '') return true;
+  return false;
+}
+
+function isCcPortalManageableRow(row) {
+  if (!row) return false;
+  const st = String(row.status || '');
+  if (st === 'pending_step_up') return false;
+  if (st === 'cancelled') return false;
+  if (st === 'pending') return true;
+  if (st === ENROLLMENT_STATUS.CONFIRMED) return enrollmentRowPaidViaStripe(row);
+  return false;
+}
+
+function rowCoversFullWeek(row, orderedDayIds) {
+  if (!orderedDayIds || orderedDayIds.length !== 5) return false;
+  const set = new Set((row.day_ids || []).map((x) => String(x)));
+  return orderedDayIds.every((id) => set.has(String(id)));
+}
+
+async function inferPricingModeForWeek(sb, weekId, dayIds) {
+  const ids = Array.isArray(dayIds) ? dayIds : [];
+  const allDays = await loadOrderedDaysForWeek(sb, weekId);
+  if (allDays.length !== 5 || ids.length !== 5) return 'daily';
+  const expectedIds = allDays.map((d) => d.id).sort().join(',');
+  const gotIds = [...ids].sort().join(',');
+  return expectedIds === gotIds ? 'full_week' : 'daily';
+}
+
+async function cancelEnrollmentRow(sb, user, row) {
+  if (row.status === ENROLLMENT_STATUS.CONFIRMED || row.status === ENROLLMENT_STATUS.PENDING_STEP_UP) {
+    await syncConfirmedDayCounts(sb, row.day_ids || [], []);
+    if (row.status === ENROLLMENT_STATUS.PENDING_STEP_UP) {
+      try {
+        const cents = await campCreditCentsForConfirmedRow(sb, row, false);
+        if (cents > 0) {
+          const bucket = await campCreditBucketForConfirmedRow(sb, row);
+          if (bucket === 'week') await addFamilyCampLedgerWeekCents(sb, user.id, cents, 'step_up');
+          else await addFamilyCampLedgerDayCents(sb, user.id, cents, 'step_up');
+        }
+      } catch (credErr) {
+        console.error('[cc-portal-commit] step_up hold credit', credErr && credErr.message);
+      }
+    } else if (enrollmentQualifiesForCampCredit(row)) {
+      try {
+        const cents = await campCreditCentsForConfirmedRow(sb, row, false);
+        if (cents > 0) {
+          const bucket = await campCreditBucketForConfirmedRow(sb, row);
+          const pm = ledgerPaymentMethodForEnrollment(row);
+          if (bucket === 'week') await addFamilyCampLedgerWeekCents(sb, user.id, cents, pm);
+          else await addFamilyCampLedgerDayCents(sb, user.id, cents, pm);
+        }
+      } catch (credErr) {
+        console.error('[cc-portal-commit] ledger credit', credErr && credErr.message);
+      }
+    }
+  }
+  const { error: ue } = await sb
+    .from('enrollments')
+    .update({ status: ENROLLMENT_STATUS.CANCELLED })
+    .eq('id', row.id);
+  if (ue) throw ue;
+  if (
+    row.week_id &&
+    (row.status === ENROLLMENT_STATUS.CONFIRMED ||
+      row.status === ENROLLMENT_STATUS.PENDING_STEP_UP ||
+      row.status === ENROLLMENT_STATUS.PENDING)
+  ) {
+    try {
+      const nid = await tryPromoteWaitlistAfterEnrollmentRemoved(sb, row.week_id);
+      if (nid) await notifyWaitlistOffer(sb, nid);
+    } catch (wlE) {
+      console.error('[cc-portal-commit] waitlist', wlE && wlE.message);
+    }
+  }
+}
+
+function pairKey(weekId, camperId) {
+  return String(weekId) + '|' + String(camperId);
+}
+
+module.exports = async (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  setNoStoreJsonHeaders(res);
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    return res.status(204).end();
+  }
+  if (req.method !== 'POST') {
+    res.statusCode = 405;
+    return res.end(JSON.stringify({ error: 'Method not allowed' }));
+  }
+
+  try {
+    const { user } = await getUserFromRequest(req);
+    if (!user) {
+      res.statusCode = 401;
+      return res.end(JSON.stringify({ error: 'Unauthorized' }));
+    }
+
+    const body = await readJsonBody(req);
+    const selectedWeeks = body && body.selectedWeeks;
+    if (!selectedWeeks || typeof selectedWeeks !== 'object' || Array.isArray(selectedWeeks)) {
+      res.statusCode = 400;
+      return res.end(JSON.stringify({ error: 'selectedWeeks object required (weekId -> camperId[])' }));
+    }
+
+    const sb = serviceClient();
+    const { data: enrollments, error: enrErr } = await sb
+      .from('enrollments')
+      .select('*')
+      .eq('parent_id', user.id)
+      .order('created_at', { ascending: false });
+    if (enrErr) throw enrErr;
+
+    const dayListCache = new Map();
+    async function dayIdsForWeek(weekId) {
+      const k = String(weekId);
+      if (dayListCache.has(k)) return dayListCache.get(k);
+      const days = await loadOrderedDaysForWeek(sb, weekId);
+      const ids = (days || []).map((d) => d.id);
+      dayListCache.set(k, ids);
+      return ids;
+    }
+
+    const desired = new Set();
+    for (const wId of Object.keys(selectedWeeks)) {
+      const arr = selectedWeeks[wId];
+      if (!Array.isArray(arr)) continue;
+      for (let i = 0; i < arr.length; i++) {
+        desired.add(pairKey(wId, arr[i]));
+      }
+    }
+
+    const manageableFullWeekRows = [];
+    for (const row of enrollments || []) {
+      if (!isCcPortalManageableRow(row)) continue;
+      const dlist = await dayIdsForWeek(row.week_id);
+      if (!rowCoversFullWeek(row, dlist)) continue;
+      manageableFullWeekRows.push(row);
+    }
+
+    const currentKeys = new Set(manageableFullWeekRows.map((r) => pairKey(r.week_id, r.camper_id)));
+    const toCancel = manageableFullWeekRows.filter((r) => !desired.has(pairKey(r.week_id, r.camper_id)));
+
+    const toAdd = [];
+    for (const key of desired) {
+      if (currentKeys.has(key)) continue;
+      const pipe = key.indexOf('|');
+      const weekId = key.slice(0, pipe);
+      const camperId = key.slice(pipe + 1);
+      const { data: camper, error: ce } = await sb.from('campers').select('parent_id').eq('id', camperId).single();
+      if (ce || !camper || String(camper.parent_id) !== String(user.id)) {
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ error: 'Invalid camper in selection' }));
+      }
+      const hasOther = await camperHasEnrollmentInWeek(sb, weekId, camperId, null);
+      if (hasOther) {
+        res.statusCode = 400;
+        return res.end(
+          JSON.stringify({
+            error:
+              'One or more selections conflict with an existing registration (e.g. Step Up). Use camp registration to adjust.',
+          })
+        );
+      }
+      toAdd.push({ weekId, camperId });
+    }
+
+    for (let i = 0; i < toCancel.length; i++) {
+      await cancelEnrollmentRow(sb, user, toCancel[i]);
+    }
+
+    for (let j = 0; j < toAdd.length; j++) {
+      const { weekId, camperId } = toAdd[j];
+      const dayIds = await dayIdsForWeek(weekId);
+      if (dayIds.length !== 5) {
+        res.statusCode = 400;
+        return res.end(JSON.stringify({ error: 'Week must have five camp days' }));
+      }
+      const pricingMode = await inferPricingModeForWeek(sb, weekId, dayIds);
+      await validateBooking(sb, {
+        weekId,
+        dayIds,
+        camperId,
+        excludeEnrollmentId: null,
+        pricingMode,
+      });
+      const { error: insE } = await sb.from('enrollments').insert({
+        parent_id: user.id,
+        camper_id: camperId,
+        week_id: weekId,
+        day_ids: dayIds,
+        status: ENROLLMENT_STATUS.PENDING,
+        price_paid: 0,
+        registration_fee_paid: false,
+      });
+      if (insE) throw insE;
+    }
+
+    res.statusCode = 200;
+    return res.end(JSON.stringify({ ok: true }));
+  } catch (e) {
+    const code = e.statusCode || 500;
+    res.statusCode = code;
+    return res.end(JSON.stringify({ error: e.message || 'Server error' }));
+  }
+};

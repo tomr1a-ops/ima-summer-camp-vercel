@@ -7,58 +7,110 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
   <title>Credit card portal — IMA Summer Camp</title>
+  <link rel="stylesheet" href="/css/ima-theme.css" />
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      min-height: 100vh;
-      background: #050505;
-      color: #b8b8b8;
-      font-family: system-ui, sans-serif;
-      display: grid;
-      place-items: center;
-      padding: 24px;
-      text-align: center;
+    .cc-wrap { max-width: 720px; margin: 0 auto; padding: 20px 16px 48px; color: #c8c8c8; }
+    .cc-head { margin-bottom: 20px; }
+    .cc-head h1 {
+      font-family: var(--font-display);
+      font-size: clamp(26px, 5vw, 36px);
+      letter-spacing: 0.06em;
+      color: var(--cyan);
+      margin-bottom: 8px;
     }
-    #msg { font-size: 15px; max-width: 360px; line-height: 1.5; }
-    #msg.error { color: #ffb4b4; }
+    .cc-head p { font-size: 14px; line-height: 1.5; color: #888; }
+    .cc-banner {
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--cyan);
+      border: 1px solid rgba(0, 229, 204, 0.35);
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 18px;
+      background: rgba(0, 229, 204, 0.06);
+    }
+    #cc-total {
+      font-family: var(--font-cond);
+      font-size: 18px;
+      color: #f0f0f0;
+      margin: 16px 0 20px;
+      padding: 14px 16px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+    }
+    .cc-week-grid { display: flex; flex-direction: column; gap: 14px; }
+    .cc-week-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      background: rgba(0, 0, 0, 0.35);
+    }
+    .cc-week-card--full { opacity: 0.72; }
+    .cc-week-card-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
+    .cc-week-title { font-family: var(--font-cond); font-weight: 700; color: #eee; font-size: 15px; }
+    .cc-sold-out {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #ffb4b4;
+    }
+    .cc-kids { display: flex; flex-direction: column; gap: 8px; }
+    .cc-kid-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .cc-kid-row input { width: 18px; height: 18px; accent-color: var(--cyan); }
+    #cc-proceed {
+      width: 100%;
+      margin-top: 24px;
+      padding: 16px 20px;
+      border: none;
+      border-radius: 8px;
+      font-family: var(--font-display);
+      font-size: 17px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      cursor: pointer;
+      background: linear-gradient(135deg, var(--cyan), var(--blue));
+      color: #000;
+    }
+    #cc-proceed:disabled { opacity: 0.45; cursor: not-allowed; }
+    .cc-foot { margin-top: 18px; text-align: center; font-size: 13px; }
+    .cc-foot a { color: var(--cyan); }
+    .cc-msg { margin-top: 12px; font-size: 14px; min-height: 1.2em; }
+    .cc-msg--err { color: #ffb4b4; }
+    #cc-loading { text-align: center; padding: 40px 16px; color: #888; }
   </style>
 </head>
-<body>
-  <noscript>
-    <p id="msg">Turn on JavaScript to open the credit card portal.</p>
-  </noscript>
-  <p id="msg" style="opacity:0.65;font-size:14px">Loading…</p>
+<body style="background: #050505; min-height: 100vh">
+  <noscript><p style="padding: 24px; color: #888">Turn on JavaScript.</p></noscript>
+  <div id="cc-loading">Loading…</div>
+  <div id="cc-main" class="cc-wrap" hidden>
+    <div class="cc-head">
+      <h1>Credit card portal</h1>
+      <p>
+        Choose full weeks below. Changes stay on this device until you proceed — no server updates while you tap.
+        Totals are estimates from list prices only (credits apply after you continue).
+      </p>
+    </div>
+    <div class="cc-banner">Stripe / card checkout — Step Up spots are managed in the Step Up portal.</div>
+    <div id="cc-total">$0.00</div>
+    <div id="cc-weeks-mount"></div>
+    <p id="cc-msg" class="cc-msg" role="status"></p>
+    <button type="button" id="cc-proceed">Proceed to checkout</button>
+    <div class="cc-foot">
+      <a href="#" id="cc-switch">Switch portal</a>
+      &nbsp;·&nbsp;
+      <a href="/index.html?paymentPortal=credit_card#account">My kids</a>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.48.1/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
   <script src="/js/ima-core.js?v=20260409"></script>
-  <script>
-(function () {
-  var checkboxOperationsInFlight = new Set();
-  window.checkboxOperationsInFlight = checkboxOperationsInFlight;
-  var msg = document.getElementById('msg');
-  async function go() {
-    try {
-      await IMA.getSupabase();
-      var session = await IMA.getSession();
-      if (!session || !session.user || !session.user.id) {
-        location.replace('/login.html?return=' + encodeURIComponent('/cc-portal.html'));
-        return;
-      }
-      if (typeof IMA.refreshSessionForApi === 'function') {
-        try {
-          var ref = await IMA.refreshSessionForApi();
-          if (ref && ref.session) session = ref.session;
-        } catch (eR) {}
-      }
-      var id = encodeURIComponent(session.user.id);
-      location.replace('/index.html?parent_id=' + id + '&paymentPortal=credit_card#schedule');
-    } catch (e) {
-      if (msg) {
-        msg.className = 'error';
-        msg.textContent = (e && e.message) || 'Could not open the credit card portal.';
-      }
-    }
-  }
-  go();
-})();
-  </script>
+  <script src="/js/cc-portal-weeks.js?v=20260331"></script>
 </body>
 </html>
