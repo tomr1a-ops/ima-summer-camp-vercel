@@ -5186,7 +5186,11 @@
         fullWeekKey.add(k);
         /* Match checkout-step-up.js / daily flow: Step Up rail always bills full-week checkboxes even if
            enrollmentType stayed "daily" in storage (fixes single-week hold with wrong tab flag). */
-        if (enrollmentType === 'full' || currentCheckoutPaymentMethod() === 'step_up') {
+        if (
+          enrollmentType === 'full' ||
+          getPaymentPortalMode() === 'step_up' ||
+          currentCheckoutPaymentMethod() === 'step_up'
+        ) {
           var lineFw = { weekId: w.id, dayIds: ids, pricingMode: 'full_week', camperId: cid };
           var wlIdFw = waitlistOfferIdForCheckout(cid, w.id);
           if (wlIdFw) lineFw.waitlistEntryId = wlIdFw;
