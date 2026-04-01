@@ -31,6 +31,8 @@
   <script src="/js/ima-core.js?v=20260409"></script>
   <script>
 (function () {
+  var creditCardCheckoutInProgress = false;
+  window.creditCardCheckoutInProgress = creditCardCheckoutInProgress;
   var msg = document.getElementById('msg');
   async function go() {
     try {
