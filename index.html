@@ -6003,10 +6003,9 @@
     if (paySection) paySection.hidden = false;
     var pmSelRestore = document.getElementById('payment-method-select');
     if (pmSelRestore && !checkoutEmbedMode) {
-      var pmSav = readCampPaymentMethodOk();
-      if (pmSav === 'step_up' || pmSav === 'credit_card') {
-        pmSelRestore.value = pmSav;
-      }
+      /* Main portal: card vs Step Up is chosen only via the two buttons (standalone checkout pages).
+         Do not restore session payment method — stale step_up showed #step-up-notice without tapping Pay with Step Up. */
+      pmSelRestore.selectedIndex = 0;
     }
 
     var stepUpHeldAddon = pendingStepUpHoldAddonForBookings(bookings);
