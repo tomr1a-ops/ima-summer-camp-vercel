@@ -8011,6 +8011,21 @@
           if (mode === 'full') {
             clearDailyForCamperWeek(wk, cid);
             clearFullWeekHydrateDismiss(wk, cid);
+            if (!paidHere) {
+              try {
+                var fwDbg = {};
+                Object.keys(fullWeekCampersByWeek).forEach(function (k) {
+                  var stDbg = fullWeekCampersByWeek[k];
+                  fwDbg[k] = stDbg && stDbg.forEach ? Array.from(stDbg) : stDbg;
+                });
+                console.log('[IMA buildWeekCamperCheckboxes full-week check]', {
+                  fullWeekCampersByWeek: fwDbg,
+                  collectBookings: collectBookings(),
+                });
+              } catch (eFwCbLog) {
+                console.log('[IMA buildWeekCamperCheckboxes full-week check]', fullWeekCampersByWeek, collectBookings());
+              }
+            }
           }
         } else {
           s.delete(cid);
