@@ -141,15 +141,6 @@
   .week-kid-cb--portal-readonly .week-kid-cb-inner {
     cursor: not-allowed;
   }
-  .week-kid-cb--cc-delete-pending {
-    opacity: 0.42;
-    pointer-events: none;
-    filter: grayscale(0.35);
-  }
-  .week-kid-cb--cc-delete-pending .week-kid-cb-inner {
-    cursor: wait;
-  }
-
   body::before {
     content: '';
     position: fixed; inset: 0;
@@ -2761,13 +2752,16 @@
   const dailyExpandedKeysMain = new Set();
   /** Ignore checkbox `change` while rebuilding week/day DOM (browsers sometimes fire it and wipe selections when toggling weekly/daily). */
   let enrollDomApplyLock = false;
-  /** Credit card portal: block schedule/summary re-renders while a week enrollment DELETE is in flight. */
-  var creditCardCheckoutInProgress = false;
+  /** Credit card portal: weekId|camperId keys with a checkbox delete/sync in flight. */
+  var checkboxOperationsInFlight = new Set();
   try {
-    window.creditCardCheckoutInProgress = false;
-  } catch (eWccInit) {}
-  function ccPortalWeekDeleteLockActive() {
-    return creditCardCheckoutInProgress && getPaymentPortalMode() === 'credit_card';
+    window.checkboxOperationsInFlight = checkboxOperationsInFlight;
+  } catch (eCbFlInit) {}
+  function checkboxOpKey(weekId, camperId) {
+    return String(weekId) + '|' + String(camperId);
+  }
+  function ccPortalCheckboxOpLockActive() {
+    return getPaymentPortalMode() === 'credit_card' && checkboxOperationsInFlight.size > 0;
   }
   /** @type {{ id: string, first_name: string, last_name: string }[]} */
   let parentCampers = [];
@@ -2826,6 +2820,7 @@
   let serverPrepaidApply = null;
   let serverPrepaidTimer = null;
   let serverPrepaidFetchGen = 0;
+  var pricingRefreshDebounce = null;
   const API_ADD_CAMPER = '/api/add-camper';
   const ENROLL_SS = 'ima_reg_enroll_v1';
   /** Survives post-checkout enroll draft wipe; value = IMA member checkbox checked (waive fee when still applicable). */
@@ -3489,7 +3484,7 @@
 
   function refreshScheduleUiAfterEnrollStorageChange(skipSummary) {
     try {
-      if (ccPortalWeekDeleteLockActive()) return;
+      if (ccPortalCheckboxOpLockActive()) return;
       renderFullWeeks();
       renderDailyWeeks();
       renderRegFeeCamperBoxes();
@@ -4857,7 +4852,7 @@
     parentEnrollmentsRefreshTimer = setTimeout(function () {
       parentEnrollmentsRefreshTimer = null;
       if (!session) return;
-      if (ccPortalWeekDeleteLockActive()) return;
+      if (ccPortalCheckboxOpLockActive()) return;
       if (Date.now() < suppressEnrollmentRealtimeRefreshUntil) return;
       void refreshConfirmedEnrollmentsFromServer()
         .then(function () {
@@ -5874,7 +5869,7 @@
    */
   async function refreshPricingPreview(opts) {
     if (stepUpSaveInProgress) return false;
-    if (ccPortalWeekDeleteLockActive()) return false;
+    if (ccPortalCheckboxOpLockActive()) return false;
     opts = opts || {};
     var skipScheduleDom = !!opts.skipScheduleDom;
     var summaryUpdatedInFinally = false;
@@ -5953,10 +5948,48 @@
 
   /** Fire-and-forget preview refresh; ensures updateSummary runs if preview skipped it (Step Up stable-total path). */
   function voidRefreshPricingPreviewMaybeSummary(opts) {
-    if (ccPortalWeekDeleteLockActive()) return;
+    if (ccPortalCheckboxOpLockActive()) return;
     void refreshPricingPreview(opts).then(function (ran) {
       if (!ran) updateSummary();
     });
+  }
+
+  function cancelCreditRecalculationTimers() {
+    cancelStepUpSummaryCoalesce();
+    try {
+      if (pricingRefreshDebounce != null) {
+        clearTimeout(pricingRefreshDebounce);
+        pricingRefreshDebounce = null;
+      }
+    } catch (eCr1) {}
+    try {
+      if (serverPrepaidTimer) {
+        clearTimeout(serverPrepaidTimer);
+        serverPrepaidTimer = null;
+      }
+    } catch (eCr2) {}
+    try {
+      if (summaryImmediateRaf != null) {
+        cancelAnimationFrame(summaryImmediateRaf);
+        summaryImmediateRaf = null;
+      }
+    } catch (eCr3) {}
+    try {
+      if (zeroBalanceAutoSaveTimer) {
+        clearTimeout(zeroBalanceAutoSaveTimer);
+        zeroBalanceAutoSaveTimer = null;
+      }
+    } catch (eCr4) {}
+  }
+
+  async function refreshFromServer() {
+    await refreshAfterEnrollmentMutation();
+    hydrateSelectionFromConfirmedEnrollments();
+    try {
+      persistEnrollLocal();
+    } catch (eRf) {}
+    var ranRf = await refreshPricingPreview({ skipScheduleDom: false });
+    if (!ranRf) updateSummary();
   }
 
   function scheduleServerPrepaidApply() {
@@ -6012,7 +6045,7 @@
   var summaryImmediateRaf = null;
   function scheduleUpdateSummaryImmediateNow() {
     if (stepUpSaveInProgress) return;
-    if (ccPortalWeekDeleteLockActive()) return;
+    if (ccPortalCheckboxOpLockActive()) return;
     if (summaryImmediateRaf != null) return;
     summaryImmediateRaf = requestAnimationFrame(function () {
       summaryImmediateRaf = null;
@@ -6021,7 +6054,7 @@
   }
   function scheduleUpdateSummaryImmediate() {
     if (stepUpSaveInProgress) return;
-    if (ccPortalWeekDeleteLockActive()) return;
+    if (ccPortalCheckboxOpLockActive()) return;
     if (stepUpHoldOrderUsesStableServerTotal()) {
       if (stepUpSummaryCoalesceTimer) clearTimeout(stepUpSummaryCoalesceTimer);
       stepUpSummaryCoalesceTimer = setTimeout(function () {
@@ -6244,7 +6277,7 @@
 
   function updateSummaryImmediate() {
     if (stepUpSaveInProgress) return;
-    if (ccPortalWeekDeleteLockActive()) return;
+    if (ccPortalCheckboxOpLockActive()) return;
     syncEmbedPaymentSelect();
     updateEnrollmentGate();
     renderScheduleOverview();
@@ -6862,6 +6895,11 @@
         if (!cb.checked && paidHere && mode === 'full') {
           if (getPaymentPortalMode() === 'credit_card') {
             void (async function () {
+              var opK = checkboxOpKey(weekId, cid);
+              if (checkboxOperationsInFlight.has(opK)) {
+                cb.checked = true;
+                return;
+              }
               var tokRm = await freshAccessTokenForApi();
               var idsSnap = confirmedEnrollmentIdsForCamperWeek(weekId, cid);
               if (!tokRm || !idsSnap.length) {
@@ -6873,75 +6911,28 @@
                 }
                 return;
               }
-              creditCardCheckoutInProgress = true;
-              try {
-                window.creditCardCheckoutInProgress = true;
-              } catch (eWcc1) {}
+              checkboxOperationsInFlight.add(opK);
               cb.disabled = true;
-              row.classList.add('week-kid-cb--cc-delete-pending');
+              cancelCreditRecalculationTimers();
+              var resultCc = { ok: false };
               try {
-                var resultCc = await deleteEnrollmentIdsByApi(tokRm, idsSnap);
-                if (!resultCc.ok) {
-                  await refreshAfterEnrollmentMutation();
-                  hydrateSelectionFromConfirmedEnrollments();
-                  try {
-                    persistEnrollLocal();
-                  } catch (eP2Cc) {}
-                  creditCardCheckoutInProgress = false;
-                  try {
-                    window.creditCardCheckoutInProgress = false;
-                  } catch (eWcc2) {}
-                  row.classList.remove('week-kid-cb--cc-delete-pending');
-                  cb.checked = true;
-                  cb.disabled = false;
-                  var ranCbECc = await refreshPricingPreview({ skipScheduleDom: false });
-                  if (!ranCbECc) updateSummary();
-                  var msgErrCc = document.getElementById('msg');
-                  if (msgErrCc) {
-                    msgErrCc.className = 'msg error';
-                    msgErrCc.textContent =
-                      'Could not remove that registration. Try again or contact IMA.';
-                  }
-                  return;
+                resultCc = await deleteEnrollmentIdsByApi(tokRm, idsSnap);
+              } catch (eDelCc) {
+                resultCc = { ok: false };
+              } finally {
+                checkboxOperationsInFlight.delete(opK);
+              }
+              await refreshFromServer();
+              var msgCc = document.getElementById('msg');
+              if (!resultCc || !resultCc.ok) {
+                if (msgCc) {
+                  msgCc.className = 'msg error';
+                  msgCc.textContent =
+                    'Could not remove that registration. Try again or contact IMA.';
                 }
-                await refreshAfterEnrollmentMutation();
-                hydrateSelectionFromConfirmedEnrollments();
-                try {
-                  persistEnrollLocal();
-                } catch (ePl3Cc) {}
-                creditCardCheckoutInProgress = false;
-                try {
-                  window.creditCardCheckoutInProgress = false;
-                } catch (eWcc3) {}
-                row.classList.remove('week-kid-cb--cc-delete-pending');
-                var ranOkCc = await refreshPricingPreview({ skipScheduleDom: false });
-                if (!ranOkCc) updateSummary();
-                var msgOkCc = document.getElementById('msg');
-                if (msgOkCc) {
-                  msgOkCc.className = 'msg';
-                  msgOkCc.textContent = '';
-                }
-              } catch (eRemCc) {
-                await refreshAfterEnrollmentMutation();
-                hydrateSelectionFromConfirmedEnrollments();
-                try {
-                  persistEnrollLocal();
-                } catch (ePlExCc) {}
-                creditCardCheckoutInProgress = false;
-                try {
-                  window.creditCardCheckoutInProgress = false;
-                } catch (eWcc4) {}
-                row.classList.remove('week-kid-cb--cc-delete-pending');
-                cb.checked = true;
-                cb.disabled = false;
-                var ranExCc = await refreshPricingPreview({ skipScheduleDom: false });
-                if (!ranExCc) updateSummary();
-                var msgExCc = document.getElementById('msg');
-                if (msgExCc) {
-                  msgExCc.className = 'msg error';
-                  msgExCc.textContent =
-                    (eRemCc && eRemCc.message) || 'Could not remove that registration. Try again or contact IMA.';
-                }
+              } else if (msgCc) {
+                msgCc.className = 'msg';
+                msgCc.textContent = '';
               }
             })();
             return;
@@ -7072,73 +7063,31 @@
               return;
             }
             if (getPaymentPortalMode() === 'credit_card') {
-              creditCardCheckoutInProgress = true;
-              try {
-                window.creditCardCheckoutInProgress = true;
-              } catch (eWRm1) {}
+              var opKRm = checkboxOpKey(weekId, cid);
+              if (checkboxOperationsInFlight.has(opKRm)) return;
+              checkboxOperationsInFlight.add(opKRm);
               rm.disabled = true;
-              row.classList.add('week-kid-cb--cc-delete-pending');
+              cb.disabled = true;
+              cancelCreditRecalculationTimers();
+              var resultRmCc = { ok: false };
               try {
-                var resultRmCc = await deleteEnrollmentIdsByApi(tokRm, idsSnap);
-                if (!resultRmCc.ok) {
-                  await refreshAfterEnrollmentMutation();
-                  hydrateSelectionFromConfirmedEnrollments();
-                  try {
-                    persistEnrollLocal();
-                  } catch (eP2RmCc) {}
-                  creditCardCheckoutInProgress = false;
-                  try {
-                    window.creditCardCheckoutInProgress = false;
-                  } catch (eWRm2) {}
-                  row.classList.remove('week-kid-cb--cc-delete-pending');
-                  rm.disabled = false;
-                  var ranRmECc = await refreshPricingPreview({ skipScheduleDom: false });
-                  if (!ranRmECc) updateSummary();
-                  var msgElRmCc = document.getElementById('msg');
-                  if (msgElRmCc) {
-                    msgElRmCc.className = 'msg error';
-                    msgElRmCc.textContent =
-                      'Could not remove that registration. Try again or contact IMA.';
-                  }
-                  return;
+                resultRmCc = await deleteEnrollmentIdsByApi(tokRm, idsSnap);
+              } catch (eRmCcDel) {
+                resultRmCc = { ok: false };
+              } finally {
+                checkboxOperationsInFlight.delete(opKRm);
+              }
+              await refreshFromServer();
+              var msgRmCc = document.getElementById('msg');
+              if (!resultRmCc || !resultRmCc.ok) {
+                if (msgRmCc) {
+                  msgRmCc.className = 'msg error';
+                  msgRmCc.textContent =
+                    'Could not remove that registration. Try again or contact IMA.';
                 }
-                await refreshAfterEnrollmentMutation();
-                hydrateSelectionFromConfirmedEnrollments();
-                try {
-                  persistEnrollLocal();
-                } catch (ePl3RmCc) {}
-                creditCardCheckoutInProgress = false;
-                try {
-                  window.creditCardCheckoutInProgress = false;
-                } catch (eWRm3) {}
-                row.classList.remove('week-kid-cb--cc-delete-pending');
-                var ranRmOkCc = await refreshPricingPreview({ skipScheduleDom: false });
-                if (!ranRmOkCc) updateSummary();
-                var msgOkRmCc = document.getElementById('msg');
-                if (msgOkRmCc) {
-                  msgOkRmCc.className = 'msg';
-                  msgOkRmCc.textContent = '';
-                }
-              } catch (eRemRmCc) {
-                await refreshAfterEnrollmentMutation();
-                hydrateSelectionFromConfirmedEnrollments();
-                try {
-                  persistEnrollLocal();
-                } catch (ePlRmCcX) {}
-                creditCardCheckoutInProgress = false;
-                try {
-                  window.creditCardCheckoutInProgress = false;
-                } catch (eWRm4) {}
-                row.classList.remove('week-kid-cb--cc-delete-pending');
-                rm.disabled = false;
-                var ranRmXCc = await refreshPricingPreview({ skipScheduleDom: false });
-                if (!ranRmXCc) updateSummary();
-                var msgExRmCc = document.getElementById('msg');
-                if (msgExRmCc) {
-                  msgExRmCc.className = 'msg error';
-                  msgExRmCc.textContent =
-                    (eRemRmCc && eRemRmCc.message) || 'Could not remove that registration. Try again or contact IMA.';
-                }
+              } else if (msgRmCc) {
+                msgRmCc.className = 'msg';
+                msgRmCc.textContent = '';
               }
               return;
             }
@@ -7355,7 +7304,7 @@
   }
 
   function renderFullWeeks() {
-    if (ccPortalWeekDeleteLockActive()) return;
+    if (ccPortalCheckboxOpLockActive()) return;
     pruneConflictingFullWeekSelections();
     pruneFullWeekCampersUnknownToParent();
     weeksPayload.forEach(normalizeWeekCapacityFromDays);
@@ -7503,7 +7452,7 @@
   }
 
   function renderDailyWeeks() {
-    if (ccPortalWeekDeleteLockActive()) return;
+    if (ccPortalCheckboxOpLockActive()) return;
     weeksPayload.forEach(normalizeWeekCapacityFromDays);
     const mount = document.getElementById('weeks-mount-daily');
     const loadEl = document.getElementById('weeks-loading-daily');
@@ -8949,7 +8898,6 @@
 
   initRegTabs();
 
-  var pricingRefreshDebounce = null;
   function schedulePricingRefreshFromNav() {
     clearTimeout(pricingRefreshDebounce);
     pricingRefreshDebounce = setTimeout(function () {
