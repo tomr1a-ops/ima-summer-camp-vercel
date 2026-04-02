@@ -1466,7 +1466,7 @@
         document.addEventListener('visibilitychange', function () {
           if (document.visibilityState === 'visible') scheduleAdminRefresh();
         });
-        var tables = ['enrollments', 'campers', 'days', 'weeks', 'waitlist', 'agreement_records'];
+        var tables = ['enrollments', 'campers', 'days', 'weeks', 'waitlist'];
         var ch = sb.channel('ima-admin-camp-live');
         tables.forEach(function (table) {
           ch.on(
