@@ -9258,6 +9258,28 @@
 
   async function bootAuth() {
     try {
+      var rawHashBoot = typeof location !== 'undefined' ? location.hash || '' : '';
+      var rawSearchBoot = typeof location !== 'undefined' ? location.search || '' : '';
+      var stripeSessionIdEarly = '';
+      try {
+        stripeSessionIdEarly = (new URLSearchParams(rawSearchBoot).get('session_id') || '').trim();
+      } catch (eSidEarly) {}
+      /**
+       * Magic links, OAuth, and email confirmations often redirect to Site URL (/ or /index.html)
+       * with tokens in the hash or ?code= (PKCE). Those flows never hit login.html, so we send parents
+       * to the portal chooser here — same as after password sign-in on login.html.
+       */
+      var supabaseAuthInUrlBoot =
+        !checkoutEmbedMode &&
+        !urlParentIdBoot &&
+        !urlPaymentPortalBoot &&
+        !urlPortalPaymentBoot &&
+        !stripeSessionIdEarly &&
+        (/access_token|refresh_token|provider_token|type=invite|type=signup|type=recovery|type=email|type=magiclink/i.test(
+          rawHashBoot
+        ) ||
+          /[?&]code=[^&]+/.test(rawSearchBoot));
+
       await IMA.getSupabase();
       session = (await IMA.getSession()) || null;
       if (session && typeof IMA.refreshSessionForApi === 'function') {
@@ -9265,6 +9287,11 @@
           var refBoot = await IMA.refreshSessionForApi();
           if (refBoot && refBoot.session) session = refBoot.session;
         } catch (eBootRef) {}
+      }
+
+      if (session && supabaseAuthInUrlBoot) {
+        location.replace('/portal-landing.html');
+        return;
       }
     } catch (e) {
       session = null;

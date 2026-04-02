@@ -16,21 +16,31 @@
       gap: 14px;
       margin-top: 22px;
     }
-    .portal-landing-actions .btn-primary,
-    .portal-landing-actions .btn-secondary {
+    /* <a> tags need explicit button visuals (same weight as Credit Card / Step Up). */
+    .portal-landing-actions a.btn-primary {
       width: 100%;
       text-align: center;
-      justify-content: center;
       text-decoration: none;
       box-sizing: border-box;
+      display: block;
+      padding: 16px 18px;
+      min-height: 56px;
+      line-height: 1.25;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+      font-family: var(--font-display);
+      font-size: 18px;
+      letter-spacing: 2px;
+      color: #000;
+      background: linear-gradient(135deg, var(--cyan), var(--blue));
+      transition: transform 0.15s, box-shadow 0.15s;
     }
-    .portal-landing-actions .btn-secondary {
-      border: 1px solid rgba(0, 229, 204, 0.45);
-      color: var(--cyan);
-      background: rgba(0, 229, 204, 0.08);
-    }
-    .portal-landing-actions .btn-secondary:hover {
-      background: rgba(0, 229, 204, 0.14);
+    .portal-landing-actions a.btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 28px rgba(0, 229, 204, 0.25);
     }
     .portal-landing-foot {
       margin-top: 22px;
@@ -67,7 +77,7 @@
           <div class="portal-landing-actions">
             <a id="link-credit-card" class="btn-primary" href="#">Credit Card Portal</a>
             <a id="link-step-up" class="btn-primary" href="#">Step Up Portal</a>
-            <a id="link-enrollments" class="btn-secondary" href="#">View All Enrollments</a>
+            <a id="link-enrollments" class="btn-primary" href="#">View all enrollments</a>
           </div>
           <div class="portal-landing-foot">
             <a href="#" id="logout-link">Log out</a>
