@@ -101,6 +101,7 @@
   <div class="admin-layout">
     <aside class="admin-sidebar" aria-label="Admin navigation">
       <a class="active" href="/admin.html">Dashboard</a>
+      <a href="#panel-shirts">Shirt handouts</a>
       <a href="#panel-agreements">Policy agreements</a>
       <a href="#panel-waitlist">Waitlist</a>
       <div class="admin-sidebar-label">Admin</div>
@@ -151,6 +152,9 @@
       <div class="stat-card">
         <h3>Extra camp T-shirts paid</h3>
         <div class="num" id="st-shirt">0</div>
+        <div class="panel-hint" style="margin-top:8px;font-size:13px">
+          Still to hand out: <strong id="st-shirt-owe">0</strong>
+        </div>
       </div>
     </div>
 
@@ -242,14 +246,18 @@
       </div>
     </div>
 
-    <div class="panel">
-      <div class="panel-head">Extra camp T-shirt add-ons <span class="panel-hint">· $20 add-on; also emailed to staff on payment (same as bookings)</span></div>
+    <div class="panel" id="panel-shirts">
+      <div class="panel-head">
+        Extra camp T-shirt handouts
+        <span class="panel-hint">· $20 add-on; check the box when you give them the shirt (uncheck if you need to undo)</span>
+      </div>
       <div class="panel-body table-wrap">
         <table class="data" id="tbl-shirts">
           <thead>
             <tr>
               <th>Camper</th>
               <th>Parent</th>
+              <th style="text-align:center;width:1%">Shirt given</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -454,7 +462,7 @@
       async function loadCampersExtraShirtPaid(sb) {
         const { data, error } = await sb
           .from('campers')
-          .select('id,first_name,last_name,parent_id')
+          .select('id,first_name,last_name,parent_id,extra_shirt_fulfilled_at')
           .eq('extra_shirt_addon_paid', true)
           .order('first_name', { ascending: true });
         if (error) throw error;
@@ -569,7 +577,13 @@
 
       function renderShirtAddons(campers, parents) {
         var st = document.getElementById('st-shirt');
+        var stOwe = document.getElementById('st-shirt-owe');
         if (st) st.textContent = String(campers.length);
+        var owe = 0;
+        campers.forEach(function (c) {
+          if (!c.extra_shirt_fulfilled_at) owe += 1;
+        });
+        if (stOwe) stOwe.textContent = String(owe);
         var body = document.querySelector('#tbl-shirts tbody');
         var empty = document.getElementById('shirt-empty');
         var tbl = document.getElementById('tbl-shirts');
@@ -581,15 +595,73 @@
         }
         if (empty) empty.hidden = true;
         if (tbl) tbl.style.display = '';
+        var sorted = campers.slice().sort(function (a, b) {
+          var af = !!a.extra_shirt_fulfilled_at;
+          var bf = !!b.extra_shirt_fulfilled_at;
+          if (af !== bf) return af ? 1 : -1;
+          var na = ((a.first_name || '') + ' ' + (a.last_name || '')).toLowerCase();
+          var nb = ((b.first_name || '') + ' ' + (b.last_name || '')).toLowerCase();
+          return na.localeCompare(nb);
+        });
         if (body) {
-          body.innerHTML = campers
+          body.innerHTML = sorted
             .map(function (c) {
               var cname = escapeHtml((c.first_name || '') + ' ' + (c.last_name || ''));
               var pname = parentGuestLabel({ parent_id: c.parent_id, guest_email: null }, parents);
-              return '<tr><td>' + cname + '</td><td>' + pname + '</td></tr>';
+              var cid = escapeHtml(String(c.id));
+              var given = !!c.extra_shirt_fulfilled_at;
+              var chk =
+                '<input type="checkbox" data-shirt-given-camper="' +
+                cid +
+                '" ' +
+                (given ? 'checked ' : '') +
+                'aria-label="Shirt given to ' +
+                escapeHtml((c.first_name || '') + ' ' + (c.last_name || '')) +
+                '" />';
+              return (
+                '<tr><td>' +
+                cname +
+                '</td><td>' +
+                pname +
+                '</td><td style="text-align:center">' +
+                chk +
+                '</td></tr>'
+              );
             })
             .join('');
         }
+      }
+
+      var shirtHandoutBound = false;
+
+      function bindShirtHandoutToggles(sb, scheduleAdminRefresh) {
+        if (shirtHandoutBound) return;
+        var tbl = document.getElementById('tbl-shirts');
+        if (!tbl) return;
+        shirtHandoutBound = true;
+        tbl.addEventListener('change', function (ev) {
+          var el = ev.target;
+          if (!el || el.tagName !== 'INPUT' || el.type !== 'checkbox') return;
+          var cid = el.getAttribute('data-shirt-given-camper');
+          if (!cid) return;
+          var want = el.checked;
+          el.disabled = true;
+          (async function () {
+            try {
+              var ts = want ? new Date().toISOString() : null;
+              var { error } = await sb.from('campers').update({ extra_shirt_fulfilled_at: ts }).eq('id', cid);
+              if (error) throw error;
+              showBanner(want ? 'Marked shirt as given.' : 'Cleared shirt handout.', true);
+              if (typeof scheduleAdminRefresh === 'function') scheduleAdminRefresh();
+              else void refreshAdminData(sb, {});
+            } catch (err) {
+              el.checked = !want;
+              showBanner(err.message || String(err), false);
+            } finally {
+              el.disabled = false;
+            }
+          })();
+        });
       }
 
       function closeWeekPeopleModal() {
@@ -1499,6 +1571,7 @@
 
         var scheduleAdminRefresh = createAdminDebouncedRefresh(sb);
         bindStepUpHoldsActions(sb, scheduleAdminRefresh);
+        bindShirtHandoutToggles(sb, scheduleAdminRefresh);
         bindRosterModalUiOnce();
         await refreshAdminData(sb, { initial: true });
         subscribeAdminCampRealtime(sb, scheduleAdminRefresh);
