@@ -272,6 +272,12 @@ body::before {
   color: var(--cyan);
 }
 
+.msg.hint {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
 .msg.error a,
 .msg.ok a {
   color: #cdefff;

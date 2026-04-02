@@ -49,7 +49,7 @@
       </div>
     </div>
   </div>
-  <script src="/js/ima-core.js?v=20260330"></script>
+  <script src="/js/ima-core.js?v=20260331"></script>
   <script>
     (function () {
       const msg = document.getElementById('msg');
@@ -93,11 +93,16 @@
         );
       }
 
-      /** Server reads profiles with service role; matches admin API (role admin or allowlisted staff). */
-      async function redirectFromAdminSession(accessToken, profileFallback) {
+      /**
+       * Server reads profiles with service role; matches admin API (role admin or allowlisted staff).
+       * @param {{ stayOnPageIfDenied?: boolean }} opts — if true, do not send non-staff users to the camp site (fixes parent session + staff login in same browser).
+       */
+      async function redirectFromAdminSession(accessToken, profileFallback, opts) {
+        opts = opts || {};
+        var stayOnPageIfDenied = !!opts.stayOnPageIfDenied;
         if (!accessToken) {
-          window.location.replace('/index.html');
-          return;
+          if (!stayOnPageIfDenied) window.location.replace('/index.html');
+          return { navigated: false, denied: !accessToken };
         }
         try {
           const r = await fetch('/api/admin-session', {
@@ -107,23 +112,40 @@
           const j = r.ok ? await r.json() : null;
           if (j && j.canAccessAdminPortal) {
             window.location.replace('/admin.html');
-          } else {
-            window.location.replace('/index.html');
+            return { navigated: true };
           }
+          if (!stayOnPageIfDenied) window.location.replace('/index.html');
+          return { navigated: false, denied: true };
         } catch (e) {
           if (isProfileAdmin(profileFallback)) {
             window.location.replace('/admin.html');
-          } else {
-            window.location.replace('/index.html');
+            return { navigated: true };
           }
+          if (!stayOnPageIfDenied) window.location.replace('/index.html');
+          return { navigated: false, denied: true };
         }
+      }
+
+      function showNonStaffSessionHint(profile) {
+        var em = profile && profile.email ? String(profile.email).trim() : '';
+        msg.textContent = em
+          ? 'You are still signed in as ' +
+            em +
+            ' (parent camp site). Enter staff email and password below to open admin, or sign out on the camp site first.'
+          : 'You are signed in with a non-staff account. Use staff credentials below to open admin.';
+        msg.className = 'msg show hint';
       }
 
       async function redirectIfSession() {
         const session = await IMA.getSession();
         if (!session) return false;
         const profile = await IMA.getProfile();
-        await redirectFromAdminSession(session.access_token, profile);
+        const out = await redirectFromAdminSession(session.access_token, profile, {
+          stayOnPageIfDenied: true,
+        });
+        if (out && out.denied && !out.navigated) {
+          showNonStaffSessionHint(profile);
+        }
         return true;
       }
 
