@@ -262,7 +262,9 @@ async function sendCampPaymentEmails(stripe, session, result) {
   }
 
   const agreementId = meta.agreement_record_id && String(meta.agreement_record_id).trim();
-  if (agreementId && customerEmail) {
+  const skipAgreementAck =
+    meta.agreement_ack_suppress === 'true' || meta.agreement_ack_suppress === '1';
+  if (agreementId && customerEmail && !skipAgreementAck) {
     try {
       const sbAck = serviceClient();
       const { sendAgreementAcknowledgmentEmailOnce } = require('./agreement-record');

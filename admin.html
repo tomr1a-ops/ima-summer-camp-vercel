@@ -101,6 +101,7 @@
   <div class="admin-layout">
     <aside class="admin-sidebar" aria-label="Admin navigation">
       <a class="active" href="/admin.html">Dashboard</a>
+      <a href="#panel-agreements">Policy agreements</a>
       <a href="#panel-waitlist">Waitlist</a>
       <div class="admin-sidebar-label">Admin</div>
       <a href="/admin/backup">Backup</a>
@@ -153,6 +154,30 @@
       </div>
     </div>
 
+    <div class="panel" id="panel-agreements">
+      <div class="panel-head">
+        Policy agreements (checkbox at checkout)
+        <span class="panel-hint">· one row per checkout when parents continue; includes IP and campers on the order. “Camp waiver” in enrollment tables is the profile flag only.</span>
+      </div>
+      <div class="panel-body table-wrap">
+        <table class="data" id="tbl-agreements">
+          <thead>
+            <tr>
+              <th>Agreed (UTC stored)</th>
+              <th>Parent</th>
+              <th>Email</th>
+              <th>Version</th>
+              <th>Children</th>
+              <th>IP</th>
+              <th>Ack email</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty-hint" id="agreements-empty" hidden>No agreement rows yet.</p>
+      </div>
+    </div>
+
     <div id="week-people-modal" class="admin-modal" aria-hidden="true">
       <button type="button" class="admin-modal-backdrop" id="week-people-backdrop" aria-label="Close"></button>
       <div class="admin-modal-panel" role="dialog" aria-modal="true" aria-labelledby="week-people-title">
@@ -178,6 +203,7 @@
           <thead>
             <tr>
               <th>Parent / guest</th>
+              <th>Camp waiver</th>
               <th>Camper</th>
               <th>Week</th>
               <th>Schedule</th>
@@ -199,6 +225,7 @@
           <thead>
             <tr>
               <th>Parent</th>
+              <th>Camp waiver</th>
               <th>Camper</th>
               <th>Week</th>
               <th>Schedule</th>
@@ -262,6 +289,7 @@
           <thead>
             <tr>
               <th>Parent / guest</th>
+              <th>Camp waiver</th>
               <th>Camper</th>
               <th>Week</th>
               <th>Schedule</th>
@@ -436,7 +464,10 @@
       async function hydrateParents(sb, rows) {
         const ids = [...new Set(rows.map(function (r) { return r.parent_id; }).filter(Boolean))];
         if (!ids.length) return {};
-        const { data, error } = await sb.from('profiles').select('id,full_name,email').in('id', ids);
+        const { data, error } = await sb
+          .from('profiles')
+          .select('id,full_name,email,waiver_signed,waiver_signed_at')
+          .in('id', ids);
         if (error) throw error;
         const m = {};
         (data || []).forEach(function (p) { m[p.id] = p; });
@@ -619,7 +650,7 @@
               escapeHtml(title) +
               '</h4>' +
               '<table class="week-roster-table"><thead><tr>' +
-              '<th>Camper</th><th>Parent / guest</th><th>Schedule</th><th>Status</th><th>Amount</th>' +
+              '<th>Camper</th><th>Parent / guest</th><th>Camp waiver</th><th>Schedule</th><th>Status</th><th>Amount</th>' +
               '</tr></thead><tbody>' +
               list
                 .map(function (e) {
@@ -630,6 +661,8 @@
                     cname +
                     '</td><td>' +
                     parentGuestLabel(e, state.parents) +
+                    '</td><td>' +
+                    parentCampWaiverCell(e.parent_id, state.parents) +
                     '</td><td>' +
                     escapeHtml(scheduleLabel(e)) +
                     '</td><td>' +
@@ -747,6 +780,24 @@
             .join('');
       }
 
+      function parentCampWaiverCell(parentId, parents) {
+        if (parentId == null || parentId === '') return '<span style="color:#888">—</span>';
+        var pid = String(parentId);
+        var p = parents[pid] || parents[parentId] || {};
+        var w = p.waiver_signed === true || p.waiver_signed === 'true';
+        if (w) {
+          var tip = p.waiver_signed_at
+            ? String(IMA.formatDate(p.waiver_signed_at)) + ' (profile). Policy checkbox logs: Policy agreements panel.'
+            : 'Camp waiver on file (profile). Per-checkout policy: Policy agreements panel.';
+          return (
+            '<span style="color:#6ee7b7;font-weight:600" title="' +
+            escapeHtml(tip) +
+            '">Signed</span>'
+          );
+        }
+        return '<span style="color:#fca5a5">Not signed</span>';
+      }
+
       function parentGuestLabel(e, parents) {
         if (e.profiles && typeof e.profiles === 'object') {
           var pr = e.profiles;
@@ -812,6 +863,8 @@
               '<tr>' +
               '<td>' +
               pname +
+              '</td><td>' +
+              parentCampWaiverCell(e.parent_id, parents) +
               '</td><td>' +
               cname +
               '</td><td>' +
@@ -998,6 +1051,8 @@
               '<tr><td>' +
               pname +
               '</td><td>' +
+              parentCampWaiverCell(e.parent_id, parents) +
+              '</td><td>' +
               cname +
               '</td><td>' +
               escapeHtml(w.label || '') +
@@ -1027,6 +1082,8 @@
             '<tr><td>' +
             pname +
             '</td><td>' +
+            parentCampWaiverCell(e.parent_id, parents) +
+            '</td><td>' +
             cname +
             '</td><td>' +
             escapeHtml(w.label || '') +
@@ -1047,15 +1104,36 @@
 
       function exportCsv(enr, parents) {
         const rows = filterEnrollmentsForTable(enr);
-        const lines = [['parent_name', 'parent_email', 'guest_email', 'camper', 'week', 'schedule', 'payment_rail', 'status', 'price_paid', 'created_at'].join(',')];
+        const lines = [
+          [
+            'parent_name',
+            'parent_email',
+            'guest_email',
+            'camp_waiver_signed',
+            'camper',
+            'week',
+            'schedule',
+            'payment_rail',
+            'status',
+            'price_paid',
+            'created_at',
+          ].join(','),
+        ];
         rows.forEach(function (e) {
           const p = parents[e.parent_id] || {};
           const c = e.campers || {};
           const w = e.weeks || {};
+          var wv =
+            p.waiver_signed === true || p.waiver_signed === 'true'
+              ? 'yes'
+              : e.parent_id
+                ? 'no'
+                : '';
           lines.push([
             csv(p.full_name || ''),
             csv(p.email || ''),
             csv(e.guest_email || ''),
+            csv(wv),
             csv((c.first_name || '') + ' ' + (c.last_name || '')),
             csv(w.label || ''),
             csv(scheduleLabel(e)),
@@ -1122,6 +1200,66 @@
         } catch (e) {
           return [];
         }
+      }
+
+      async function fetchAdminAgreements() {
+        try {
+          var tok = await IMA.refreshSessionForApi();
+          var at = tok && tok.accessToken ? tok.accessToken : null;
+          if (!at) return [];
+          var res = await fetch('/api/admin-agreements', {
+            method: 'GET',
+            headers: { Authorization: 'Bearer ' + at },
+            cache: 'no-store',
+          });
+          if (!res.ok) return [];
+          var j = await res.json();
+          return Array.isArray(j.agreements) ? j.agreements : [];
+        } catch (e) {
+          return [];
+        }
+      }
+
+      function renderAdminAgreements(rows) {
+        var body = document.querySelector('#tbl-agreements tbody');
+        var empty = document.getElementById('agreements-empty');
+        var tbl = document.getElementById('tbl-agreements');
+        if (!body || !tbl) return;
+        var list = rows || [];
+        if (!list.length) {
+          body.innerHTML = '';
+          if (empty) empty.hidden = false;
+          tbl.style.display = 'none';
+          return;
+        }
+        if (empty) empty.hidden = true;
+        tbl.style.display = '';
+        body.innerHTML = list
+          .map(function (r) {
+            var kids =
+              r.camper_names && r.camper_names.length
+                ? escapeHtml(r.camper_names.join(', '))
+                : String(r.camper_count || 0) + ' camper(s)';
+            var ack = r.acknowledgment_email_sent ? 'Sent' : '—';
+            return (
+              '<tr><td>' +
+              escapeHtml(formatWaitlistWhen(r.agreed_at)) +
+              '</td><td>' +
+              escapeHtml(r.parent_name || '') +
+              '</td><td>' +
+              escapeHtml(r.email || '') +
+              '</td><td>' +
+              escapeHtml(String(r.agreement_version || '')) +
+              '</td><td>' +
+              kids +
+              '</td><td>' +
+              escapeHtml(r.ip_address || '—') +
+              '</td><td>' +
+              escapeHtml(ack) +
+              '</td></tr>'
+            );
+          })
+          .join('');
       }
 
       async function fetchAdminWaitlistWeeks() {
@@ -1302,6 +1440,8 @@
         renderStepUpHolds(state.stepUpHolds, state.parents);
         var waitWeeks = await fetchAdminWaitlistWeeks();
         renderAdminWaitlist(waitWeeks);
+        var agr = await fetchAdminAgreements();
+        renderAdminAgreements(agr);
       }
 
       var adminRealtimeBound = false;
@@ -1326,7 +1466,7 @@
         document.addEventListener('visibilitychange', function () {
           if (document.visibilityState === 'visible') scheduleAdminRefresh();
         });
-        var tables = ['enrollments', 'campers', 'days', 'weeks', 'waitlist'];
+        var tables = ['enrollments', 'campers', 'days', 'weeks', 'waitlist', 'agreement_records'];
         var ch = sb.channel('ima-admin-camp-live');
         tables.forEach(function (table) {
           ch.on(

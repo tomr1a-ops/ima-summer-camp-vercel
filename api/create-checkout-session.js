@@ -324,6 +324,8 @@ module.exports = async (req, res) => {
     (profile.waiver_signed === true ||
       profile.waiver_signed === 'true' ||
       String(profile.waiver_signed) === '1');
+  /** First-time policy acceptance gets Resend ack; repeat checkouts still log a row but skip duplicate emails. */
+  const suppressAgreementAckEmail = profileWaiverOk;
   if (!profileWaiverOk) {
     if (agreementAccepted !== true) {
       return failCheckout(
@@ -771,37 +773,33 @@ module.exports = async (req, res) => {
   }
 
   let agreementRecordId = null;
-  if (!profileWaiverOk) {
-    try {
-      logStep('before_insertAgreementRecord', { batchId });
-      const rec = await insertAgreementRecord(sb, {
-        parentId,
-        parentName: parentDisplayName,
-        email: (profile && profile.email) || (user.email || ''),
-        ipAddress: clientIpFromRequest(req),
-        camperIds: camperIdsToVerify,
-      });
-      agreementRecordId = rec.id;
-      logStep('after_insertAgreementRecord', { agreementRecordId });
-    } catch (arErr) {
-      logFullError('insertAgreementRecord', arErr);
-      if (bookingsArray.length) {
-        try {
-          await sb.from('enrollments').delete().eq('checkout_batch_id', batchId);
-        } catch (delE) {
-          logFullError('rollback enrollments after agreement failure', delE);
-        }
+  try {
+    logStep('before_insertAgreementRecord', { batchId });
+    const rec = await insertAgreementRecord(sb, {
+      parentId,
+      parentName: parentDisplayName,
+      email: (profile && profile.email) || (user.email || ''),
+      ipAddress: clientIpFromRequest(req),
+      camperIds: camperIdsToVerify,
+    });
+    agreementRecordId = rec.id;
+    logStep('after_insertAgreementRecord', { agreementRecordId });
+  } catch (arErr) {
+    logFullError('insertAgreementRecord', arErr);
+    if (bookingsArray.length) {
+      try {
+        await sb.from('enrollments').delete().eq('checkout_batch_id', batchId);
+      } catch (delE) {
+        logFullError('rollback enrollments after agreement failure', delE);
       }
-      return failCheckout(
-        res,
-        500,
-        'AGREEMENT_SAVE',
-        'Could not save agreement acceptance. Try again.',
-        arErr instanceof Error ? arErr : arErr
-      );
     }
-  } else {
-    logStep('skip_insertAgreementRecord', { reason: 'profile_waiver_signed' });
+    return failCheckout(
+      res,
+      500,
+      'AGREEMENT_SAVE',
+      'Could not save agreement acceptance. Try again.',
+      arErr instanceof Error ? arErr : arErr
+    );
   }
 
   logStep('before_payment_branch', {
@@ -906,7 +904,7 @@ module.exports = async (req, res) => {
       }
       logStep('step_up_shirt_addon_only', { shirtCentsTotal, parentId });
       const parentMailShirt = (profile && profile.email) || user.email || '';
-      if (agreementRecordId) {
+      if (agreementRecordId && !suppressAgreementAckEmail) {
         try {
           await sendAgreementAcknowledgmentEmailOnce(sb, agreementRecordId, parentMailShirt);
         } catch (ackE) {
@@ -967,11 +965,12 @@ module.exports = async (req, res) => {
     }).catch((emErr) => {
       console.error('[create-checkout-session] step-up email', emErr && emErr.message);
     });
-    const ackMailP = agreementRecordId
-      ? sendAgreementAcknowledgmentEmailOnce(sb, agreementRecordId, parentMail).catch((ackE) => {
-          console.error('[create-checkout-session] agreement ack email (step-up)', ackE && ackE.message);
-        })
-      : Promise.resolve();
+    const ackMailP =
+      agreementRecordId && !suppressAgreementAckEmail
+        ? sendAgreementAcknowledgmentEmailOnce(sb, agreementRecordId, parentMail).catch((ackE) => {
+            console.error('[create-checkout-session] agreement ack email (step-up)', ackE && ackE.message);
+          })
+        : Promise.resolve();
     await Promise.all([stepUpMailP, ackMailP]);
     const totalDueCents = campCentsTotal + regCentsTotal + shirtCentsTotal;
     try {
@@ -1030,7 +1029,7 @@ module.exports = async (req, res) => {
         }
         return failCheckout(res, 500, 'FINALIZE_BATCH', fz.message || 'Could not complete registration', fz);
       }
-      if (agreementRecordId) {
+      if (agreementRecordId && !suppressAgreementAckEmail) {
         try {
           await sendAgreementAcknowledgmentEmailOnce(
             sb,
@@ -1094,6 +1093,9 @@ module.exports = async (req, res) => {
     }
     if (agreementRecordId) {
       stripeMetadata.agreement_record_id = String(agreementRecordId);
+    }
+    if (suppressAgreementAckEmail) {
+      stripeMetadata.agreement_ack_suppress = 'true';
     }
     if (waitlistIdsFromBookings.length) {
       stripeMetadata.waitlist_ids = waitlistIdsFromBookings.join(',');
