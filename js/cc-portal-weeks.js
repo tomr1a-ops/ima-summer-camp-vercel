@@ -1,4 +1,5 @@
 (function () {
+  var CAMP_SCHEDULE_HOURS_LINE = 'Camp 9am–3pm · Complimentary drop-off from 8:30am';
   var LS_KEY_PREFIX = 'ima_cc_portal_selected_weeks_v1:';
   var weeksPayload = [];
   var campers = [];
@@ -200,6 +201,18 @@
         kids.appendChild(row);
       });
       card.appendChild(kids);
+      var wrLine = Number(pricing.weekRate) || 0;
+      var priceEl = document.createElement('div');
+      priceEl.className = 'cc-week-price';
+      priceEl.textContent =
+        '$' +
+        wrLine.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
+        '/week · Mon–Fri';
+      card.appendChild(priceEl);
+      var hoursEl = document.createElement('div');
+      hoursEl.className = 'cc-week-hours';
+      hoursEl.textContent = CAMP_SCHEDULE_HOURS_LINE;
+      card.appendChild(hoursEl);
       grid.appendChild(card);
     });
     mount.appendChild(grid);

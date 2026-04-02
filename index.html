@@ -1875,6 +1875,16 @@
   }
   .week-card.has-kids .week-card-price { color: var(--text); }
 
+  .week-card-camp-hours,
+  .week-block-camp-hours {
+    font-family: var(--font-cond);
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.4;
+    margin-top: 6px;
+    letter-spacing: 0.03em;
+  }
+
   .week-card .week-kids-ctrl {
     position: relative;
     z-index: 1;
@@ -3201,6 +3211,8 @@
   }
 
   let testPriceMode = false;
+  /** Shown under pricing on weekly/daily week cards (all payment portals on this page). */
+  const CAMP_SCHEDULE_HOURS_LINE = 'Camp 9am–3pm · Complimentary drop-off from 8:30am';
   let weeksPayload = [];
   /** After /api/weeks fails for good, avoid replacing error UI with “No weeks available.” */
   let weeksCatalogLoadFailed = false;
@@ -8572,6 +8584,12 @@
         price.textContent = fmt(wr) + '/week · Mon–Fri';
       }
       card.appendChild(price);
+      if (!noCamp) {
+        const hoursRow = document.createElement('div');
+        hoursRow.className = 'week-card-camp-hours';
+        hoursRow.textContent = CAMP_SCHEDULE_HOURS_LINE;
+        card.appendChild(hoursRow);
+      }
       if (!signedInParent) {
         if (noCamp) {
           const tag = document.createElement('div');
@@ -8711,6 +8729,12 @@
         head.appendChild(b);
       }
       block.appendChild(head);
+      if (!noCamp) {
+        const hoursBlk = document.createElement('div');
+        hoursBlk.className = 'week-block-camp-hours';
+        hoursBlk.textContent = CAMP_SCHEDULE_HOURS_LINE;
+        block.appendChild(hoursBlk);
+      }
 
       if (!signedInParent && !noCamp) {
         const dk = document.createElement('div');
