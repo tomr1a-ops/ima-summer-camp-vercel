@@ -42,6 +42,24 @@
       transform: translateY(-1px);
       box-shadow: 0 8px 28px rgba(0, 229, 204, 0.25);
     }
+    .portal-action-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: stretch;
+    }
+    .portal-action-caption {
+      margin: 0;
+      text-align: center;
+      font-family: var(--font-body);
+      font-size: 13px;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+    .portal-cap-lead {
+      color: var(--cyan);
+      font-weight: 600;
+    }
     .portal-landing-foot {
       margin-top: 22px;
       text-align: center;
@@ -76,7 +94,10 @@
         <div id="signed-in" hidden>
           <div class="portal-landing-actions">
             <a id="link-credit-card" class="btn-primary" href="#">Credit Card Portal</a>
-            <a id="link-step-up" class="btn-primary" href="#">Step Up Scholarship Portal</a>
+            <div class="portal-action-stack">
+              <a id="link-step-up" class="btn-primary" href="#">Step Up Portal</a>
+              <p class="portal-action-caption"><span class="portal-cap-lead">Scholarship</span> - Step up scholarship</p>
+            </div>
             <a id="link-enrollments" class="btn-primary" href="#">View all enrollments</a>
           </div>
           <div class="portal-landing-foot">
