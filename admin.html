@@ -103,6 +103,7 @@
       <a class="active" href="/admin.html">Dashboard</a>
       <a href="#panel-shirts">Shirt handouts</a>
       <a href="#panel-agreements">Policy agreements</a>
+      <a href="#panel-parent-logins">Parent logins</a>
       <a href="#panel-waitlist">Waitlist</a>
       <div class="admin-sidebar-label">Admin</div>
       <a href="/admin/backup">Backup</a>
@@ -179,6 +180,27 @@
           <tbody></tbody>
         </table>
         <p class="empty-hint" id="agreements-empty" hidden>No agreement rows yet.</p>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-parent-logins">
+      <div class="panel-head">
+        Parent logins
+        <span class="panel-hint">· Supabase auth accounts with profile names; newest activity first</span>
+      </div>
+      <div class="panel-body table-wrap">
+        <table class="data" id="tbl-parent-logins">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Name</th>
+              <th>Last sign in</th>
+              <th>Account created</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p class="empty-hint" id="parent-logins-empty" hidden>No accounts loaded.</p>
       </div>
     </div>
 
@@ -1292,6 +1314,55 @@
         }
       }
 
+      async function fetchAdminParentLogins() {
+        try {
+          var tok = await IMA.refreshSessionForApi();
+          var at = tok && tok.accessToken ? tok.accessToken : null;
+          if (!at) return [];
+          var res = await fetch('/api/admin-logins', {
+            method: 'GET',
+            headers: { Authorization: 'Bearer ' + at },
+            cache: 'no-store',
+          });
+          if (!res.ok) return [];
+          var j = await res.json();
+          return Array.isArray(j.logins) ? j.logins : [];
+        } catch (e) {
+          return [];
+        }
+      }
+
+      function renderAdminParentLogins(rows) {
+        var body = document.querySelector('#tbl-parent-logins tbody');
+        var empty = document.getElementById('parent-logins-empty');
+        var tbl = document.getElementById('tbl-parent-logins');
+        if (!body || !tbl) return;
+        var list = rows || [];
+        if (!list.length) {
+          body.innerHTML = '';
+          if (empty) empty.hidden = false;
+          tbl.style.display = 'none';
+          return;
+        }
+        if (empty) empty.hidden = true;
+        tbl.style.display = '';
+        body.innerHTML = list
+          .map(function (r) {
+            return (
+              '<tr><td>' +
+              escapeHtml(r.email || '') +
+              '</td><td>' +
+              escapeHtml(r.full_name || '') +
+              '</td><td>' +
+              escapeHtml(formatWaitlistWhen(r.last_sign_in_at)) +
+              '</td><td>' +
+              escapeHtml(formatWaitlistWhen(r.created_at)) +
+              '</td></tr>'
+            );
+          })
+          .join('');
+      }
+
       function renderAdminAgreements(rows) {
         var body = document.querySelector('#tbl-agreements tbody');
         var empty = document.getElementById('agreements-empty');
@@ -1514,6 +1585,8 @@
         renderAdminWaitlist(waitWeeks);
         var agr = await fetchAdminAgreements();
         renderAdminAgreements(agr);
+        var pl = await fetchAdminParentLogins();
+        renderAdminParentLogins(pl);
       }
 
       var adminRealtimeBound = false;
