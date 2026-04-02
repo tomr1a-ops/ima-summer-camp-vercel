@@ -723,17 +723,6 @@
     margin: 0 0 8px;
   }
 
-  .credit-by-camper-hint {
-    margin: 0 0 10px;
-    font-size: 11px;
-    line-height: 1.5;
-    color: var(--muted);
-  }
-
-  .credit-by-camper-hint a {
-    color: var(--cyan);
-  }
-
   .credit-by-camper-row {
     display: flex;
     justify-content: space-between;
@@ -748,13 +737,6 @@
   .credit-by-camper-row:first-of-type {
     border-top: none;
     padding-top: 0;
-  }
-
-  .credit-by-camper-balance-footnote {
-    margin: 8px 0 0;
-    font-size: 11px;
-    line-height: 1.45;
-    color: var(--muted);
   }
 
   .summary-line {
@@ -6691,20 +6673,14 @@
       weekLine = fmt(remCents / 100) + ' credit';
       dayLine = '—';
     }
-    var balanceFootnote =
-      'Full-week credit applies only to <strong>full week (Mon–Fri)</strong> checkout. Daily credit applies only to <strong>per-day</strong> checkout. They do not transfer or combine.';
     el.innerHTML =
       '<div class="credit-by-camper-title">Unused Credit (Your Family)</div>' +
-      '<p class="credit-by-camper-hint">Credits include other paid time you are not checking out again, and account balance from camp registrations you cancelled after paying.</p>' +
       '<div class="credit-by-camper-row"><span>Full-week credit</span><span>' +
       escapeHtml(weekLine) +
       '</span></div>' +
       '<div class="credit-by-camper-row"><span>Daily credit</span><span>' +
       escapeHtml(dayLine) +
-      '</span></div>' +
-      '<p class="credit-by-camper-balance-footnote">' +
-      balanceFootnote +
-      '</p>';
+      '</span></div>';
     try {
       console.log('[IMA credit UI] Unused Credit block rendered', {
         grossCents: grossCents,
